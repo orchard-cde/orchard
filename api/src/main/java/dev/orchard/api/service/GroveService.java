@@ -18,6 +18,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -35,6 +37,7 @@ public class GroveService {
     private final FruitRepository fruitRepository;
     private final ProviderRegistry providerRegistry;
     private final FruitGrower fruitGrower;
+    private final CultivatorService cultivatorService;
     private final DevcontainerParser devcontainerParser;
     private final SeedSerializer seedSerializer;
     private final ApplicationEventPublisher eventPublisher;
@@ -44,11 +47,13 @@ public class GroveService {
             FruitRepository fruitRepository,
             ProviderRegistry providerRegistry,
             FruitGrower fruitGrower,
+            CultivatorService cultivatorService,
             ApplicationEventPublisher eventPublisher) {
         this.groveRepository = groveRepository;
         this.fruitRepository = fruitRepository;
         this.providerRegistry = providerRegistry;
         this.fruitGrower = fruitGrower;
+        this.cultivatorService = cultivatorService;
         this.devcontainerParser = new DevcontainerParser();
         this.seedSerializer = new SeedSerializer();
         this.eventPublisher = eventPublisher;
@@ -57,6 +62,9 @@ public class GroveService {
     @Transactional
     public Grove plantGrove(UUID cultivatorId, CreateGroveRequest request) {
         log.info("Planting grove for cultivator {} with repo {}", cultivatorId, request.repositoryUrl());
+
+        // Ensure cultivator exists (auto-creates for local-dev)
+        cultivatorService.ensureCultivator(cultivatorId);
 
         // Create initial grove
         String name = request.name() != null ? request.name() :
@@ -80,9 +88,15 @@ public class GroveService {
         GroveEntity entity = GroveEntity.fromModel(grove);
         groveRepository.save(entity);
 
-        // Start async provisioning
+        // Start async provisioning after the transaction commits,
+        // so the grove row exists before updateGroveState() runs
         final Grove groveToProvision = grove;
-        CompletableFuture.runAsync(() -> provisionGrove(groveToProvision));
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                CompletableFuture.runAsync(() -> provisionGrove(groveToProvision));
+            }
+        });
 
         return grove;
     }
@@ -369,32 +383,49 @@ public class GroveService {
             groveRepository.save(entity);
 
             Grove grove = entityToModel(entity);
-            CompletableFuture.runAsync(() -> {
-                try {
-                    // Stop and remove all containers
-                    if (grove.fruits() != null && !grove.fruits().isEmpty()) {
-                        for (Fruit fruit : grove.fruits()) {
-                            if (fruit.containerId() != null) {
-                                log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                                fruitGrower.compost(grove.seedling(), fruit).join();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            // Check if VM is reachable before attempting container cleanup
+                            boolean vmReachable = false;
+                            if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
+                                try (var socket = new java.net.Socket()) {
+                                    socket.connect(new java.net.InetSocketAddress(
+                                        grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
+                                    vmReachable = true;
+                                } catch (java.io.IOException e) {
+                                    log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
+                                }
                             }
+
+                            // Stop and remove all containers (only if VM is reachable)
+                            if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
+                                for (Fruit fruit : grove.fruits()) {
+                                    if (fruit.containerId() != null) {
+                                        log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
+                                        fruitGrower.compost(grove.seedling(), fruit).join();
+                                    }
+                                }
+                            }
+                            // Always clean up fruit entities from DB
+                            fruitRepository.deleteAll(
+                                fruitRepository.findByGroveId(groveId)
+                            );
+                            // Terminate VM
+                            if (grove.seedling() != null) {
+                                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
+                                providerRegistry.getDefault().uproot(grove.seedling()).join();
+                            }
+                        } catch (Exception e) {
+                            log.error("Error during grove teardown for {}", groveId, e);
+                        } finally {
+                            entity.setState(GroveState.CLEARED);
+                            groveRepository.save(entity);
+                            log.info("Grove {} cleared", groveId);
                         }
-                        // Delete fruit entities
-                        fruitRepository.deleteAll(
-                            fruitRepository.findByGroveId(groveId)
-                        );
-                    }
-                    // Terminate VM
-                    if (grove.seedling() != null) {
-                        log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
-                        providerRegistry.getDefault().uproot(grove.seedling()).join();
-                    }
-                } catch (Exception e) {
-                    log.error("Error during grove teardown for {}", groveId, e);
-                } finally {
-                    entity.setState(GroveState.CLEARED);
-                    groveRepository.save(entity);
-                    log.info("Grove {} cleared", groveId);
+                    });
                 }
             });
         });

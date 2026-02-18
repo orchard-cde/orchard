@@ -5,6 +5,10 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
 import java.util.concurrent.Callable;
 
 @Command(
@@ -32,10 +36,10 @@ import java.util.concurrent.Callable;
 )
 public class Trowel implements Callable<Integer> {
 
-    @Option(names = {"-s", "--server"}, description = "Orchard server URL", defaultValue = "http://localhost:8080")
+    @Option(names = {"-s", "--server"}, description = "Orchard server URL")
     private String serverUrl;
 
-    @Option(names = {"--cultivator"}, description = "Cultivator ID", defaultValue = "${ORCHARD_CULTIVATOR_ID}")
+    @Option(names = {"--cultivator"}, description = "Cultivator ID")
     private String cultivatorId;
 
     public static void main(String[] args) {
@@ -52,11 +56,33 @@ public class Trowel implements Callable<Integer> {
     }
 
     public String getServerUrl() {
-        return serverUrl;
+        if (serverUrl != null) return serverUrl;
+        String env = System.getenv("ORCHARD_SERVER_URL");
+        if (env != null) return env;
+        String config = loadConfigProperty("server");
+        if (config != null) return config;
+        return "http://localhost:8080";
     }
 
     public String getCultivatorId() {
-        return cultivatorId;
+        if (cultivatorId != null) return cultivatorId;
+        String env = System.getenv("ORCHARD_CULTIVATOR_ID");
+        if (env != null) return env;
+        return loadConfigProperty("cultivator");
+    }
+
+    private String loadConfigProperty(String key) {
+        Path configFile = Path.of(System.getProperty("user.home"), ".orchard", "config.properties");
+        if (Files.exists(configFile)) {
+            try (var reader = Files.newBufferedReader(configFile)) {
+                Properties props = new Properties();
+                props.load(reader);
+                return props.getProperty(key);
+            } catch (IOException e) {
+                // ignore unreadable config
+            }
+        }
+        return null;
     }
 
     private static CommandLine.Help.ColorScheme createColorScheme() {

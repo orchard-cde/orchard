@@ -46,6 +46,7 @@ public class NurseryConfig {
             .sshPortRangeEnd(props.getSshPortRangeEnd())
             .enableKvm(props.isEnableKvm())
             .sshPublicKey(props.getSshPublicKey())
+            .serialOutput(props.getSerialOutput())
             .build();
     }
 
@@ -190,10 +191,11 @@ public class NurseryConfig {
         private String baseImagePath = "/var/lib/orchard/images/base.qcow2";
         private String vmStoragePath = "/var/lib/orchard/vms";
         private String cloudInitTemplatePath = "/etc/orchard/cloud-init";
-        private int sshPortRangeStart = 10022;
-        private int sshPortRangeEnd = 10122;
+        private int sshPortRangeStart = 49152;
+        private int sshPortRangeEnd = 49999;
         private boolean enableKvm = true;
         private String sshPublicKey = "";
+        private String serialOutput = "stdio";
 
         public String getQemuBinary() { return qemuBinary; }
         public void setQemuBinary(String qemuBinary) { this.qemuBinary = qemuBinary; }
@@ -221,6 +223,9 @@ public class NurseryConfig {
 
         public String getSshPublicKey() { return sshPublicKey; }
         public void setSshPublicKey(String sshPublicKey) { this.sshPublicKey = sshPublicKey; }
+
+        public String getSerialOutput() { return serialOutput; }
+        public void setSerialOutput(String serialOutput) { this.serialOutput = serialOutput; }
     }
 
     public static class AwsConfigProperties {

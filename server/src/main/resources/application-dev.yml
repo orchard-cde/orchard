@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/orchard_dev
+    url: jdbc:postgresql://localhost:5432/orchard
     username: orchard
     password: orchard
 
@@ -11,6 +11,7 @@ orchard:
     base-image-path: /tmp/orchard/images/base.qcow2
     vm-storage-path: /tmp/orchard/vms
     enable-kvm: false
+    serial-output: file
 
 logging:
   level:

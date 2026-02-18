@@ -67,6 +67,34 @@ public class CultivatorService {
     }
 
     /**
+     * Ensures a cultivator exists with the given ID, creating a local-dev
+     * cultivator if one doesn't already exist. This supports the unauthenticated
+     * local development workflow where the CLI generates its own cultivator ID.
+     */
+    @Transactional
+    public Cultivator ensureCultivator(UUID cultivatorId) {
+        return cultivatorRepository.findById(cultivatorId)
+            .map(entity -> {
+                entity.setLastActiveAt(Instant.now());
+                cultivatorRepository.save(entity);
+                return entity.toModel();
+            })
+            .orElseGet(() -> {
+                Cultivator cultivator = new Cultivator(
+                    cultivatorId,
+                    "cultivator-" + cultivatorId.toString().substring(0, 8),
+                    "cultivator-" + cultivatorId.toString().substring(0, 8) + "@local",
+                    "local",
+                    null, null, null,
+                    Instant.now(), Instant.now()
+                );
+                cultivatorRepository.save(CultivatorEntity.fromModel(cultivator));
+                log.info("Auto-created local-dev cultivator {}", cultivatorId);
+                return cultivator;
+            });
+    }
+
+    /**
      * Find a cultivator by their ID.
      */
     public Optional<Cultivator> findById(UUID cultivatorId) {
