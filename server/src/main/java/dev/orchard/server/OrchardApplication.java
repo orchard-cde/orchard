@@ -9,8 +9,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
     "dev.orchard.server",
     "dev.orchard.api",
     "dev.orchard.roots",
-    "dev.orchard.greenhouse",
-    "dev.orchard.moderne"
+    "dev.orchard.greenhouse"
 })
 @EntityScan("dev.orchard.roots.entity")
 @EnableJpaRepositories("dev.orchard.roots.repository")

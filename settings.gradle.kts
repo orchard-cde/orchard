@@ -13,7 +13,6 @@ include(
     "harvest",
     "nursery",
     "greenhouse",
-    "moderne",
     "api",
     "server",
     "trowel",

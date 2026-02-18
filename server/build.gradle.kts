@@ -8,7 +8,6 @@ dependencies {
     implementation(project(":harvest"))
     implementation(project(":nursery"))
     implementation(project(":greenhouse"))
-    implementation(project(":moderne"))
     implementation(project(":api"))
 
     implementation("org.springframework.boot:spring-boot-starter-web")

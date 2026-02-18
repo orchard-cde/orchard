@@ -90,10 +90,6 @@ orchard:
     #     4: Standard_B4ms
     #     8: Standard_D8s_v3
 
-  moderne:
-    api-base-url: https://api.app.moderne.io
-    # api-key: your-moderne-api-key
-
   greenhouse:
     registry-url: localhost:5000
     username: ""
