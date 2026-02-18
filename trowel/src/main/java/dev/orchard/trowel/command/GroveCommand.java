@@ -271,13 +271,31 @@ public class GroveCommand implements Callable<Integer> {
                 grove.seedling().memoryMb() + " MB RAM, " + grove.seedling().diskGb() + " GB disk");
         }
 
-        if (grove.fruit() != null) {
+        if (grove.fruits() != null && !grove.fruits().isEmpty()) {
             System.out.println();
-            System.out.println("  Fruit (Container):");
-            System.out.println("    State:     " + grove.fruit().state());
-            System.out.println("    Name:      " + grove.fruit().containerName());
-            if (grove.fruit().containerId() != null) {
-                System.out.println("    ID:        " + grove.fruit().containerId().substring(0, 12));
+            if (grove.fruits().size() == 1) {
+                var fruit = grove.fruits().getFirst();
+                System.out.println("  Fruit (Container):");
+                System.out.println("    State:     " + fruit.state());
+                System.out.println("    Name:      " + fruit.containerName());
+                if (fruit.serviceName() != null) {
+                    System.out.println("    Service:   " + fruit.serviceName());
+                }
+                if (fruit.containerId() != null) {
+                    System.out.println("    ID:        " + fruit.containerId().substring(0, 12));
+                }
+            } else {
+                System.out.println("  Fruits (" + grove.fruits().size() + " containers):");
+                for (int i = 0; i < grove.fruits().size(); i++) {
+                    var fruit = grove.fruits().get(i);
+                    String label = i == 0 ? " (primary)" : "";
+                    System.out.println("    [" + (i + 1) + "]" + label + " " +
+                        (fruit.serviceName() != null ? fruit.serviceName() : fruit.containerName()));
+                    System.out.println("        State:     " + fruit.state());
+                    if (fruit.containerId() != null) {
+                        System.out.println("        ID:        " + fruit.containerId().substring(0, 12));
+                    }
+                }
             }
         }
 

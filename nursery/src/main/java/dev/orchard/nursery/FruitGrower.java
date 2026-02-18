@@ -7,9 +7,7 @@ import dev.orchard.core.model.Seedling;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -68,6 +66,80 @@ public class FruitGrower {
             } catch (Exception e) {
                 log.error("Failed to grow fruit {}", fruit.id(), e);
                 return fruit.withState(FruitState.ROTTED);
+            }
+        }, executor);
+    }
+
+    /**
+     * Grows multiple fruits via Docker Compose on the given seedling.
+     * Runs `docker compose -f <file> up -d` and maps running containers to Fruit records.
+     *
+     * @param seedling the VM to run the compose stack on
+     * @param fruits the fruit records to map to compose services
+     * @param composeFile the path to the docker-compose file on the VM (relative to /workspace)
+     * @return a future with the updated list of fruits with container details and RIPE state
+     */
+    public CompletableFuture<List<Fruit>> growCompose(Seedling seedling, List<Fruit> fruits, String composeFile) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                log.info("Growing {} fruits via Docker Compose on seedling {}", fruits.size(), seedling.id());
+
+                // Run docker compose up
+                String composePath = composeFile.startsWith("/") ? composeFile : "/workspace/" + composeFile;
+                executeSsh(seedling, "docker compose -f " + composePath + " up -d");
+
+                // Get running containers from the compose project
+                String psOutput = executeSsh(seedling,
+                    "docker compose -f " + composePath + " ps --format '{{.ID}}|{{.Service}}|{{.Name}}'");
+
+                // Map running containers to fruits by service name
+                List<Fruit> grownFruits = new ArrayList<>();
+                for (Fruit fruit : fruits) {
+                    String serviceName = fruit.serviceName();
+                    if (serviceName == null) {
+                        // If no service name, try matching by container name
+                        serviceName = fruit.containerName();
+                    }
+
+                    String containerId = null;
+                    for (String line : psOutput.split("\n")) {
+                        String trimmed = line.trim();
+                        if (trimmed.isEmpty()) continue;
+                        String[] parts = trimmed.split("\\|");
+                        if (parts.length >= 2) {
+                            String lineContainerId = parts[0].trim();
+                            String lineService = parts[1].trim();
+                            if (lineService.equals(serviceName)) {
+                                containerId = lineContainerId;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (containerId != null) {
+                        List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
+                        // Run post-create commands for the primary service
+                        if (fruit.seed() != null && fruit.seed().postCreateCommands() != null) {
+                            for (String cmd : fruit.seed().postCreateCommands()) {
+                                executeInContainer(seedling, containerId, cmd);
+                            }
+                        }
+                        grownFruits.add(fruit
+                            .withContainerDetails(containerId, ports)
+                            .withState(FruitState.RIPE));
+                    } else {
+                        log.warn("No container found for service '{}' in compose output", serviceName);
+                        grownFruits.add(fruit.withState(FruitState.ROTTED));
+                    }
+                }
+
+                return grownFruits;
+
+            } catch (Exception e) {
+                log.error("Failed to grow compose stack on seedling {}", seedling.id(), e);
+                return fruits.stream()
+                    .map(f -> f.withState(FruitState.ROTTED))
+                    .toList();
             }
         }, executor);
     }
@@ -167,7 +239,7 @@ public class FruitGrower {
 
         Fruit imageFruit = new Fruit(
             fruit.id(), fruit.groveId(), fruit.seedlingId(),
-            null, fruit.containerName(), imageOnlySeed,
+            null, fruit.containerName(), fruit.serviceName(), imageOnlySeed,
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt()
         );
 
@@ -200,38 +272,7 @@ public class FruitGrower {
     }
 
     private String executeSsh(Seedling seedling, String command) throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(
-            "ssh",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-p", String.valueOf(seedling.sshPort()),
-            "cultivator@" + seedling.ipAddress(),
-            command
-        );
-
-        log.debug("Executing SSH command: {}", command);
-        Process process = pb.start();
-
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    log.error("SSH stderr: {}", line);
-                }
-            }
-            throw new IOException("SSH command failed with exit code " + exitCode + ": " + command);
-        }
-
-        return output.toString();
+        return new SshExecutor(seedling).execute(command);
     }
 
     public void shutdown() {

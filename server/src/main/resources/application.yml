@@ -22,6 +22,13 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+  # Uncomment when orchard.security.oauth2.enabled=true to configure JWT validation
+  # security:
+  #   oauth2:
+  #     resourceserver:
+  #       jwt:
+  #         issuer-uri: https://your-idp.example.com/realms/orchard
+
 server:
   port: 8080
 
@@ -35,6 +42,62 @@ management:
       show-details: always
 
 orchard:
+  security:
+    oauth2:
+      # Set to true to enable JWT authentication. When false (default), all
+      # requests are permitted for local development without an identity provider.
+      enabled: false
+      # Uncomment and configure when enabling OAuth2:
+      # issuer-uri: https://your-idp.example.com/realms/orchard
+
+  nursery:
+    # Default provider: qemu, aws, gcp, azure
+    provider: qemu
+
+    # AWS EC2 provider configuration
+    # Uncomment and configure to enable:
+    # aws:
+    #   region: us-east-1
+    #   ami-id: ami-0123456789abcdef0
+    #   key-pair-name: orchard-keypair
+    #   security-group-id: sg-0123456789abcdef0
+    #   subnet-id: subnet-0123456789abcdef0
+    #   instance-type-mapping:
+    #     2: t3.small
+    #     4: t3.medium
+    #     8: t3.xlarge
+
+    # GCP Compute Engine provider configuration
+    # Uncomment and configure to enable:
+    # gcp:
+    #   project: my-gcp-project
+    #   zone: us-central1-a
+    #   image-family: ubuntu-2204-lts
+    #   image-project: ubuntu-os-cloud
+    #   machine-type-mapping:
+    #     2: e2-standard-2
+    #     4: e2-standard-4
+    #     8: e2-standard-8
+
+    # Azure VM provider configuration
+    # Uncomment and configure to enable:
+    # azure:
+    #   subscription-id: 00000000-0000-0000-0000-000000000000
+    #   resource-group: orchard-rg
+    #   location: eastus
+    #   vm-size-mapping:
+    #     2: Standard_B2s
+    #     4: Standard_B4ms
+    #     8: Standard_D8s_v3
+
+  greenhouse:
+    registry-url: localhost:5000
+    username: ""
+    password: ""
+    prebuild-enabled: false
+    prebuild-interval-minutes: 60
+    work-dir: /tmp/orchard/greenhouse
+
   qemu:
     qemu-binary: /usr/bin/qemu-system-x86_64
     qemu-img-binary: /usr/bin/qemu-img
@@ -44,6 +107,7 @@ orchard:
     ssh-port-range-start: 10022
     ssh-port-range-end: 10122
     enable-kvm: true
+    ssh-public-key: ${ORCHARD_SSH_PUBLIC_KEY:}
 
 logging:
   level:

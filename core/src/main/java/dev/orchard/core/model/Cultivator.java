@@ -11,11 +11,23 @@ public record Cultivator(
     UUID id,
     String username,
     String email,
+    String provider,
+    String providerId,
+    String avatarUrl,
+    String displayName,
     Instant createdAt,
     Instant lastActiveAt
 ) {
     public static Cultivator create(String username, String email) {
         Instant now = Instant.now();
-        return new Cultivator(UUID.randomUUID(), username, email, now, now);
+        return new Cultivator(UUID.randomUUID(), username, email, "oidc", null, null, null, now, now);
+    }
+
+    public static Cultivator createFromOAuth(String provider, String providerId,
+                                              String username, String email,
+                                              String avatarUrl, String displayName) {
+        Instant now = Instant.now();
+        return new Cultivator(UUID.randomUUID(), username, email, provider, providerId,
+            avatarUrl, displayName, now, now);
     }
 }

@@ -46,13 +46,29 @@ public class DevcontainerParser {
      */
     public Seed parse(Path devcontainerPath) throws IOException {
         String content = Files.readString(devcontainerPath);
-        return parseJson(content);
+        return parseJson(content)
+            .orElseThrow(() -> new IOException("Failed to parse devcontainer.json at " + devcontainerPath));
     }
 
     /**
-     * Parses devcontainer.json content string into a Seed.
+     * Parses devcontainer.json content from a raw JSON string into a Seed.
+     * Returns Optional.empty() if the content is null, blank, or fails to parse.
      */
-    public Seed parseJson(String jsonContent) throws IOException {
+    public Optional<Seed> parseJson(String jsonContent) {
+        if (jsonContent == null || jsonContent.isBlank()) {
+            log.warn("Cannot parse devcontainer.json: content is null or blank");
+            return Optional.empty();
+        }
+
+        try {
+            return Optional.of(doParse(jsonContent));
+        } catch (IOException e) {
+            log.error("Failed to parse devcontainer.json content: {}", e.getMessage(), e);
+            return Optional.empty();
+        }
+    }
+
+    private Seed doParse(String jsonContent) throws IOException {
         JsonNode root = objectMapper.readTree(jsonContent);
         Seed.Builder builder = Seed.builder();
 
@@ -89,6 +105,11 @@ public class DevcontainerParser {
             } else if (dcf.isTextual()) {
                 builder.dockerComposeFile(dcf.asText());
             }
+        }
+
+        // Service (which compose service is the primary dev container)
+        if (root.has("service")) {
+            builder.service(root.get("service").asText());
         }
 
         // Features

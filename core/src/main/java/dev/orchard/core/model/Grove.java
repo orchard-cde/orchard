@@ -1,6 +1,8 @@
 package dev.orchard.core.model;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -17,7 +19,7 @@ public record Grove(
     String commitSha,
     GroveState state,
     Seedling seedling,
-    Fruit fruit,
+    List<Fruit> fruits,
     Instant plantedAt,
     Instant lastAccessedAt
 ) {
@@ -31,36 +33,62 @@ public record Grove(
             null,
             GroveState.PREPARING,
             null,
-            null,
+            List.of(),
             Instant.now(),
             Instant.now()
         );
     }
 
+    /**
+     * Returns the primary fruit (first in the list), or null if no fruits exist.
+     */
+    public Fruit primaryFruit() {
+        return fruits != null && !fruits.isEmpty() ? fruits.getFirst() : null;
+    }
+
     public Grove withState(GroveState newState) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            newState, seedling, fruit, plantedAt, Instant.now());
+            newState, seedling, fruits, plantedAt, Instant.now());
     }
 
     public Grove withSeedling(Seedling seedling) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedling, fruit, plantedAt, Instant.now());
+            state, seedling, fruits, plantedAt, Instant.now());
+    }
+
+    public Grove withFruits(List<Fruit> fruits) {
+        return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
+            state, seedling, fruits, plantedAt, Instant.now());
     }
 
     public Grove withFruit(Fruit fruit) {
+        List<Fruit> updated = new ArrayList<>(fruits != null ? fruits : List.of());
+        // Replace existing fruit with same id, or add new
+        boolean replaced = false;
+        for (int i = 0; i < updated.size(); i++) {
+            if (updated.get(i).id().equals(fruit.id())) {
+                updated.set(i, fruit);
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) {
+            updated.add(fruit);
+        }
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedling, fruit, plantedAt, Instant.now());
+            state, seedling, List.copyOf(updated), plantedAt, Instant.now());
     }
 
     public Grove withCommit(String sha) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, sha,
-            state, seedling, fruit, plantedAt, Instant.now());
+            state, seedling, fruits, plantedAt, Instant.now());
     }
 
     public boolean isReady() {
         return state == GroveState.FLOURISHING
             && seedling != null && seedling.isReady()
-            && fruit != null && fruit.isReady();
+            && fruits != null && !fruits.isEmpty()
+            && fruits.stream().allMatch(Fruit::isReady);
     }
 
     public String getSshConnectionString() {
