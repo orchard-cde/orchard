@@ -12,6 +12,7 @@ public record Seed(
     String image,
     String dockerfilePath,
     String dockerComposeFile,
+    String service,
     Map<String, String> buildArgs,
     List<String> features,
     List<String> forwardPorts,
@@ -34,6 +35,7 @@ public record Seed(
         private String image;
         private String dockerfilePath;
         private String dockerComposeFile;
+        private String service;
         private Map<String, String> buildArgs = Map.of();
         private List<String> features = List.of();
         private List<String> forwardPorts = List.of();
@@ -59,6 +61,11 @@ public record Seed(
 
         public Builder dockerComposeFile(String dockerComposeFile) {
             this.dockerComposeFile = dockerComposeFile;
+            return this;
+        }
+
+        public Builder service(String service) {
+            this.service = service;
             return this;
         }
 
@@ -98,9 +105,9 @@ public record Seed(
         }
 
         public Seed build() {
-            return new Seed(name, image, dockerfilePath, dockerComposeFile, buildArgs,
-                features, forwardPorts, containerEnv, postCreateCommands, postStartCommands,
-                vscodeCustomizations);
+            return new Seed(name, image, dockerfilePath, dockerComposeFile, service,
+                buildArgs, features, forwardPorts, containerEnv, postCreateCommands,
+                postStartCommands, vscodeCustomizations);
         }
     }
 }

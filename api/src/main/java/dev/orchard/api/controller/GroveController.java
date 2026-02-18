@@ -4,8 +4,10 @@ import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.api.service.GroveService;
 import dev.orchard.core.model.Grove;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,9 +26,14 @@ public class GroveController {
 
     @PostMapping
     public ResponseEntity<GroveResponse> plantGrove(
-            @RequestHeader("X-Cultivator-Id") UUID cultivatorId,
-            @Valid @RequestBody CreateGroveRequest request) {
-        Grove grove = groveService.plantGrove(cultivatorId, request);
+            HttpServletRequest request,
+            @RequestHeader(value = "X-Cultivator-Id", required = false) UUID headerCultivatorId,
+            @Valid @RequestBody CreateGroveRequest groveRequest) {
+        UUID cultivatorId = resolveCultivatorId(request, headerCultivatorId);
+        if (cultivatorId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Grove grove = groveService.plantGrove(cultivatorId, groveRequest);
         return ResponseEntity
             .status(HttpStatus.CREATED)
             .body(GroveResponse.fromModel(grove));
@@ -41,7 +48,12 @@ public class GroveController {
 
     @GetMapping
     public ResponseEntity<List<GroveResponse>> listGroves(
-            @RequestHeader("X-Cultivator-Id") UUID cultivatorId) {
+            HttpServletRequest request,
+            @RequestHeader(value = "X-Cultivator-Id", required = false) UUID headerCultivatorId) {
+        UUID cultivatorId = resolveCultivatorId(request, headerCultivatorId);
+        if (cultivatorId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         List<GroveResponse> groves = groveService.getGrovesForCultivator(cultivatorId)
             .stream()
             .map(GroveResponse::fromModel)
@@ -53,6 +65,42 @@ public class GroveController {
     public ResponseEntity<Void> clearGrove(@PathVariable UUID groveId) {
         groveService.clearGrove(groveId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Returns an SSH config block for connecting to the grove's seedling.
+     * This is consumed by the VS Code extension to set up Remote-SSH connections.
+     */
+    @GetMapping(value = "/{groveId}/ssh-config", produces = MediaType.TEXT_PLAIN_VALUE)
+    public ResponseEntity<String> getSshConfig(@PathVariable UUID groveId) {
+        return groveService.getGrove(groveId)
+            .map(grove -> {
+                if (grove.seedling() == null || grove.seedling().ipAddress() == null) {
+                    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body("Grove seedling is not ready yet");
+                }
+
+                var seedling = grove.seedling();
+                String hostName = "orchard-" + grove.name().replaceAll("[^a-zA-Z0-9-]", "-");
+                String sshConfig = String.format("""
+                    # Orchard Grove: %s
+                    Host %s
+                      HostName %s
+                      Port %d
+                      User cultivator
+                      StrictHostKeyChecking no
+                      UserKnownHostsFile /dev/null
+                      ForwardAgent yes
+                    """,
+                    grove.name(),
+                    hostName,
+                    seedling.ipAddress(),
+                    seedling.sshPort()
+                );
+
+                return ResponseEntity.ok(sshConfig);
+            })
+            .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping("/{groveId}/actions/stop")
@@ -69,5 +117,17 @@ public class GroveController {
         return groveService.getGrove(groveId)
             .map(grove -> ResponseEntity.ok(GroveResponse.fromModel(grove)))
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Resolves the cultivator ID from the auth filter's request attribute first,
+     * falling back to the X-Cultivator-Id header for dev/unauthenticated mode.
+     */
+    private UUID resolveCultivatorId(HttpServletRequest request, UUID headerCultivatorId) {
+        UUID cultivatorId = (UUID) request.getAttribute("cultivatorId");
+        if (cultivatorId != null) {
+            return cultivatorId;
+        }
+        return headerCultivatorId;
     }
 }

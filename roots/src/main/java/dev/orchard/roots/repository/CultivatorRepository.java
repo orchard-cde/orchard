@@ -14,6 +14,8 @@ public interface CultivatorRepository extends JpaRepository<CultivatorEntity, UU
 
     Optional<CultivatorEntity> findByEmail(String email);
 
+    Optional<CultivatorEntity> findByProviderAndProviderId(String provider, String providerId);
+
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);

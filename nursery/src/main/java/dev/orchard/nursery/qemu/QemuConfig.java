@@ -14,7 +14,8 @@ public record QemuConfig(
     int sshPortRangeStart,
     int sshPortRangeEnd,
     int vncPortRangeStart,
-    boolean enableKvm
+    boolean enableKvm,
+    String sshPublicKey
 ) {
     public static QemuConfig defaults() {
         return new QemuConfig(
@@ -26,7 +27,8 @@ public record QemuConfig(
             10022,
             10122,
             5900,
-            true
+            true,
+            ""
         );
     }
 
@@ -44,6 +46,7 @@ public record QemuConfig(
         private int sshPortRangeEnd = 10122;
         private int vncPortRangeStart = 5900;
         private boolean enableKvm = true;
+        private String sshPublicKey = "";
 
         public Builder qemuBinary(Path path) { this.qemuBinary = path; return this; }
         public Builder qemuImgBinary(Path path) { this.qemuImgBinary = path; return this; }
@@ -54,10 +57,12 @@ public record QemuConfig(
         public Builder sshPortRangeEnd(int port) { this.sshPortRangeEnd = port; return this; }
         public Builder vncPortRangeStart(int port) { this.vncPortRangeStart = port; return this; }
         public Builder enableKvm(boolean enable) { this.enableKvm = enable; return this; }
+        public Builder sshPublicKey(String key) { this.sshPublicKey = key; return this; }
 
         public QemuConfig build() {
             return new QemuConfig(qemuBinary, qemuImgBinary, baseImagePath, vmStoragePath,
-                cloudInitTemplatePath, sshPortRangeStart, sshPortRangeEnd, vncPortRangeStart, enableKvm);
+                cloudInitTemplatePath, sshPortRangeStart, sshPortRangeEnd, vncPortRangeStart, enableKvm,
+                sshPublicKey);
         }
     }
 }

@@ -1,5 +1,6 @@
 package dev.orchard.api.controller;
 
+import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.SeedlingProvider;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,10 +13,10 @@ import java.util.Map;
 @RequestMapping("/api/health")
 public class HealthController {
 
-    private final SeedlingProvider seedlingProvider;
+    private final ProviderRegistry providerRegistry;
 
-    public HealthController(SeedlingProvider seedlingProvider) {
-        this.seedlingProvider = seedlingProvider;
+    public HealthController(ProviderRegistry providerRegistry) {
+        this.providerRegistry = providerRegistry;
     }
 
     @GetMapping
@@ -29,6 +30,7 @@ public class HealthController {
 
     @GetMapping("/ready")
     public ResponseEntity<Map<String, Object>> ready() {
+        SeedlingProvider seedlingProvider = providerRegistry.getDefault();
         boolean providerReady = seedlingProvider.isAvailable();
 
         if (providerReady) {
