@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: orchard
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/orchard
+    username: orchard
+    password: orchard
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+orchard:
+  qemu:
+    qemu-binary: /usr/bin/qemu-system-x86_64
+    qemu-img-binary: /usr/bin/qemu-img
+    base-image-path: /var/lib/orchard/images/base.qcow2
+    vm-storage-path: /var/lib/orchard/vms
+    cloud-init-template-path: /etc/orchard/cloud-init
+    ssh-port-range-start: 10022
+    ssh-port-range-end: 10122
+    enable-kvm: true
+
+logging:
+  level:
+    dev.orchard: DEBUG
+    org.springframework: INFO
+    org.hibernate.SQL: DEBUG

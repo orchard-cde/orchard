@@ -1,0 +1,32 @@
+package dev.orchard.server;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+
+@SpringBootApplication(scanBasePackages = {
+    "dev.orchard.server",
+    "dev.orchard.api",
+    "dev.orchard.roots"
+})
+@EntityScan("dev.orchard.roots.entity")
+@EnableJpaRepositories("dev.orchard.roots.repository")
+public class OrchardApplication {
+
+    public static void main(String[] args) {
+        System.out.println("""
+
+             ██████╗ ██████╗  ██████╗██╗  ██╗ █████╗ ██████╗ ██████╗
+            ██╔═══██╗██╔══██╗██╔════╝██║  ██║██╔══██╗██╔══██╗██╔══██╗
+            ██║   ██║██████╔╝██║     ███████║███████║██████╔╝██║  ██║
+            ██║   ██║██╔══██╗██║     ██╔══██║██╔══██║██╔══██╗██║  ██║
+            ╚██████╔╝██║  ██║╚██████╗██║  ██║██║  ██║██║  ██║██████╔╝
+             ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝
+
+            Cloud Development Environments - Growing the Future of Code
+
+            """);
+        SpringApplication.run(OrchardApplication.class, args);
+    }
+}

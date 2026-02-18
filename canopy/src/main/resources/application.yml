@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: orchard-canopy
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/orchard
+    username: orchard
+    password: orchard
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: 8081
+
+vaadin:
+  launch-browser: true
+  whitelisted-packages: dev.orchard
+
+logging:
+  level:
+    dev.orchard: DEBUG
+    org.springframework: INFO
+    com.vaadin: INFO
