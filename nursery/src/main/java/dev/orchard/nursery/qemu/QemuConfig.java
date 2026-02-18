@@ -15,7 +15,8 @@ public record QemuConfig(
     int sshPortRangeEnd,
     int vncPortRangeStart,
     boolean enableKvm,
-    String sshPublicKey
+    String sshPublicKey,
+    String serialOutput
 ) {
     public static QemuConfig defaults() {
         return new QemuConfig(
@@ -24,11 +25,12 @@ public record QemuConfig(
             Path.of("/var/lib/orchard/images/base.qcow2"),
             Path.of("/var/lib/orchard/vms"),
             Path.of("/etc/orchard/cloud-init"),
-            10022,
-            10122,
+            49152,
+            49999,
             5900,
             true,
-            ""
+            "",
+            "stdio"
         );
     }
 
@@ -47,6 +49,7 @@ public record QemuConfig(
         private int vncPortRangeStart = 5900;
         private boolean enableKvm = true;
         private String sshPublicKey = "";
+        private String serialOutput = "stdio";
 
         public Builder qemuBinary(Path path) { this.qemuBinary = path; return this; }
         public Builder qemuImgBinary(Path path) { this.qemuImgBinary = path; return this; }
@@ -58,11 +61,12 @@ public record QemuConfig(
         public Builder vncPortRangeStart(int port) { this.vncPortRangeStart = port; return this; }
         public Builder enableKvm(boolean enable) { this.enableKvm = enable; return this; }
         public Builder sshPublicKey(String key) { this.sshPublicKey = key; return this; }
+        public Builder serialOutput(String serialOutput) { this.serialOutput = serialOutput; return this; }
 
         public QemuConfig build() {
             return new QemuConfig(qemuBinary, qemuImgBinary, baseImagePath, vmStoragePath,
                 cloudInitTemplatePath, sshPortRangeStart, sshPortRangeEnd, vncPortRangeStart, enableKvm,
-                sshPublicKey);
+                sshPublicKey, serialOutput);
         }
     }
 }

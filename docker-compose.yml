@@ -16,23 +16,6 @@ services:
       timeout: 5s
       retries: 5
 
-  postgres-dev:
-    image: postgres:16-alpine
-    container_name: orchard-postgres-dev
-    environment:
-      POSTGRES_USER: orchard
-      POSTGRES_PASSWORD: orchard
-      POSTGRES_DB: orchard_dev
-    ports:
-      - "5433:5432"
-    volumes:
-      - orchard-postgres-dev-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U orchard"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   orchard-postgres-data:
   orchard-postgres-dev-data:

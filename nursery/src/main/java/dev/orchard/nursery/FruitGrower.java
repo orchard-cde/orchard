@@ -254,12 +254,17 @@ public class FruitGrower {
         List<Fruit.PortMapping> mappings = new ArrayList<>();
         for (String line : output.split("\n")) {
             if (line.contains("->")) {
-                // Format: 8080/tcp -> 0.0.0.0:8080
+                // Format: 8080/tcp -> 0.0.0.0:8080 (also 8080/tcp -> [::]:8080 for IPv6)
                 String[] parts = line.split(" -> ");
+                String hostAddress = parts[1].trim();
+                // Skip IPv6 lines — we only need the IPv4 mapping
+                if (hostAddress.startsWith("[")) {
+                    continue;
+                }
                 String[] containerPart = parts[0].split("/");
                 int containerPort = Integer.parseInt(containerPart[0].trim());
                 String protocol = containerPart[1].trim();
-                int hostPort = Integer.parseInt(parts[1].split(":")[1].trim());
+                int hostPort = Integer.parseInt(hostAddress.substring(hostAddress.lastIndexOf(':') + 1));
                 mappings.add(new Fruit.PortMapping(containerPort, hostPort, protocol));
             }
         }

@@ -14,7 +14,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * QEMU-based seedling provider for local VM provisioning.
@@ -28,13 +27,11 @@ public class QemuSeedlingProvider implements SeedlingProvider {
     private final QemuConfig config;
     private final ExecutorService executor;
     private final ConcurrentHashMap<UUID, Process> runningVms;
-    private final AtomicInteger nextSshPort;
 
     public QemuSeedlingProvider(QemuConfig config) {
         this.config = config;
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
         this.runningVms = new ConcurrentHashMap<>();
-        this.nextSshPort = new AtomicInteger(config.sshPortRangeStart());
     }
 
     @Override
@@ -205,18 +202,29 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                 "local-hostname: orchard-" + seedling.id().toString().substring(0, 8) + "\n"
             );
 
-            // Build user-data with actual SSH public key from config
+            // Resolve SSH public key: config property, then fallback to well-known file
+            String sshPubKey = config.sshPublicKey();
+            if (sshPubKey == null || sshPubKey.isBlank()) {
+                Path defaultKeyPath = Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519.pub");
+                if (Files.exists(defaultKeyPath)) {
+                    sshPubKey = Files.readString(defaultKeyPath).trim();
+                    log.info("Using SSH public key from {}", defaultKeyPath);
+                }
+            }
+
+            // Build user-data with SSH public key
             StringBuilder userData = new StringBuilder();
             userData.append("#cloud-config\n");
             userData.append("users:\n");
             userData.append("  - name: cultivator\n");
             userData.append("    sudo: ALL=(ALL) NOPASSWD:ALL\n");
             userData.append("    shell: /bin/bash\n");
-            if (config.sshPublicKey() != null && !config.sshPublicKey().isBlank()) {
+            if (sshPubKey != null && !sshPubKey.isBlank()) {
                 userData.append("    ssh_authorized_keys:\n");
-                userData.append("      - ").append(config.sshPublicKey()).append("\n");
+                userData.append("      - ").append(sshPubKey).append("\n");
             } else {
-                log.warn("No SSH public key configured - VM will not be accessible via SSH key auth");
+                log.warn("No SSH public key configured - VM will not be accessible via SSH key auth. " +
+                    "Set ORCHARD_SSH_PUBLIC_KEY or place key at ~/.ssh/orchard_ed25519.pub");
             }
             userData.append("packages:\n");
             userData.append("  - docker.io\n");
@@ -310,24 +318,47 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         cmd.add("-netdev"); cmd.add("user,id=net0,hostfwd=tcp::" + sshPort + "-:22");
         cmd.add("-device"); cmd.add("virtio-net-pci,netdev=net0");
         cmd.add("-nographic");
-        cmd.add("-serial"); cmd.add("mon:stdio");
+
+        Path vmDir = diskImage.getParent();
+        if ("file".equalsIgnoreCase(config.serialOutput())) {
+            Path serialLog = vmDir.resolve("serial.log");
+            cmd.add("-serial"); cmd.add("file:" + serialLog);
+        } else {
+            cmd.add("-serial"); cmd.add("mon:stdio");
+        }
 
         if (config.enableKvm()) {
             cmd.add("-enable-kvm");
         }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
+        if ("file".equalsIgnoreCase(config.serialOutput())) {
+            Path qemuLog = vmDir.resolve("qemu.log");
+            pb.redirectOutput(qemuLog.toFile());
+            pb.redirectErrorStream(true);
+        }
         log.info("Starting QEMU: {}", String.join(" ", pb.command()));
         return pb.start();
     }
 
-    private int allocateSshPort() {
-        int port = nextSshPort.getAndIncrement();
-        if (port > config.sshPortRangeEnd()) {
-            nextSshPort.set(config.sshPortRangeStart());
-            port = config.sshPortRangeStart();
+    private int allocateSshPort() throws IOException {
+        int start = config.sshPortRangeStart();
+        int end = config.sshPortRangeEnd();
+        int range = end - start + 1;
+        var random = java.util.concurrent.ThreadLocalRandom.current();
+
+        for (int attempt = 0; attempt < range; attempt++) {
+            int port = start + random.nextInt(range);
+            try (var serverSocket = new java.net.ServerSocket()) {
+                serverSocket.setReuseAddress(false);
+                serverSocket.bind(new java.net.InetSocketAddress("127.0.0.1", port));
+                log.info("Allocated SSH port {}", port);
+                return port;
+            } catch (IOException e) {
+                log.debug("Port {} in use, trying another", port);
+            }
         }
-        return port;
+        throw new IOException("No available SSH ports in range " + start + "-" + end);
     }
 
     private void waitForSsh(String host, int port) {

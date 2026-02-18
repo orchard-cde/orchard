@@ -31,6 +31,9 @@ spring:
 
 server:
   port: 8080
+  error:
+    include-stacktrace: never
+    include-message: always
 
 management:
   endpoints:
@@ -101,16 +104,17 @@ orchard:
   qemu:
     qemu-binary: /usr/bin/qemu-system-x86_64
     qemu-img-binary: /usr/bin/qemu-img
-    base-image-path: /var/lib/orchard/images/base.qcow2
-    vm-storage-path: /var/lib/orchard/vms
-    cloud-init-template-path: /etc/orchard/cloud-init
-    ssh-port-range-start: 10022
-    ssh-port-range-end: 10122
+    base-image-path: /tmp/orchard/images/base.qcow2
+    vm-storage-path: /tmp/orchard/vms
+    cloud-init-template-path: /tmp/orchard/cloud-init
+    ssh-port-range-start: 49152
+    ssh-port-range-end: 49999
     enable-kvm: true
+    serial-output: stdio
     ssh-public-key: ${ORCHARD_SSH_PUBLIC_KEY:}
 
 logging:
   level:
     dev.orchard: DEBUG
     org.springframework: INFO
-    org.hibernate.SQL: DEBUG
+    org.hibernate.SQL: WARN
