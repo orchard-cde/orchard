@@ -116,12 +116,17 @@ public class OrchardClient {
         String state,
         String sshConnectionString,
         SeedlingInfo seedling,
-        FruitInfo fruit,
+        List<FruitInfo> fruits,
         String plantedAt,
         String lastAccessedAt
-    ) {}
+    ) {
+        /** Returns the primary fruit (first in the list) for backward compatibility. */
+        public FruitInfo primaryFruit() {
+            return fruits != null && !fruits.isEmpty() ? fruits.getFirst() : null;
+        }
+    }
 
     public record SeedlingInfo(UUID id, String state, String ipAddress, int sshPort, int cpuCores, int memoryMb, int diskGb) {}
-    public record FruitInfo(UUID id, String state, String containerId, String containerName) {}
+    public record FruitInfo(UUID id, String state, String containerId, String containerName, String serviceName) {}
     public record HealthResponse(String status, String name, String version) {}
 }

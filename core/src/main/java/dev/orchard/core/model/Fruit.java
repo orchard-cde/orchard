@@ -14,6 +14,7 @@ public record Fruit(
     UUID seedlingId,
     String containerId,
     String containerName,
+    String serviceName,
     Seed seed,
     FruitState state,
     List<PortMapping> portMappings,
@@ -27,12 +28,17 @@ public record Fruit(
     ) {}
 
     public static Fruit bud(UUID groveId, UUID seedlingId, Seed seed) {
+        return bud(groveId, seedlingId, seed, null);
+    }
+
+    public static Fruit bud(UUID groveId, UUID seedlingId, Seed seed, String serviceName) {
         return new Fruit(
             UUID.randomUUID(),
             groveId,
             seedlingId,
             null,
             seed.name() != null ? seed.name() : "orchard-fruit",
+            serviceName,
             seed,
             FruitState.BUDDING,
             List.of(),
@@ -42,12 +48,12 @@ public record Fruit(
     }
 
     public Fruit withState(FruitState newState) {
-        return new Fruit(id, groveId, seedlingId, containerId, containerName, seed,
+        return new Fruit(id, groveId, seedlingId, containerId, containerName, serviceName, seed,
             newState, portMappings, buddedAt, newState == FruitState.RIPE ? Instant.now() : ripenedAt);
     }
 
     public Fruit withContainerDetails(String containerId, List<PortMapping> ports) {
-        return new Fruit(id, groveId, seedlingId, containerId, containerName, seed,
+        return new Fruit(id, groveId, seedlingId, containerId, containerName, serviceName, seed,
             state, ports, buddedAt, ripenedAt);
     }
 

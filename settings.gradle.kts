@@ -12,6 +12,8 @@ include(
     "roots",
     "harvest",
     "nursery",
+    "greenhouse",
+    "moderne",
     "api",
     "server",
     "trowel",

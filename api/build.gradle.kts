@@ -7,6 +7,8 @@ dependencies {
     api(project(":roots"))
     api(project(":harvest"))
     api(project(":nursery"))
+    api(project(":greenhouse"))
+    api(project(":moderne"))
 
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")

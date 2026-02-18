@@ -1,0 +1,49 @@
+{
+  "name": "orchard-vscode",
+  "displayName": "Orchard CDE",
+  "description": "Cloud Development Environments - Growing the Future of Code",
+  "version": "0.1.0",
+  "publisher": "orchard",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onView:orchardGroves"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{
+        "id": "orchard",
+        "title": "Orchard",
+        "icon": "resources/orchard.svg"
+      }]
+    },
+    "views": {
+      "orchard": [{
+        "id": "orchardGroves",
+        "name": "Groves"
+      }]
+    },
+    "commands": [
+      { "command": "orchard.plantGrove", "title": "Plant Grove", "category": "Orchard" },
+      { "command": "orchard.connectGrove", "title": "Connect to Grove", "category": "Orchard" },
+      { "command": "orchard.clearGrove", "title": "Clear Grove", "category": "Orchard" },
+      { "command": "orchard.refreshGroves", "title": "Refresh Groves", "category": "Orchard" }
+    ],
+    "configuration": {
+      "title": "Orchard",
+      "properties": {
+        "orchard.serverUrl": { "type": "string", "default": "http://localhost:8080", "description": "Orchard server URL" },
+        "orchard.token": { "type": "string", "default": "", "description": "Authentication token" }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}

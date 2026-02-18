@@ -29,6 +29,18 @@ vaadin:
   launch-browser: true
   whitelisted-packages: dev.orchard
 
+orchard:
+  qemu:
+    qemu-binary: /usr/bin/qemu-system-x86_64
+    qemu-img-binary: /usr/bin/qemu-img
+    base-image-path: /var/lib/orchard/images/base.qcow2
+    vm-storage-path: /var/lib/orchard/vms
+    cloud-init-template-path: /etc/orchard/cloud-init
+    ssh-port-range-start: 10022
+    ssh-port-range-end: 10122
+    enable-kvm: true
+    ssh-public-key: ${ORCHARD_SSH_PUBLIC_KEY:}
+
 logging:
   level:
     dev.orchard: DEBUG

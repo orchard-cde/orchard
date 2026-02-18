@@ -49,19 +49,13 @@ public class GroveEntity {
     private Integer seedlingMemoryMb;
     private Integer seedlingDiskGb;
 
-    // Fruit fields (embedded for simplicity)
-    private UUID fruitId;
-    private String fruitContainerId;
-    private String fruitContainerName;
-    @Enumerated(EnumType.STRING)
-    private dev.orchard.core.model.FruitState fruitState;
-
-    @Column(columnDefinition = "TEXT")
-    private String seedJson;
-
     protected GroveEntity() {}
 
-    public static GroveEntity fromModel(Grove grove, String seedJson) {
+    /**
+     * Creates a GroveEntity from a Grove domain model.
+     * Note: Fruits are now stored separately in the fruits table via FruitEntity.
+     */
+    public static GroveEntity fromModel(Grove grove) {
         GroveEntity entity = new GroveEntity();
         entity.id = grove.id();
         entity.cultivatorId = grove.cultivatorId();
@@ -87,15 +81,6 @@ public class GroveEntity {
             }
         }
 
-        if (grove.fruit() != null) {
-            var f = grove.fruit();
-            entity.fruitId = f.id();
-            entity.fruitContainerId = f.containerId();
-            entity.fruitContainerName = f.containerName();
-            entity.fruitState = f.state();
-            entity.seedJson = seedJson;
-        }
-
         return entity;
     }
 
@@ -113,15 +98,10 @@ public class GroveEntity {
     public String getSeedlingIpAddress() { return seedlingIpAddress; }
     public Integer getSeedlingSshPort() { return seedlingSshPort; }
     public dev.orchard.core.model.SeedlingState getSeedlingState() { return seedlingState; }
-    public UUID getFruitId() { return fruitId; }
-    public dev.orchard.core.model.FruitState getFruitState() { return fruitState; }
-    public String getSeedJson() { return seedJson; }
 
     public void setState(GroveState state) { this.state = state; }
     public void setLastAccessedAt(Instant lastAccessedAt) { this.lastAccessedAt = lastAccessedAt; }
     public void setSeedlingState(dev.orchard.core.model.SeedlingState state) { this.seedlingState = state; }
     public void setSeedlingIpAddress(String ip) { this.seedlingIpAddress = ip; }
     public void setSeedlingProviderInstanceId(String id) { this.seedlingProviderInstanceId = id; }
-    public void setFruitState(dev.orchard.core.model.FruitState state) { this.fruitState = state; }
-    public void setFruitContainerId(String id) { this.fruitContainerId = id; }
 }
