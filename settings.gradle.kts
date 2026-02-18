@@ -15,6 +15,5 @@ include(
     "greenhouse",
     "api",
     "server",
-    "trowel",
-    "canopy"
+    "trowel"
 )
