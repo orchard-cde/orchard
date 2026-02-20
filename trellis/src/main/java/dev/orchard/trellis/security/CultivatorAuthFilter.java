@@ -1,4 +1,4 @@
-package dev.orchard.server.security;
+package dev.orchard.trellis.security;
 
 import dev.orchard.api.service.CultivatorService;
 import dev.orchard.core.model.Cultivator;

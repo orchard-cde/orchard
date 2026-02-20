@@ -1,4 +1,4 @@
-package dev.orchard.server.config;
+package dev.orchard.trellis.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;

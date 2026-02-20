@@ -1,4 +1,4 @@
-package dev.orchard.server;
+package dev.orchard.trellis;
 
 import dev.orchard.core.model.GroveState;
 import dev.orchard.roots.entity.GroveEntity;

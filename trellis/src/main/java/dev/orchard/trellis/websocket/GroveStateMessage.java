@@ -1,4 +1,4 @@
-package dev.orchard.server.websocket;
+package dev.orchard.trellis.websocket;
 
 import dev.orchard.api.event.GroveStateChangedEvent;
 

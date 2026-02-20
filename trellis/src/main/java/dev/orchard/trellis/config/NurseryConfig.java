@@ -1,4 +1,4 @@
-package dev.orchard.server.config;
+package dev.orchard.trellis.config;
 
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
