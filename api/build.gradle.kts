@@ -13,4 +13,6 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
 }

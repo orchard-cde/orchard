@@ -7,6 +7,8 @@ dependencies {
 
     implementation("org.slf4j:slf4j-api:2.0.16")
 
+    testRuntimeOnly("org.slf4j:slf4j-simple:2.0.16")
+
     // Cloud provider SDK dependencies will be added when implementations are ready:
     // AWS:   implementation(platform("software.amazon.awssdk:bom:2.25.0")) + implementation("software.amazon.awssdk:ec2")
     // GCP:   implementation("com.google.cloud:google-cloud-compute:1.44.0")
