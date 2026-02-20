@@ -34,7 +34,7 @@ docker compose up -d postgres
 ./gradlew build -x test
 
 # Run the API server (port 8080)
-./gradlew :server:bootRun
+./gradlew :trellis:bootRun
 
 # In another terminal, run the Web UI (port 8081)
 ./gradlew :canopy:bootRun
@@ -72,7 +72,7 @@ java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar grove connect <grove-i
 │                        Trowel (CLI)                         │
 │                      Picocli Commands                       │
 ├─────────────────────────────────────────────────────────────┤
-│                      Server (REST API)                      │
+│                     Trellis (REST API)                      │
 │                  Spring Boot Controllers                    │
 ├──────────────┬──────────────┬───────────────────────────────┤
 │     API      │   Harvest    │           Nursery             │
@@ -103,6 +103,8 @@ We use orchard/gardening terminology throughout the codebase:
 | **Canopy** | The web UI - see the forest through the trees |
 | **Nursery** | VM provider management |
 | **Harvest** | Building container images |
+| **Trellis** | The Spring Boot application server |
+| **Greenhouse** | Prebuild service for image caching |
 
 ## Project Structure
 
@@ -113,7 +115,7 @@ orchard/
 ├── harvest/    # Devcontainer spec parsing
 ├── nursery/    # VM lifecycle management
 ├── api/        # REST API and services
-├── server/     # Spring Boot application
+├── trellis/    # Spring Boot application
 ├── trowel/     # Command-line interface
 └── canopy/     # Vaadin web interface
 ```
@@ -130,7 +132,7 @@ orchard/
 
 ## Configuration
 
-### Server (`server/src/main/resources/application.yml`)
+### Trellis (`trellis/src/main/resources/application.yml`)
 
 ```yaml
 spring:

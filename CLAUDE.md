@@ -22,6 +22,8 @@ Everything in this project uses orchard/gardening terminology:
 | **Nursery** | VM provider management | Where seedlings are grown |
 | **Harvest** | Container/image building | Preparing fruit |
 | **Roots** | Persistence layer | Database/storage |
+| **Trellis** | The Spring Boot application server | Support structure wiring all modules together |
+| **Greenhouse** | Prebuild service | Pre-built images and caching |
 
 ## Module Structure
 
@@ -32,7 +34,7 @@ orchard/
 ├── harvest/    # DevcontainerParser - parses .devcontainer/devcontainer.json
 ├── nursery/    # SeedlingProvider interface, QemuSeedlingProvider, FruitGrower
 ├── api/        # REST controllers, services, DTOs
-├── server/     # Spring Boot app entry point (port 8080)
+├── trellis/    # Spring Boot app entry point (port 8080)
 ├── trowel/     # Picocli CLI application
 └── canopy/     # Vaadin web UI (port 8081)
 ```
@@ -71,7 +73,7 @@ VM and container provisioning is async via `CompletableFuture`. The `GroveServic
 docker compose up -d postgres
 
 # Run API server
-./gradlew :server:bootRun
+./gradlew :trellis:bootRun
 
 # Run web UI (separate terminal)
 ./gradlew :canopy:bootRun

@@ -1,4 +1,4 @@
-package dev.orchard.server;
+package dev.orchard.trellis;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @SpringBootApplication(scanBasePackages = {
-    "dev.orchard.server",
+    "dev.orchard.trellis",
     "dev.orchard.api",
     "dev.orchard.roots",
     "dev.orchard.greenhouse"
