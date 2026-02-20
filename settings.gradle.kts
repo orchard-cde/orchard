@@ -14,6 +14,6 @@ include(
     "nursery",
     "greenhouse",
     "api",
-    "server",
+    "trellis",
     "trowel"
 )
