@@ -20,6 +20,7 @@ import java.util.concurrent.Callable;
         GroveCommand.class,
         ConfigCommand.class,
         StatusCommand.class,
+        DevServerCommand.class,
         CommandLine.HelpCommand.class
     },
     header = {
