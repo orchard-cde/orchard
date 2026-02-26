@@ -24,7 +24,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 
 ```bash
 # Clone the repository
-git clone https://github.com/scuba10steve/orchard.git
+git clone https://github.com/orchard-cde/orchard.git
 cd orchard
 
 # Start PostgreSQL
