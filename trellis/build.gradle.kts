@@ -1,5 +1,16 @@
 plugins {
     id("org.springframework.boot")
+    id("org.graalvm.buildtools.native") version "0.10.4"
+}
+
+graalvmNative {
+    binaries {
+        named("main") {
+            imageName.set("orchard-server")
+            mainClass.set("dev.orchard.trellis.OrchardApplication")
+            buildArgs.add("--no-fallback")
+        }
+    }
 }
 
 dependencies {
@@ -19,6 +30,8 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.4")
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
+
+    runtimeOnly("com.h2database:h2")
 
     developmentOnly("org.springframework.boot:spring-boot-devtools")
 
