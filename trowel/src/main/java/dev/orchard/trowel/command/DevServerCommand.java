@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 @Command(
@@ -146,7 +147,7 @@ public class DevServerCommand implements Callable<Integer> {
             Process process = pb.start();
 
             long pid = process.pid();
-            Files.writeString(pidFile(), String.valueOf(pid));
+            Files.writeString(pidFile(), pid + "\n" + port);
 
             System.out.println("  PID: " + pid);
             System.out.println("  Logs: " + logFile());
@@ -205,13 +206,13 @@ public class DevServerCommand implements Callable<Integer> {
         @Override
         public Integer call() {
             try {
-                Path pid = pidFile();
-                if (!Files.exists(pid)) {
+                ServerInfo info = readServerInfo();
+                if (info == null) {
                     System.out.println("Orchard dev-server is not running (no PID file found).");
                     return 0;
                 }
 
-                long processId = Long.parseLong(Files.readString(pid).trim());
+                long processId = info.pid();
 
                 ProcessHandle.of(processId).ifPresentOrElse(
                     handle -> {
@@ -234,7 +235,7 @@ public class DevServerCommand implements Callable<Integer> {
                     () -> System.out.println("Process " + processId + " is not running (stale PID file).")
                 );
 
-                Files.deleteIfExists(pid);
+                Files.deleteIfExists(pidFile());
                 return 0;
 
             } catch (Exception e) {
@@ -253,25 +254,24 @@ public class DevServerCommand implements Callable<Integer> {
         @Override
         public Integer call() {
             try {
-                Path pid = pidFile();
-                if (!Files.exists(pid)) {
+                ServerInfo info = readServerInfo();
+                if (info == null) {
                     System.out.println("Orchard dev-server: \u001B[31mstopped\u001B[0m");
                     return 0;
                 }
 
-                long processId = Long.parseLong(Files.readString(pid).trim());
-                boolean processAlive = ProcessHandle.of(processId)
+                boolean processAlive = ProcessHandle.of(info.pid())
                     .map(ProcessHandle::isAlive)
                     .orElse(false);
 
                 if (!processAlive) {
                     System.out.println("Orchard dev-server: \u001B[31mstopped\u001B[0m (stale PID file)");
-                    Files.deleteIfExists(pid);
+                    Files.deleteIfExists(pidFile());
                     return 0;
                 }
 
                 System.out.println("Orchard dev-server: \u001B[1;32mrunning\u001B[0m");
-                System.out.println("  PID: " + processId);
+                System.out.println("  PID: " + info.pid());
 
                 // Try health endpoint to get more info
                 try {
@@ -280,14 +280,14 @@ public class DevServerCommand implements Callable<Integer> {
                         .build();
 
                     HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("http://localhost:8080/api/health"))
+                        .uri(URI.create("http://localhost:" + info.port() + "/api/health"))
                         .timeout(Duration.ofSeconds(2))
                         .GET()
                         .build();
 
                     HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
                     if (response.statusCode() < 400) {
-                        System.out.println("  URL: http://localhost:8080");
+                        System.out.println("  URL: http://localhost:" + info.port());
                         System.out.println("  Health: UP");
                     }
                 } catch (Exception e) {
@@ -304,17 +304,27 @@ public class DevServerCommand implements Callable<Integer> {
         }
     }
 
-    private static boolean isServerRunning() {
+    record ServerInfo(long pid, int port) {}
+
+    static ServerInfo readServerInfo() {
         Path pid = pidFile();
-        if (!Files.exists(pid)) return false;
+        if (!Files.exists(pid)) return null;
         try {
-            long processId = Long.parseLong(Files.readString(pid).trim());
-            return ProcessHandle.of(processId)
-                .map(ProcessHandle::isAlive)
-                .orElse(false);
+            List<String> lines = Files.readAllLines(pid);
+            long processId = Long.parseLong(lines.getFirst().trim());
+            int port = lines.size() > 1 ? Integer.parseInt(lines.get(1).trim()) : 8080;
+            return new ServerInfo(processId, port);
         } catch (Exception e) {
-            return false;
+            return null;
         }
+    }
+
+    private static boolean isServerRunning() {
+        ServerInfo info = readServerInfo();
+        if (info == null) return false;
+        return ProcessHandle.of(info.pid())
+            .map(ProcessHandle::isAlive)
+            .orElse(false);
     }
 
     private static void ensureDirectories() throws IOException {
