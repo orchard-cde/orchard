@@ -1,5 +1,16 @@
 plugins {
     application
+    id("org.graalvm.buildtools.native") version "0.10.4"
+}
+
+graalvmNative {
+    binaries {
+        named("main") {
+            imageName.set("trowel")
+            mainClass.set("dev.orchard.trowel.Trowel")
+            buildArgs.add("--no-fallback")
+        }
+    }
 }
 
 dependencies {
