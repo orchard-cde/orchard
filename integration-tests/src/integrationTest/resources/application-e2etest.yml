@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:orchard-e2e;DB_CLOSE_DELAY=-1
+
+orchard:
+  qemu:
+    qemu-binary: /opt/homebrew/bin/qemu-system-aarch64
+    qemu-img-binary: /opt/homebrew/bin/qemu-img
+    base-image-path: /tmp/orchard/images/ubuntu-22.04-base.qcow2
+    vm-storage-path: /tmp/orchard-e2e/vms
+    serial-output: file
+    ssh-port-range-start: 49200
+    ssh-port-range-end: 49299
+    enable-kvm: false
