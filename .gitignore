@@ -35,3 +35,6 @@ application-local.yml
 
 # Test output
 test-output/
+
+# Git worktrees
+.worktrees/
