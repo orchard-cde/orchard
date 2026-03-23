@@ -1,5 +1,6 @@
 package dev.orchard.harvest;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.orchard.core.model.Seed;
@@ -18,7 +19,9 @@ import java.util.*;
 public class DevcontainerParser {
 
     private static final Logger log = LoggerFactory.getLogger(DevcontainerParser.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = new ObjectMapper()
+        .configure(JsonParser.Feature.ALLOW_COMMENTS, true)
+        .configure(JsonParser.Feature.ALLOW_TRAILING_COMMA, true);
 
     /**
      * Discovers and parses devcontainer.json from a repository root.
