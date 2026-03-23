@@ -7,6 +7,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -364,5 +366,120 @@ class DevcontainerParserTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().image()).isEqualTo("alpha-image");
+    }
+
+    @Test
+    void discoverAll_emptyWhenNotFound(@TempDir Path tempDir) throws IOException {
+        assertThat(parser.discoverAll(tempDir)).isEmpty();
+    }
+
+    @Test
+    void discoverAll_rootDevcontainerDir(@TempDir Path tempDir) throws IOException {
+        Path devcontainerDir = tempDir.resolve(".devcontainer");
+        Files.createDirectories(devcontainerDir);
+        Files.writeString(devcontainerDir.resolve("devcontainer.json"),
+                """
+                {"image": "ubuntu:22.04"}""");
+
+        Map<String, Seed> result = parser.discoverAll(tempDir);
+
+        assertThat(result).containsOnlyKeys("default");
+        assertThat(result.get("default").image()).isEqualTo("ubuntu:22.04");
+    }
+
+    @Test
+    void discoverAll_rootDevcontainerJson(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve(".devcontainer.json"),
+                """
+                {"image": "node:18"}""");
+
+        Map<String, Seed> result = parser.discoverAll(tempDir);
+
+        assertThat(result).containsOnlyKeys("default");
+        assertThat(result.get("default").image()).isEqualTo("node:18");
+    }
+
+    @Test
+    void discoverAll_higherPriorityRootWins(@TempDir Path tempDir) throws IOException {
+        Path devcontainerDir = tempDir.resolve(".devcontainer");
+        Files.createDirectories(devcontainerDir);
+        Files.writeString(devcontainerDir.resolve("devcontainer.json"),
+                """
+                {"image": "ubuntu:22.04"}""");
+        Files.writeString(tempDir.resolve(".devcontainer.json"),
+                """
+                {"image": "node:18"}""");
+
+        Map<String, Seed> result = parser.discoverAll(tempDir);
+
+        assertThat(result).containsOnlyKeys("default");
+        assertThat(result.get("default").image()).isEqualTo("ubuntu:22.04");
+    }
+
+    @Test
+    void discoverAll_subfolderKeyedByFolderName(@TempDir Path tempDir) throws IOException {
+        Path javaDir = tempDir.resolve(".devcontainer/java");
+        Files.createDirectories(javaDir);
+        Files.writeString(javaDir.resolve("devcontainer.json"),
+                """
+                {"image": "eclipse-temurin:21"}""");
+
+        Map<String, Seed> result = parser.discoverAll(tempDir);
+
+        assertThat(result).containsOnlyKeys("java");
+        assertThat(result.get("java").image()).isEqualTo("eclipse-temurin:21");
+    }
+
+    @Test
+    void discoverAll_rootAndSubfoldersTogether(@TempDir Path tempDir) throws IOException {
+        Path devcontainerDir = tempDir.resolve(".devcontainer");
+        Files.createDirectories(devcontainerDir);
+        Files.writeString(devcontainerDir.resolve("devcontainer.json"),
+                """
+                {"image": "ubuntu:22.04"}""");
+        Path javaDir = devcontainerDir.resolve("java");
+        Files.createDirectories(javaDir);
+        Files.writeString(javaDir.resolve("devcontainer.json"),
+                """
+                {"image": "eclipse-temurin:21"}""");
+
+        Map<String, Seed> result = parser.discoverAll(tempDir);
+
+        assertThat(result).containsKeys("default", "java");
+        assertThat(result.get("default").image()).isEqualTo("ubuntu:22.04");
+        assertThat(result.get("java").image()).isEqualTo("eclipse-temurin:21");
+    }
+
+    @Test
+    void discoverAll_multipleSubfoldersOrderedAlphabetically(@TempDir Path tempDir) throws IOException {
+        for (String name : List.of("python", "java", "node")) {
+            Path dir = tempDir.resolve(".devcontainer/" + name);
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve("devcontainer.json"),
+                    "{\"image\": \"" + name + "-image\"}");
+        }
+
+        Map<String, Seed> result = parser.discoverAll(tempDir);
+
+        assertThat(result.keySet()).containsExactly("java", "node", "python");
+    }
+
+    @Test
+    void discoverAll_excludesFolderNamedDefault(@TempDir Path tempDir) throws IOException {
+        Path defaultDir = tempDir.resolve(".devcontainer/default");
+        Files.createDirectories(defaultDir);
+        Files.writeString(defaultDir.resolve("devcontainer.json"),
+                """
+                {"image": "should-not-appear"}""");
+        Path javaDir = tempDir.resolve(".devcontainer/java");
+        Files.createDirectories(javaDir);
+        Files.writeString(javaDir.resolve("devcontainer.json"),
+                """
+                {"image": "eclipse-temurin:21"}""");
+
+        Map<String, Seed> result = parser.discoverAll(tempDir);
+
+        assertThat(result).containsOnlyKeys("java");
+        assertThat(result).doesNotContainKey("default");
     }
 }

@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -65,6 +66,56 @@ public class DevcontainerParser {
 
         log.info("No devcontainer.json found in {}", repositoryRoot);
         return Optional.empty();
+    }
+
+    /**
+     * Discovers all devcontainer.json configurations in a repository.
+     * Returns a LinkedHashMap keyed by config name, with "default" first (if present),
+     * followed by subfolder configs sorted alphabetically by folder name.
+     *
+     * <ul>
+     *   <li>Root config (.devcontainer/devcontainer.json or .devcontainer.json) → key "default"</li>
+     *   <li>Subfolder configs (.devcontainer/&lt;folder&gt;/devcontainer.json) → key is folder name</li>
+     *   <li>Folders named "default" are excluded to avoid key collision</li>
+     * </ul>
+     *
+     * @throws IOException if any discovered config file cannot be parsed
+     */
+    public Map<String, Seed> discoverAll(Path repositoryRoot) throws IOException {
+        Map<String, Seed> result = new LinkedHashMap<>();
+
+        // Root config — higher-priority location wins
+        Path[] rootPaths = {
+            repositoryRoot.resolve(".devcontainer/devcontainer.json"),
+            repositoryRoot.resolve(".devcontainer.json")
+        };
+        for (Path path : rootPaths) {
+            if (Files.exists(path)) {
+                result.put("default", parse(path));
+                break;
+            }
+        }
+
+        // Subfolder configs — one level deep, alphabetical, exclude "default"
+        Path devcontainerDir = repositoryRoot.resolve(".devcontainer");
+        if (Files.isDirectory(devcontainerDir)) {
+            List<Path> subfolderConfigs;
+            try (Stream<Path> entries = Files.list(devcontainerDir)) {
+                subfolderConfigs = entries
+                    .filter(Files::isDirectory)
+                    .filter(p -> !p.getFileName().toString().equals("default"))
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                    .map(dir -> dir.resolve("devcontainer.json"))
+                    .filter(Files::exists)
+                    .collect(Collectors.toList());
+            }
+            for (Path configPath : subfolderConfigs) {
+                String name = configPath.getParent().getFileName().toString();
+                result.put(name, parse(configPath));
+            }
+        }
+
+        return result;
     }
 
     /**
