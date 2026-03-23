@@ -313,4 +313,56 @@ class DevcontainerParserTest {
     void discover_returnsEmptyWhenNotFound(@TempDir Path tempDir) throws IOException {
         assertThat(parser.discover(tempDir)).isEmpty();
     }
+
+    @Test
+    void discover_findsInSubfolder(@TempDir Path tempDir) throws IOException {
+        Path subfolderDir = tempDir.resolve(".devcontainer/java");
+        Files.createDirectories(subfolderDir);
+        Files.writeString(subfolderDir.resolve("devcontainer.json"),
+                """
+                {"image": "eclipse-temurin:21"}""");
+
+        Optional<Seed> result = parser.discover(tempDir);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().image()).isEqualTo("eclipse-temurin:21");
+    }
+
+    @Test
+    void discover_rootTakesPrecedenceOverSubfolder(@TempDir Path tempDir) throws IOException {
+        Path devcontainerDir = tempDir.resolve(".devcontainer");
+        Files.createDirectories(devcontainerDir);
+        Files.writeString(devcontainerDir.resolve("devcontainer.json"),
+                """
+                {"image": "ubuntu:22.04"}""");
+        Path subfolderDir = devcontainerDir.resolve("java");
+        Files.createDirectories(subfolderDir);
+        Files.writeString(subfolderDir.resolve("devcontainer.json"),
+                """
+                {"image": "eclipse-temurin:21"}""");
+
+        Optional<Seed> result = parser.discover(tempDir);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().image()).isEqualTo("ubuntu:22.04");
+    }
+
+    @Test
+    void discover_firstAlphabeticalSubfolderWins(@TempDir Path tempDir) throws IOException {
+        Path alphaDir = tempDir.resolve(".devcontainer/alpha");
+        Path zetaDir = tempDir.resolve(".devcontainer/zeta");
+        Files.createDirectories(alphaDir);
+        Files.createDirectories(zetaDir);
+        Files.writeString(alphaDir.resolve("devcontainer.json"),
+                """
+                {"image": "alpha-image"}""");
+        Files.writeString(zetaDir.resolve("devcontainer.json"),
+                """
+                {"image": "zeta-image"}""");
+
+        Optional<Seed> result = parser.discover(tempDir);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().image()).isEqualTo("alpha-image");
+    }
 }

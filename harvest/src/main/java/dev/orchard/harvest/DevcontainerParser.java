@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.stream.Stream;
 
 /**
  * Parses .devcontainer/devcontainer.json files into Seed objects.
@@ -25,18 +26,40 @@ public class DevcontainerParser {
 
     /**
      * Discovers and parses devcontainer.json from a repository root.
-     * Looks in standard locations: .devcontainer/devcontainer.json, .devcontainer.json
+     * Checks locations in priority order:
+     * 1. .devcontainer/devcontainer.json
+     * 2. .devcontainer.json
+     * 3. First alphabetical .devcontainer/<folder>/devcontainer.json
      */
     public Optional<Seed> discover(Path repositoryRoot) throws IOException {
-        Path[] searchPaths = {
+        Path[] rootPaths = {
             repositoryRoot.resolve(".devcontainer/devcontainer.json"),
             repositoryRoot.resolve(".devcontainer.json")
         };
 
-        for (Path path : searchPaths) {
+        for (Path path : rootPaths) {
             if (Files.exists(path)) {
                 log.info("Found devcontainer at: {}", path);
                 return Optional.of(parse(path));
+            }
+        }
+
+        // Fall back to first alphabetical subfolder config
+        Path devcontainerDir = repositoryRoot.resolve(".devcontainer");
+        if (Files.isDirectory(devcontainerDir)) {
+            try (Stream<Path> entries = Files.list(devcontainerDir)) {
+                Optional<Path> subfolderConfig = entries
+                    .filter(Files::isDirectory)
+                    .filter(p -> !p.getFileName().toString().equals("default"))
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                    .map(dir -> dir.resolve("devcontainer.json"))
+                    .filter(Files::exists)
+                    .findFirst();
+
+                if (subfolderConfig.isPresent()) {
+                    log.info("Found devcontainer at: {}", subfolderConfig.get());
+                    return Optional.of(parse(subfolderConfig.get()));
+                }
             }
         }
 
