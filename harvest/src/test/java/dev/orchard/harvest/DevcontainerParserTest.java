@@ -217,6 +217,45 @@ class DevcontainerParserTest {
     }
 
     @Test
+    void parseJson_singleLineComment() {
+        Optional<Seed> result = parser.parseJson("""
+                {
+                  // Use the official Node image
+                  "image": "node:18"
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().image()).isEqualTo("node:18");
+    }
+
+    @Test
+    void parseJson_blockComment() {
+        Optional<Seed> result = parser.parseJson("""
+                {
+                  /* primary image */
+                  "image": "ubuntu:22.04",
+                  "name": /* dev env */ "my-dev"
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().image()).isEqualTo("ubuntu:22.04");
+        assertThat(result.get().name()).isEqualTo("my-dev");
+    }
+
+    @Test
+    void parseJson_trailingComma() {
+        Optional<Seed> result = parser.parseJson("""
+                {
+                  "image": "node:18",
+                  "forwardPorts": [3000, 8080,],
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().image()).isEqualTo("node:18");
+        assertThat(result.get().forwardPorts()).containsExactly("3000", "8080");
+    }
+
+    @Test
     void parseJson_emptyObject() {
         Optional<Seed> result = parser.parseJson("{}");
 
