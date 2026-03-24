@@ -34,7 +34,4 @@ type: specs.openrewrite.org/v1beta/recipe
 name: dev.orchard.SpringBootMigration
 displayName: Migrate to Spring Boot 4 (INACTIVE - see issue #10)
 recipeList:
-  # NOTE: The correct Spring Boot 4 upgrade recipe name is not yet known.
-  # This is a placeholder. Run `./gradlew rewriteDiscover` after adding
-  # rewrite-spring to dependencies to find the correct recipe name.
-  - org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_4
+  - org.openrewrite.java.spring.boot4.UpgradeSpringBoot_4_0
