@@ -1,0 +1,40 @@
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: dev.orchard.DependencyCleanup
+displayName: Remove explicit version pins duplicated by Spring Boot BOM
+recipeList:
+  - org.openrewrite.java.dependencies.RemoveDependency:
+      groupId: org.slf4j
+      artifactId: slf4j-api
+  - org.openrewrite.java.dependencies.RemoveDependency:
+      groupId: org.slf4j
+      artifactId: slf4j-simple
+  - org.openrewrite.java.dependencies.RemoveDependency:
+      groupId: com.fasterxml.jackson.core
+      artifactId: jackson-databind
+  - org.openrewrite.java.dependencies.RemoveDependency:
+      groupId: com.fasterxml.jackson.datatype
+      artifactId: jackson-datatype-jsr310
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: dev.orchard.BestPractices
+displayName: Orchard best practices
+recipeList:
+  - org.openrewrite.gradle.GradleBestPractices
+  - org.openrewrite.java.testing.junit5.JUnit5BestPractices
+  - org.openrewrite.staticanalysis.CommonStaticAnalysis
+  - org.openrewrite.java.RemoveUnusedImports
+  - org.openrewrite.java.format.EmptyNewlineAtEndOfFile
+---
+# NOT ACTIVE: This recipe is intentionally excluded from the activeRecipe() list in build.gradle.kts.
+# It is a placeholder for the Spring Boot 4 migration effort tracked in issue #10.
+# To activate: add "dev.orchard.SpringBootMigration" to the rewrite {} block and thoroughly
+# test the result — Spring Boot 4 introduces breaking changes across the whole stack.
+type: specs.openrewrite.org/v1beta/recipe
+name: dev.orchard.SpringBootMigration
+displayName: Migrate to Spring Boot 4 (INACTIVE - see issue #10)
+recipeList:
+  # NOTE: The correct Spring Boot 4 upgrade recipe name is not yet known.
+  # This is a placeholder. Run `./gradlew rewriteDiscover` after adding
+  # rewrite-spring to dependencies to find the correct recipe name.
+  - org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_4
