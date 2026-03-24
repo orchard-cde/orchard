@@ -33,7 +33,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       - name: Dry run
-        if: inputs.dry_run
+        if: ${{ inputs.dry_run }}
         run: ./gradlew rewriteDryRun
 
       - name: Apply recipes
@@ -41,7 +41,7 @@ jobs:
         run: ./gradlew rewriteRun
 
       - name: Upload dry run report
-        if: inputs.dry_run
+        if: ${{ inputs.dry_run }}
         uses: actions/upload-artifact@v7
         with:
           name: rewrite-dry-run-report
