@@ -2,6 +2,22 @@ plugins {
     java
     id("org.springframework.boot") version "3.4.2" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
+    id("org.openrewrite.rewrite") version "latest.release"
+}
+
+rewrite {
+    activeRecipe(
+        "dev.orchard.DependencyCleanup",
+        "dev.orchard.BestPractices",
+    )
+    setExportDatatables(true)
+}
+
+dependencies {
+    rewrite(platform("org.openrewrite.recipe:rewrite-recipe-bom:latest.release"))
+    rewrite("org.openrewrite.recipe:rewrite-java-dependencies")
+    rewrite("org.openrewrite.recipe:rewrite-testing-frameworks")
+    rewrite("org.openrewrite.recipe:rewrite-static-analysis")
 }
 
 allprojects {
