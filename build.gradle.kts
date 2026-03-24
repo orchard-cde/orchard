@@ -7,7 +7,9 @@ plugins {
 
 rewrite {
     activeRecipe(
-        "dev.orchard.DependencyCleanup",
+        // DependencyCleanup was run once to remove redundant BOM pins (see commit history).
+        // It is kept in rewrite.yml for reference but is NOT active — re-running it would
+        // remove versionless dependency declarations that are still needed.
         "dev.orchard.BestPractices",
     )
     setExportDatatables(true)
