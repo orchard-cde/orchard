@@ -20,9 +20,6 @@ type: specs.openrewrite.org/v1beta/recipe
 name: dev.orchard.BestPractices
 displayName: Orchard best practices
 recipeList:
-  - org.openrewrite.gradle.GradleBestPractices
-  - org.openrewrite.java.testing.junit5.JUnit5BestPractices
-  - org.openrewrite.staticanalysis.CommonStaticAnalysis
   - org.openrewrite.java.RemoveUnusedImports
   - org.openrewrite.java.format.EmptyNewlineAtEndOfFile
 ---
