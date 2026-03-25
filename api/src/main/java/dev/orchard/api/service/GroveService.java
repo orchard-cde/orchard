@@ -371,8 +371,14 @@ public class GroveService {
     }
 
     public List<Grove> getGrovesForCultivator(UUID cultivatorId) {
-        return groveRepository.findByCultivatorId(cultivatorId)
-            .stream()
+        return getGrovesForCultivator(cultivatorId, false);
+    }
+
+    public List<Grove> getGrovesForCultivator(UUID cultivatorId, boolean all) {
+        var entities = all
+            ? groveRepository.findByCultivatorId(cultivatorId)
+            : groveRepository.findByCultivatorIdAndStateNotIn(cultivatorId, List.of(GroveState.CLEARED));
+        return entities.stream()
             .map(this::entityToModel)
             .toList();
     }
