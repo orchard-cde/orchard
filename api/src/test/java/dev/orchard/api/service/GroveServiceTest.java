@@ -190,23 +190,48 @@ class GroveServiceTest {
     }
 
     @Test
-    void getGrovesForCultivator_returnsMappedGroves() {
+    void getGrovesForCultivator_excludesClearedByDefault() {
         UUID cultivatorId = UUID.randomUUID();
         GroveEntity entity = GroveEntity.fromModel(
             Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
         );
-        when(groveRepository.findByCultivatorId(cultivatorId)).thenReturn(List.of(entity));
+        when(groveRepository.findByCultivatorIdAndStateNotIn(cultivatorId, List.of(GroveState.CLEARED)))
+            .thenReturn(List.of(entity));
         when(fruitRepository.findByGroveId(any())).thenReturn(List.of());
 
         List<Grove> result = groveService.getGrovesForCultivator(cultivatorId);
 
         assertThat(result).hasSize(1);
+        verify(groveRepository).findByCultivatorIdAndStateNotIn(cultivatorId, List.of(GroveState.CLEARED));
+        verify(groveRepository, never()).findByCultivatorId(cultivatorId);
+    }
+
+    @Test
+    void getGrovesForCultivator_includesClearedWhenRequested() {
+        UUID cultivatorId = UUID.randomUUID();
+        GroveEntity activeEntity = GroveEntity.fromModel(
+            Grove.plant(cultivatorId, "active", "https://github.com/user/repo", "main")
+        );
+        GroveEntity clearedEntity = GroveEntity.fromModel(
+            Grove.plant(cultivatorId, "cleared", "https://github.com/user/repo", "main")
+                .withState(GroveState.CLEARED)
+        );
+        when(groveRepository.findByCultivatorId(cultivatorId))
+            .thenReturn(List.of(activeEntity, clearedEntity));
+        when(fruitRepository.findByGroveId(any())).thenReturn(List.of());
+
+        List<Grove> result = groveService.getGrovesForCultivator(cultivatorId, true);
+
+        assertThat(result).hasSize(2);
+        verify(groveRepository).findByCultivatorId(cultivatorId);
+        verify(groveRepository, never()).findByCultivatorIdAndStateNotIn(any(), any());
     }
 
     @Test
     void getGrovesForCultivator_returnsEmptyListWhenNone() {
         UUID cultivatorId = UUID.randomUUID();
-        when(groveRepository.findByCultivatorId(cultivatorId)).thenReturn(List.of());
+        when(groveRepository.findByCultivatorIdAndStateNotIn(cultivatorId, List.of(GroveState.CLEARED)))
+            .thenReturn(List.of());
 
         List<Grove> result = groveService.getGrovesForCultivator(cultivatorId);
 

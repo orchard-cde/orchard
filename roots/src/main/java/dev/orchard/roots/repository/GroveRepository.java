@@ -16,6 +16,8 @@ public interface GroveRepository extends JpaRepository<GroveEntity, UUID> {
 
     List<GroveEntity> findByCultivatorIdAndState(UUID cultivatorId, GroveState state);
 
+    List<GroveEntity> findByCultivatorIdAndStateNotIn(UUID cultivatorId, List<GroveState> states);
+
     List<GroveEntity> findByState(GroveState state);
 
     @Query("SELECT g FROM GroveEntity g WHERE g.state IN ('FLOURISHING', 'GROWING', 'PLANTING')")

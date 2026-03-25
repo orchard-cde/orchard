@@ -49,12 +49,13 @@ public class GroveController {
     @GetMapping
     public ResponseEntity<List<GroveResponse>> listGroves(
             HttpServletRequest request,
-            @RequestHeader(value = "X-Cultivator-Id", required = false) UUID headerCultivatorId) {
+            @RequestHeader(value = "X-Cultivator-Id", required = false) UUID headerCultivatorId,
+            @RequestParam(defaultValue = "false") boolean all) {
         UUID cultivatorId = resolveCultivatorId(request, headerCultivatorId);
         if (cultivatorId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        List<GroveResponse> groves = groveService.getGrovesForCultivator(cultivatorId)
+        List<GroveResponse> groves = groveService.getGrovesForCultivator(cultivatorId, all)
             .stream()
             .map(GroveResponse::fromModel)
             .toList();
