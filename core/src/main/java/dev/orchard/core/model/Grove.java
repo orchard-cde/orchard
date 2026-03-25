@@ -95,7 +95,7 @@ public record Grove(
         if (seedling == null || seedling.ipAddress() == null) {
             return null;
         }
-        return String.format("ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s/.ssh/orchard_ed25519 -p %d cultivator@%s",
+        return "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s/.ssh/orchard_ed25519 -p %d cultivator@%s".formatted(
             System.getProperty("user.home"), seedling.sshPort(), seedling.ipAddress());
     }
 }

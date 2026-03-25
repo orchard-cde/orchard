@@ -194,7 +194,9 @@ public class PrebuildService {
     }
 
     private void cleanupWorkDir(Path workDir) {
-        if (workDir == null) return;
+        if (workDir == null) {
+            return;
+        }
         try {
             // Use rm -rf via ProcessBuilder for reliable cleanup
             new ProcessBuilder("rm", "-rf", workDir.toString())

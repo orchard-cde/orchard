@@ -1,6 +1,6 @@
 plugins {
     java
-    id("org.springframework.boot") version "3.4.2" apply false
+    id("org.springframework.boot") version "4.0.3" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
     id("org.openrewrite.rewrite") version "latest.release"
 }
@@ -20,6 +20,7 @@ dependencies {
     rewrite("org.openrewrite.recipe:rewrite-java-dependencies")
     rewrite("org.openrewrite.recipe:rewrite-testing-frameworks")
     rewrite("org.openrewrite.recipe:rewrite-static-analysis")
+    rewrite("org.openrewrite.recipe:rewrite-spring")
 }
 
 allprojects {
@@ -37,7 +38,7 @@ subprojects {
 
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().apply {
         imports {
-            mavenBom("org.springframework.boot:spring-boot-dependencies:3.4.2")
+            mavenBom("org.springframework.boot:spring-boot-dependencies:4.0.3")
         }
     }
 
@@ -48,11 +49,11 @@ subprojects {
     }
 
     dependencies {
-        testImplementation(platform("org.junit:junit-bom:5.11.4"))
+        testImplementation(platform("org.junit:junit-bom:5.14.3"))
         testImplementation("org.junit.jupiter:junit-jupiter")
         testImplementation("org.assertj:assertj-core:3.27.7")
-        testImplementation("org.mockito:mockito-core:5.14.2")
-        testImplementation("org.mockito:mockito-junit-jupiter:5.14.2")
+        testImplementation("org.mockito:mockito-core:5.23.0")
+        testImplementation("org.mockito:mockito-junit-jupiter:5.23.0")
         testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     }
 

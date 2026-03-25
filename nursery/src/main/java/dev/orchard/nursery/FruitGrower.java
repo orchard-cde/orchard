@@ -104,7 +104,9 @@ public class FruitGrower {
                     String containerId = null;
                     for (String line : psOutput.split("\n")) {
                         String trimmed = line.trim();
-                        if (trimmed.isEmpty()) continue;
+                        if (trimmed.isEmpty()) {
+                            continue;
+                        }
                         String[] parts = trimmed.split("\\|");
                         if (parts.length >= 2) {
                             String lineContainerId = parts[0].trim();

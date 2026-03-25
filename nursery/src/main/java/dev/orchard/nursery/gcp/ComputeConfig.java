@@ -30,13 +30,13 @@ public record ComputeConfig(
      * Returns the fully-qualified machine type URL.
      */
     public String machineTypeUrl(int cpuCores) {
-        return String.format("zones/%s/machineTypes/%s", zone, resolveMachineType(cpuCores));
+        return "zones/%s/machineTypes/%s".formatted(zone, resolveMachineType(cpuCores));
     }
 
     /**
      * Returns the source image URL for the configured image family.
      */
     public String sourceImageUrl() {
-        return String.format("projects/%s/global/images/family/%s", imageProject, imageFamily);
+        return "projects/%s/global/images/family/%s".formatted(imageProject, imageFamily);
     }
 }

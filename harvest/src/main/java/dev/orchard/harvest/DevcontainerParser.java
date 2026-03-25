@@ -1,8 +1,10 @@
 package dev.orchard.harvest;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.json.JsonReadFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import dev.orchard.core.model.Seed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +23,10 @@ import java.util.stream.Stream;
 public class DevcontainerParser {
 
     private static final Logger log = LoggerFactory.getLogger(DevcontainerParser.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper()
-        .configure(JsonParser.Feature.ALLOW_COMMENTS, true)
-        .configure(JsonParser.Feature.ALLOW_TRAILING_COMMA, true);
+    private static final ObjectMapper objectMapper = JsonMapper.builder()
+        .enable(JsonReadFeature.ALLOW_JAVA_COMMENTS)
+        .enable(JsonReadFeature.ALLOW_TRAILING_COMMA)
+        .build();
 
     /**
      * Discovers and parses devcontainer.json from a repository root.
@@ -51,7 +54,7 @@ public class DevcontainerParser {
             try (Stream<Path> entries = Files.list(devcontainerDir)) {
                 Optional<Path> subfolderConfig = entries
                     .filter(Files::isDirectory)
-                    .filter(p -> !p.getFileName().toString().equals("default"))
+                    .filter(p -> !"default".equals(p.getFileName().toString()))
                     .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                     .map(dir -> dir.resolve("devcontainer.json"))
                     .filter(Files::exists)
@@ -103,7 +106,7 @@ public class DevcontainerParser {
             try (Stream<Path> entries = Files.list(devcontainerDir)) {
                 subfolderConfigs = entries
                     .filter(Files::isDirectory)
-                    .filter(p -> !p.getFileName().toString().equals("default"))
+                    .filter(p -> !"default".equals(p.getFileName().toString()))
                     .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                     .map(dir -> dir.resolve("devcontainer.json"))
                     .filter(Files::exists)
@@ -139,13 +142,13 @@ public class DevcontainerParser {
 
         try {
             return Optional.of(doParse(jsonContent));
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             log.error("Failed to parse devcontainer.json content: {}", e.getMessage(), e);
             return Optional.empty();
         }
     }
 
-    private Seed doParse(String jsonContent) throws IOException {
+    private Seed doParse(String jsonContent) {
         JsonNode root = objectMapper.readTree(jsonContent);
         Seed.Builder builder = Seed.builder();
 
@@ -192,7 +195,7 @@ public class DevcontainerParser {
         // Features
         if (root.has("features")) {
             List<String> features = new ArrayList<>();
-            root.get("features").fieldNames().forEachRemaining(features::add);
+            root.get("features").propertyNames().forEach(features::add);
             builder.features(features);
         }
 
@@ -239,7 +242,7 @@ public class DevcontainerParser {
 
     private Map<String, String> parseStringMap(JsonNode node) {
         Map<String, String> map = new HashMap<>();
-        node.fields().forEachRemaining(entry ->
+        node.properties().forEach(entry ->
             map.put(entry.getKey(), entry.getValue().asText()));
         return map;
     }

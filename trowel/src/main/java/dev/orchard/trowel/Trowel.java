@@ -57,18 +57,28 @@ public class Trowel implements Callable<Integer> {
     }
 
     public String getServerUrl() {
-        if (serverUrl != null) return serverUrl;
+        if (serverUrl != null) {
+            return serverUrl;
+        }
         String env = System.getenv("ORCHARD_SERVER_URL");
-        if (env != null) return env;
+        if (env != null) {
+            return env;
+        }
         String config = loadConfigProperty("server");
-        if (config != null) return config;
+        if (config != null) {
+            return config;
+        }
         return "http://localhost:8080";
     }
 
     public String getCultivatorId() {
-        if (cultivatorId != null) return cultivatorId;
+        if (cultivatorId != null) {
+            return cultivatorId;
+        }
         String env = System.getenv("ORCHARD_CULTIVATOR_ID");
-        if (env != null) return env;
+        if (env != null) {
+            return env;
+        }
         return loadConfigProperty("cultivator");
     }
 

@@ -26,7 +26,7 @@ public class StatusCommand implements Callable<Integer> {
             System.out.println("Orchard Server Status");
             System.out.println("-".repeat(30));
             System.out.println("  Server:  " + parent.getServerUrl());
-            System.out.println("  Status:  " + (health.status().equals("healthy") ? "\u2705 " : "\u274C ") + health.status());
+            System.out.println("  Status:  " + ("healthy".equals(health.status()) ? "\u2705 " : "\u274C ") + health.status());
             System.out.println("  Name:    " + health.name());
             System.out.println("  Version: " + health.version());
             System.out.println();

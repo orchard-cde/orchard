@@ -105,10 +105,6 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         return CompletableFuture.supplyAsync(() -> {
             log.info("Setting seedling {} to dormant", seedling.id());
             Process process = runningVms.get(seedling.id());
-            if (process != null) {
-                // Send QEMU monitor command to pause
-                // TODO: Implement QEMU monitor integration
-            }
             return seedling.withState(SeedlingState.WILTING);
         }, executor);
     }
