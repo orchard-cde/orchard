@@ -2,6 +2,24 @@ plugins {
     java
     id("org.springframework.boot") version "3.4.2" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
+    id("org.openrewrite.rewrite") version "latest.release"
+}
+
+rewrite {
+    activeRecipe(
+        // DependencyCleanup was run once to remove redundant BOM pins (see commit history).
+        // It is kept in rewrite.yml for reference but is NOT active — re-running it would
+        // remove versionless dependency declarations that are still needed.
+        "dev.orchard.BestPractices",
+    )
+    setExportDatatables(true)
+}
+
+dependencies {
+    rewrite(platform("org.openrewrite.recipe:rewrite-recipe-bom:latest.release"))
+    rewrite("org.openrewrite.recipe:rewrite-java-dependencies")
+    rewrite("org.openrewrite.recipe:rewrite-testing-frameworks")
+    rewrite("org.openrewrite.recipe:rewrite-static-analysis")
 }
 
 allprojects {
