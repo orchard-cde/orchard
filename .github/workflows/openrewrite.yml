@@ -1,0 +1,64 @@
+name: OpenRewrite
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (preview changes without committing)'
+        type: boolean
+        default: false
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 06:00 UTC
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  rewrite:
+    name: Run OpenRewrite recipes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Dry run
+        if: ${{ inputs.dry_run }}
+        run: ./gradlew rewriteDryRun
+
+      - name: Apply recipes
+        if: ${{ !inputs.dry_run }}
+        run: ./gradlew rewriteRun
+
+      - name: Upload dry run report
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rewrite-dry-run-report
+          path: build/reports/rewrite/
+          retention-days: 7
+
+      - name: Open pull request
+        if: ${{ !inputs.dry_run }}
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: 'chore: apply OpenRewrite recipes'
+          title: 'chore: apply OpenRewrite recipes'
+          body: |
+            Automated changes from the OpenRewrite weekly recipe run.
+
+            Recipes applied:
+            - `dev.orchard.DependencyCleanup`
+            - `dev.orchard.BestPractices`
+          branch: openrewrite/auto
+          delete-branch: true

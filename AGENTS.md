@@ -1,4 +1,4 @@
-# Orchard - Claude Code Context
+# Orchard - Agent Context
 
 ## Project Overview
 
@@ -18,7 +18,7 @@ Everything in this project uses orchard/gardening terminology:
 | **Fruit** | A devcontainer | Running development environment |
 | **Seed** | A devcontainer.json spec | Blueprint for growing fruit |
 | **Trowel** | The CLI tool | Hand tool for planting |
-| **Canopy** | The web UI | "See the forest through the trees" |
+| **Canopy** | The web UI (separate repo: `orchard-cde/orchard-ui`) | Next.js / React / MUI app |
 | **Nursery** | VM provider management | Where seedlings are grown |
 | **Harvest** | Container/image building | Preparing fruit |
 | **Roots** | Persistence layer | Database/storage |
@@ -35,8 +35,7 @@ orchard/
 ├── nursery/    # SeedlingProvider interface, QemuSeedlingProvider, FruitGrower
 ├── api/        # REST controllers, services, DTOs
 ├── trellis/    # Spring Boot app entry point (port 8080)
-├── trowel/     # Picocli CLI application
-└── canopy/     # Vaadin web UI (port 8081)
+└── trowel/     # Picocli CLI application
 ```
 
 ## Tech Stack
@@ -45,7 +44,6 @@ orchard/
 - **Build**: Gradle 8.12 with Kotlin DSL
 - **Framework**: Spring Boot 3.4.2
 - **Database**: PostgreSQL with Flyway migrations
-- **UI**: Vaadin 24.6.3 (pure Java web framework)
 - **CLI**: Picocli 4.7.6
 - **VM Provider**: QEMU (local), extensible to cloud providers
 
@@ -75,8 +73,7 @@ docker compose up -d postgres
 # Run API server
 ./gradlew :trellis:bootRun
 
-# Run web UI (separate terminal)
-./gradlew :canopy:bootRun
+# For the web UI (Canopy), see: https://github.com/orchard-cde/orchard-ui
 
 # Use CLI
 java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar status
@@ -95,3 +92,7 @@ Schema is in `roots/src/main/resources/db/migration/V1__initial_schema.sql`. Mai
 - Moderne SaaS integration for OpenRewrite recipes
 - Prebuilds and image caching
 - WebSocket for real-time status updates
+
+## Documentation
+
+For detailed architecture and usage documentation, see [docs/TOC.md](docs/TOC.md).

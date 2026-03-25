@@ -1,0 +1,37 @@
+plugins {
+    java
+}
+
+sourceSets {
+    create("integrationTest") {
+        compileClasspath += sourceSets.main.get().output
+        runtimeClasspath += sourceSets.main.get().output
+    }
+}
+
+configurations["integrationTestImplementation"].extendsFrom(configurations["implementation"])
+configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["runtimeOnly"])
+
+dependencies {
+    implementation(project(":trellis"))
+    implementation(project(":core"))
+    implementation(project(":api"))
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
+
+    "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-test")
+    "integrationTestImplementation"("org.awaitility:awaitility:4.2.0")
+    "integrationTestImplementation"(platform("org.junit:junit-bom:5.11.4"))
+    "integrationTestImplementation"("org.junit.jupiter:junit-jupiter")
+    "integrationTestImplementation"("org.assertj:assertj-core:3.27.7")
+    "integrationTestRuntimeOnly"("com.h2database:h2")
+    "integrationTestRuntimeOnly"("org.junit.platform:junit-platform-launcher")
+}
+
+val integrationTest by tasks.registering(Test::class) {
+    description = "Runs integration tests with real QEMU VMs"
+    group = "verification"
+    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
+    classpath = sourceSets["integrationTest"].runtimeClasspath
+    useJUnitPlatform()
+    systemProperty("junit.jupiter.execution.timeout.default", "15m")
+}

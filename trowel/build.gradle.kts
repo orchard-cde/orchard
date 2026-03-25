@@ -1,15 +1,26 @@
 plugins {
     application
+    id("org.graalvm.buildtools.native") version "0.11.4"
+}
+
+graalvmNative {
+    binaries {
+        named("main") {
+            imageName.set("trowel")
+            mainClass.set("dev.orchard.trowel.Trowel")
+            buildArgs.add("--no-fallback")
+        }
+    }
 }
 
 dependencies {
     implementation(project(":core"))
 
-    implementation("info.picocli:picocli:4.7.6")
-    annotationProcessor("info.picocli:picocli-codegen:4.7.6")
+    implementation("info.picocli:picocli:4.7.7")
+    annotationProcessor("info.picocli:picocli-codegen:4.7.7")
 
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
-    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2")
+    implementation("tools.jackson.core:jackson-databind")
+    implementation("tools.jackson.core:jackson-databind")
 }
 
 application {

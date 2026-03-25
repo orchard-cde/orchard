@@ -9,7 +9,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 - **devcontainer Support**: Full compatibility with the `.devcontainer` specification
 - **VM-based Isolation**: Each workspace runs in its own QEMU VM with Docker
 - **VS Code Remote SSH**: Connect directly from your local VS Code
-- **Web UI (Canopy)**: Manage workspaces from your browser
+- **Web UI (Canopy)**: Manage workspaces from your browser — [separate repo](https://github.com/orchard-cde/orchard-ui)
 - **CLI (Trowel)**: Plant and manage groves from the command line
 
 ## Quick Start
@@ -24,7 +24,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 
 ```bash
 # Clone the repository
-git clone https://github.com/scuba10steve/orchard.git
+git clone https://github.com/orchard-cde/orchard.git
 cd orchard
 
 # Start PostgreSQL
@@ -36,8 +36,8 @@ docker compose up -d postgres
 # Run the API server (port 8080)
 ./gradlew :trellis:bootRun
 
-# In another terminal, run the Web UI (port 8081)
-./gradlew :canopy:bootRun
+# For the Web UI (Canopy), see the separate repo:
+# https://github.com/orchard-cde/orchard-ui
 ```
 
 ### Using the CLI (Trowel)
@@ -66,8 +66,8 @@ java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar grove connect <grove-i
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         Canopy (UI)                         │
-│                     Vaadin Web Interface                    │
+│                Canopy (UI) — separate repo                  │
+│          Next.js / React / MUI (orchard-cde/orchard-ui)     │
 ├─────────────────────────────────────────────────────────────┤
 │                        Trowel (CLI)                         │
 │                      Picocli Commands                       │
@@ -116,16 +116,18 @@ orchard/
 ├── nursery/    # VM lifecycle management
 ├── api/        # REST API and services
 ├── trellis/    # Spring Boot application
-├── trowel/     # Command-line interface
-└── canopy/     # Vaadin web interface
+└── trowel/     # Command-line interface
 ```
+
+## Documentation
+
+For detailed documentation including architecture deep-dives and usage guides, see [docs/TOC.md](docs/TOC.md).
 
 ## Tech Stack
 
 - **Java 21** - Modern Java with records, virtual threads, pattern matching
 - **Spring Boot 3.4** - Application framework
 - **PostgreSQL** - Database with Flyway migrations
-- **Vaadin 24** - Pure Java web UI framework
 - **Picocli** - CLI framework
 - **QEMU/KVM** - Local VM provisioning
 - **Gradle** - Build system with Kotlin DSL

@@ -1,9 +1,9 @@
 package dev.orchard.core.model;
 
+import org.junit.jupiter.api.Test;
+
 import java.time.Instant;
 import java.util.UUID;
-
-import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

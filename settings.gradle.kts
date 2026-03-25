@@ -15,5 +15,6 @@ include(
     "greenhouse",
     "api",
     "trellis",
-    "trowel"
+    "trowel",
+    "integration-tests"
 )

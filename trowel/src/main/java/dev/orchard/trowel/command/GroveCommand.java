@@ -317,7 +317,9 @@ public class GroveCommand implements Callable<Integer> {
     }
 
     private static String truncate(String str, int maxLen) {
-        if (str == null) return "";
+        if (str == null) {
+            return "";
+        }
         return str.length() <= maxLen ? str : str.substring(0, maxLen - 3) + "...";
     }
 }
