@@ -22,7 +22,7 @@ dependencies {
     "integrationTestImplementation"("org.awaitility:awaitility:4.2.0")
     "integrationTestImplementation"(platform("org.junit:junit-bom:5.11.4"))
     "integrationTestImplementation"("org.junit.jupiter:junit-jupiter")
-    "integrationTestImplementation"("org.assertj:assertj-core:3.26.3")
+    "integrationTestImplementation"("org.assertj:assertj-core:3.27.7")
     "integrationTestRuntimeOnly"("com.h2database:h2")
     "integrationTestRuntimeOnly"("org.junit.platform:junit-platform-launcher")
 }
