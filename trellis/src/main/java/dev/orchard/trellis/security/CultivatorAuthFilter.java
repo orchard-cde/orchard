@@ -80,7 +80,9 @@ public class CultivatorAuthFilter extends OncePerRequestFilter {
     private String extractIssuerShortName(String issuerUri) {
         try {
             String host = java.net.URI.create(issuerUri).getHost();
-            if (host == null) return "oidc";
+            if (host == null) {
+                return "oidc";
+            }
 
             // Extract second-level domain (e.g., "google" from "accounts.google.com")
             String[] parts = host.split("\\.");

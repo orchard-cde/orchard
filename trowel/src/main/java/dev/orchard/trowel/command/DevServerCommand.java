@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 
 @Command(
@@ -222,7 +223,7 @@ public class DevServerCommand implements Callable<Integer> {
                         // Wait for process to exit
                         boolean exited = handle.onExit()
                             .orTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                            .handle((ph, ex) -> ex == null)
+                            .handle((result, ex) -> ex == null)
                             .join();
 
                         if (exited) {
@@ -308,7 +309,9 @@ public class DevServerCommand implements Callable<Integer> {
 
     static ServerInfo readServerInfo() {
         Path pid = pidFile();
-        if (!Files.exists(pid)) return null;
+        if (!Files.exists(pid)) {
+            return null;
+        }
         try {
             List<String> lines = Files.readAllLines(pid);
             long processId = Long.parseLong(lines.getFirst().trim());
@@ -321,7 +324,9 @@ public class DevServerCommand implements Callable<Integer> {
 
     private static boolean isServerRunning() {
         ServerInfo info = readServerInfo();
-        if (info == null) return false;
+        if (info == null) {
+            return false;
+        }
         return ProcessHandle.of(info.pid())
             .map(ProcessHandle::isAlive)
             .orElse(false);
