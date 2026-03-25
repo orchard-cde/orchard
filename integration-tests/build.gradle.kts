@@ -16,7 +16,7 @@ dependencies {
     implementation(project(":trellis"))
     implementation(project(":core"))
     implementation(project(":api"))
-    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
 
     "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-test")
     "integrationTestImplementation"("org.awaitility:awaitility:4.2.0")

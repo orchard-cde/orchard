@@ -284,7 +284,7 @@ public class GroveService {
         try {
             SshExecutor ssh = new SshExecutor(seedling);
             ssh.execute("mkdir -p /workspace");
-            ssh.execute(String.format("git clone --branch %s --depth 1 %s /workspace", branch, repoUrl));
+            ssh.execute("git clone --branch %s --depth 1 %s /workspace".formatted(branch, repoUrl));
             String commitSha = ssh.execute("git -C /workspace rev-parse HEAD").trim();
             log.info("Repository cloned, commit: {}", commitSha);
             return commitSha;
@@ -356,7 +356,9 @@ public class GroveService {
      */
     @Transactional
     public void saveFruits(List<Fruit> fruits) {
-        if (fruits == null || fruits.isEmpty()) return;
+        if (fruits == null || fruits.isEmpty()) {
+            return;
+        }
         List<FruitEntity> entities = fruits.stream()
             .map(FruitEntity::fromModel)
             .toList();
