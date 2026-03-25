@@ -2,7 +2,7 @@
 
 This document describes the architecture of the Bee subsystem, which enables coding agents to run inside Orchard Groves. Bees are provisioned via SSH into the Grove's VM, managed by BeeKeeper adapters, and support concurrent execution (swarming).
 
-For the themed naming glossary, see [README.md](../README.md#themed-glossary).
+For the themed naming glossary, see [README.md](../../README.md#themed-glossary).
 
 **Additional terminology:**
 
@@ -27,7 +27,7 @@ graph TD
     greenhouse[greenhouse - prebuild service]
     core[core - domain models]
     trowel[trowel - CLI]
-    canopy[canopy - web UI]
+    canopy[canopy - web UI<br/>separate repo: orchard-cde/orchard-ui]
     apiary[apiary - Bee provisioning]
 
     trellis --> api
@@ -58,11 +58,11 @@ graph TD
 
     trowel --> core
 
-    canopy -. "HTTP / WebSocket" .-> trellis
+    canopy -. "HTTP REST / SSE" .-> trellis
     trowel -. "HTTP REST" .-> trellis
 ```
 
-**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. The `apiary` module depends on `core` (domain models) and `nursery` (for `SshExecutor`).
+**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. The `apiary` module depends on `core` (domain models) and `nursery` (for `SshExecutor`). Canopy is a separate Next.js application in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository.
 
 ---
 

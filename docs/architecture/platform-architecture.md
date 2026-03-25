@@ -2,7 +2,7 @@
 
 This document describes the architecture of the Orchard CDE (Cloud Development Environment) platform, focusing on how clients communicate with the backend, how seedling providers are managed, and considerations for scalability.
 
-For the themed naming glossary, see [README.md](../README.md#themed-glossary).
+For the themed naming glossary, see [README.md](../../README.md#themed-glossary).
 
 ## Module Dependency Graph
 
@@ -16,7 +16,7 @@ graph TD
     greenhouse[greenhouse - prebuild service]
     core[core - domain models]
     trowel[trowel - CLI]
-    canopy[canopy - web UI]
+    canopy[canopy - web UI<br/>separate repo: orchard-cde/orchard-ui]
 
     trellis --> api
     trellis --> roots
@@ -41,11 +41,11 @@ graph TD
 
     trowel --> core
 
-    canopy -. "HTTP / WebSocket" .-> trellis
+    canopy -. "HTTP REST / SSE" .-> trellis
     trowel -. "HTTP REST" .-> trellis
 ```
 
-**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication.
+**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. Canopy is a separate Next.js application in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository.
 
 ---
 
@@ -94,24 +94,25 @@ sequenceDiagram
 
 ### 1.2 Web UI (Canopy) → Backend
 
-Canopy will use two communication channels:
+Canopy is a **separate Next.js application** in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository, built with Next.js 15, React 19, and Material-UI 7 (TypeScript). It communicates with the Trellis backend over two channels:
 
 **REST API** — Same `/api/*` endpoints as Trowel, for CRUD operations.
 
-**Real-time updates** — Two mechanisms are available:
+**Authentication**: Same `X-Cultivator-Id` header as Trowel in dev mode. Configured via environment variables:
+- `NEXT_PUBLIC_API_URL` — Trellis backend URL (defaults to `http://localhost:8080`)
+- `NEXT_PUBLIC_CULTIVATOR_ID` — Dev-mode cultivator UUID
 
-#### WebSocket/STOMP (primary)
+**Real-time updates — SSE (Server-Sent Events)**
 
-Configured in `trellis/src/main/java/dev/orchard/trellis/config/WebSocketConfig.java`:
-- **Endpoint**: `/ws/grove-events` (with SockJS fallback)
-- **Broker prefix**: `/topic`
-- **App destination prefix**: `/app`
+Canopy uses the browser `EventSource` API via a custom `useGroveEvents()` React hook to receive real-time grove state changes.
 
-**Topics**:
-| Topic | Purpose |
-|-------|---------|
-| `/topic/grove.{groveId}` | State changes for a specific grove |
-| `/topic/cultivator.{cultivatorId}.groves` | All grove changes for a cultivator |
+Backend implementation in `api/src/main/java/dev/orchard/api/controller/GroveEventController.java`:
+- **Endpoint**: `GET /api/groves/{groveId}/events` (`text/event-stream`)
+- **Event name**: `grove-state-changed`
+- **Timeout**: 30 minutes
+- Emitters managed via `ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>>`
+
+The `useGroveEvents()` hook auto-reconnects with exponential backoff (max 3 retries).
 
 **Message payload** (`GroveStateMessage`):
 ```json
@@ -126,29 +127,22 @@ Configured in `trellis/src/main/java/dev/orchard/trellis/config/WebSocketConfig.
 
 Messages are broadcast by `GroveEventBroadcaster` which listens for Spring `GroveStateChangedEvent` application events.
 
-#### SSE — Server-Sent Events (fallback)
-
-Implemented in `api/src/main/java/dev/orchard/api/controller/GroveEventController.java`:
-- **Endpoint**: `GET /api/groves/{groveId}/events` (`text/event-stream`)
-- **Event name**: `grove-state-changed`
-- **Timeout**: 30 minutes
-- Emitters managed via `ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>>`
+> **Note**: The Trellis backend also supports WebSocket/STOMP via `/ws/grove-events` (configured in `WebSocketConfig.java`), but Canopy currently uses SSE exclusively.
 
 ```mermaid
 sequenceDiagram
-    participant UI as Canopy UI
+    participant UI as Canopy UI (Next.js)
     participant API as Trellis API
-    participant WS as WebSocket Broker
 
     UI->>API: POST /api/groves (create grove)
     API-->>UI: 201 Created {grove}
 
-    UI->>WS: SUBSCRIBE /topic/grove.{groveId}
+    UI->>API: GET /api/groves/{groveId}/events (SSE)
 
     Note over API: Async provisioning proceeds...
 
-    WS-->>UI: MESSAGE {state: GROWING}
-    WS-->>UI: MESSAGE {state: FLOURISHING}
+    API-->>UI: event: grove-state-changed {state: GROWING}
+    API-->>UI: event: grove-state-changed {state: FLOURISHING}
 
     UI->>API: GET /api/groves/{id} (fetch full details)
     API-->>UI: 200 OK {grove with seedling + fruits}
