@@ -109,6 +109,7 @@ orchard:
     enable-kvm: true
     serial-output: stdio
     ssh-public-key: ${ORCHARD_SSH_PUBLIC_KEY:}
+    auto-provision: true
 
 logging:
   level:

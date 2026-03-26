@@ -16,7 +16,8 @@ public record QemuConfig(
     int vncPortRangeStart,
     boolean enableKvm,
     String sshPublicKey,
-    String serialOutput
+    String serialOutput,
+    boolean autoProvision
 ) {
     public static QemuConfig defaults() {
         return new QemuConfig(
@@ -30,7 +31,8 @@ public record QemuConfig(
             5900,
             true,
             "",
-            "stdio"
+            "stdio",
+            true
         );
     }
 
@@ -50,6 +52,7 @@ public record QemuConfig(
         private boolean enableKvm = true;
         private String sshPublicKey = "";
         private String serialOutput = "stdio";
+        private boolean autoProvision = true;
 
         public Builder qemuBinary(Path path) { this.qemuBinary = path; return this; }
         public Builder qemuImgBinary(Path path) { this.qemuImgBinary = path; return this; }
@@ -62,11 +65,12 @@ public record QemuConfig(
         public Builder enableKvm(boolean enable) { this.enableKvm = enable; return this; }
         public Builder sshPublicKey(String key) { this.sshPublicKey = key; return this; }
         public Builder serialOutput(String serialOutput) { this.serialOutput = serialOutput; return this; }
+        public Builder autoProvision(boolean autoProvision) { this.autoProvision = autoProvision; return this; }
 
         public QemuConfig build() {
             return new QemuConfig(qemuBinary, qemuImgBinary, baseImagePath, vmStoragePath,
                 cloudInitTemplatePath, sshPortRangeStart, sshPortRangeEnd, vncPortRangeStart, enableKvm,
-                sshPublicKey, serialOutput);
+                sshPublicKey, serialOutput, autoProvision);
         }
     }
 }
