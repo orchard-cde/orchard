@@ -9,6 +9,7 @@ import dev.orchard.nursery.azure.AzureVmSeedlingProvider;
 import dev.orchard.nursery.gcp.ComputeConfig;
 import dev.orchard.nursery.gcp.ComputeSeedlingProvider;
 import dev.orchard.nursery.qemu.QemuConfig;
+import dev.orchard.nursery.qemu.QemuPlatformDefaults;
 import dev.orchard.nursery.qemu.QemuSeedlingProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,7 @@ public class NurseryConfig {
             .enableKvm(props.isEnableKvm())
             .sshPublicKey(props.getSshPublicKey())
             .serialOutput(props.getSerialOutput())
+            .autoProvision(props.isAutoProvision())
             .build();
     }
 
@@ -186,16 +188,17 @@ public class NurseryConfig {
     // --- Config Properties Classes ---
 
     public static class QemuConfigProperties {
-        private String qemuBinary = "/usr/bin/qemu-system-x86_64";
-        private String qemuImgBinary = "/usr/bin/qemu-img";
-        private String baseImagePath = "/var/lib/orchard/images/base.qcow2";
-        private String vmStoragePath = "/var/lib/orchard/vms";
+        private String qemuBinary = QemuPlatformDefaults.defaultQemuBinary().toString();
+        private String qemuImgBinary = QemuPlatformDefaults.defaultQemuImgBinary().toString();
+        private String baseImagePath = QemuPlatformDefaults.defaultBaseImagePath().toString();
+        private String vmStoragePath = QemuPlatformDefaults.defaultVmStoragePath().toString();
         private String cloudInitTemplatePath = "/etc/orchard/cloud-init";
         private int sshPortRangeStart = 49152;
         private int sshPortRangeEnd = 49999;
-        private boolean enableKvm = true;
+        private boolean enableKvm = QemuPlatformDefaults.defaultEnableKvm();
         private String sshPublicKey = "";
-        private String serialOutput = "stdio";
+        private String serialOutput = QemuPlatformDefaults.defaultSerialOutput();
+        private boolean autoProvision = true;
 
         public String getQemuBinary() { return qemuBinary; }
         public void setQemuBinary(String qemuBinary) { this.qemuBinary = qemuBinary; }
@@ -226,6 +229,9 @@ public class NurseryConfig {
 
         public String getSerialOutput() { return serialOutput; }
         public void setSerialOutput(String serialOutput) { this.serialOutput = serialOutput; }
+
+        public boolean isAutoProvision() { return autoProvision; }
+        public void setAutoProvision(boolean autoProvision) { this.autoProvision = autoProvision; }
     }
 
     public static class AwsConfigProperties {

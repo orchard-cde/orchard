@@ -4,15 +4,6 @@ spring:
     username: orchard
     password: orchard
 
-orchard:
-  qemu:
-    qemu-binary: /opt/homebrew/bin/qemu-system-aarch64
-    qemu-img-binary: /opt/homebrew/bin/qemu-img
-    base-image-path: /tmp/orchard/images/base.qcow2
-    vm-storage-path: /tmp/orchard/vms
-    enable-kvm: false
-    serial-output: file
-
 logging:
   level:
     dev.orchard: TRACE
