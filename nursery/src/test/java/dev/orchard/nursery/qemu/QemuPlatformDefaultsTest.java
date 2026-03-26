@@ -49,7 +49,7 @@ class QemuPlatformDefaultsTest {
     void defaultBaseImagePath_isUnderBaseImageDir() {
         Path baseImagePath = QemuPlatformDefaults.defaultBaseImagePath();
         Path baseImageDir = QemuPlatformDefaults.defaultBaseImageDir();
-        assertThat(baseImagePath).startsWith(baseImageDir);
+        assertThat(baseImagePath.toString()).startsWith(baseImageDir.toString());
     }
 
     @Test
