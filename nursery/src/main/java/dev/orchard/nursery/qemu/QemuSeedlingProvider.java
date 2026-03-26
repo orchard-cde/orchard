@@ -155,17 +155,9 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         boolean qemuImgOk = Files.isExecutable(config.qemuImgBinary());
         boolean baseImageOk = Files.exists(config.baseImagePath());
 
-        if (!qemuOk) {
-            log.warn("QEMU binary not found at {}. Install via: apt install qemu-system-x86 (Linux) or brew install qemu (macOS)",
-                config.qemuBinary());
-        }
-        if (!qemuImgOk) {
-            log.warn("qemu-img binary not found at {}. Install via: apt install qemu-utils (Linux) or brew install qemu (macOS)",
-                config.qemuImgBinary());
-        }
-        if (!baseImageOk) {
-            log.warn("Base QEMU image not found at {}. Run scripts/setup-base-image.sh to download and configure it.",
-                config.baseImagePath());
+        if (!qemuOk || !qemuImgOk || !baseImageOk) {
+            log.debug("QEMU provider not available: qemu={}, qemu-img={}, base-image={}",
+                qemuOk, qemuImgOk, baseImageOk);
         }
 
         return qemuOk && qemuImgOk && baseImageOk;
