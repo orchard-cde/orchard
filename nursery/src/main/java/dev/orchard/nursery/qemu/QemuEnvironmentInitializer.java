@@ -120,15 +120,15 @@ public class QemuEnvironmentInitializer {
 
         log.info("Base image not found. Auto-provisioning...");
 
+        // Download cloud image to a temp file in the same directory
+        String arch = QemuPlatformDefaults.isAarch64() ? "arm64" : "amd64";
+        Path downloadPath = baseImagePath.getParent().resolve("downloading-" + arch + ".img");
+
         try {
             // Create parent directory
             Files.createDirectories(baseImagePath.getParent());
 
-            // Download cloud image to a temp file in the same directory
-            String arch = QemuPlatformDefaults.isAarch64() ? "arm64" : "amd64";
-            Path downloadPath = baseImagePath.getParent().resolve("downloading-" + arch + ".img");
             String imageUrl = QemuPlatformDefaults.ubuntuImageUrl();
-
             downloadFile(imageUrl, downloadPath);
 
             // Convert to qcow2
@@ -144,17 +144,19 @@ public class QemuEnvironmentInitializer {
                     "resize", baseImagePath.toString(), RESIZE_TARGET);
             log.info("Resize complete.");
 
-            // Clean up downloaded temp file
-            Files.deleteIfExists(downloadPath);
-            log.info("Cleaned up temporary download file.");
-
             log.info("Base image provisioned successfully at {}", baseImagePath);
 
         } catch (IOException e) {
+            // Clean up partial base image so next startup doesn't find a corrupt file
+            cleanupPartialFile(baseImagePath);
             throw new IllegalStateException("Failed to provision base image", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            cleanupPartialFile(baseImagePath);
             throw new IllegalStateException("Base image provisioning was interrupted", e);
+        } finally {
+            // Always clean up the downloaded temp file
+            cleanupPartialFile(downloadPath);
         }
     }
 
@@ -192,6 +194,20 @@ public class QemuEnvironmentInitializer {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("SSH key generation was interrupted", e);
+        }
+    }
+
+    /**
+     * Silently deletes a file if it exists. Used for cleanup of partial downloads or
+     * corrupt base images on failure.
+     */
+    private void cleanupPartialFile(Path path) {
+        try {
+            if (Files.deleteIfExists(path)) {
+                log.debug("Cleaned up partial file: {}", path);
+            }
+        } catch (IOException e) {
+            log.warn("Failed to clean up partial file: {}", path, e);
         }
     }
 
