@@ -26,8 +26,13 @@ public class ConfigCommand implements Callable<Integer> {
     @ParentCommand
     Trowel parent;
 
-    private static final Path CONFIG_DIR = Path.of(System.getProperty("user.home"), ".orchard");
-    private static final Path CONFIG_FILE = CONFIG_DIR.resolve("config.properties");
+    static Path configDir() {
+        return Path.of(System.getProperty("user.home"), ".orchard");
+    }
+
+    static Path configFile() {
+        return configDir().resolve("config.properties");
+    }
 
     @Override
     public Integer call() {
@@ -46,13 +51,13 @@ public class ConfigCommand implements Callable<Integer> {
             System.out.println();
             System.out.println("Trowel CLI Configuration");
             System.out.println("-".repeat(40));
-            System.out.println("  Config file: " + CONFIG_FILE);
+            System.out.println("  Config file: " + configFile());
             System.out.println();
 
-            if (Files.exists(CONFIG_FILE)) {
+            if (Files.exists(configFile())) {
                 try {
                     Properties props = new Properties();
-                    props.load(Files.newBufferedReader(CONFIG_FILE));
+                    props.load(Files.newBufferedReader(configFile()));
                     props.forEach((k, v) -> System.out.println("  " + k + " = " + v));
                 } catch (IOException e) {
                     System.err.println("Failed to read config: " + e.getMessage());
@@ -89,11 +94,11 @@ public class ConfigCommand implements Callable<Integer> {
         @Override
         public Integer call() {
             try {
-                Files.createDirectories(CONFIG_DIR);
+                Files.createDirectories(configDir());
 
                 Properties props = new Properties();
-                if (Files.exists(CONFIG_FILE)) {
-                    props.load(Files.newBufferedReader(CONFIG_FILE));
+                if (Files.exists(configFile())) {
+                    props.load(Files.newBufferedReader(configFile()));
                 }
 
                 if (server != null) {
@@ -106,7 +111,7 @@ public class ConfigCommand implements Callable<Integer> {
                     System.out.println("Set cultivator = " + cultivatorId);
                 }
 
-                props.store(Files.newBufferedWriter(CONFIG_FILE), "Trowel CLI Configuration");
+                props.store(Files.newBufferedWriter(configFile()), "Trowel CLI Configuration");
                 return 0;
 
             } catch (IOException e) {
@@ -125,7 +130,7 @@ public class ConfigCommand implements Callable<Integer> {
         @Override
         public Integer call() {
             try {
-                if (Files.exists(CONFIG_FILE)) {
+                if (Files.exists(configFile())) {
                     System.out.print("Configuration already exists. Overwrite? [y/N] ");
                     int response = System.in.read();
                     if (response != 'y' && response != 'Y') {
@@ -134,16 +139,16 @@ public class ConfigCommand implements Callable<Integer> {
                     }
                 }
 
-                Files.createDirectories(CONFIG_DIR);
+                Files.createDirectories(configDir());
 
                 Properties props = new Properties();
                 props.setProperty("server", "http://localhost:8080");
                 props.setProperty("cultivator", java.util.UUID.randomUUID().toString());
 
-                props.store(Files.newBufferedWriter(CONFIG_FILE), "Trowel CLI Configuration");
+                props.store(Files.newBufferedWriter(configFile()), "Trowel CLI Configuration");
 
                 System.out.println();
-                System.out.println("Created configuration at " + CONFIG_FILE);
+                System.out.println("Created configuration at " + configFile());
                 System.out.println();
                 props.forEach((k, v) -> System.out.println("  " + k + " = " + v));
                 System.out.println();

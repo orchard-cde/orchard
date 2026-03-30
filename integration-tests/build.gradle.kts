@@ -14,11 +14,14 @@ configurations["integrationTestRuntimeOnly"].extendsFrom(configurations["runtime
 
 dependencies {
     implementation(project(":trellis"))
+    implementation(project(":trowel"))
     implementation(project(":core"))
     implementation(project(":api"))
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
 
+    "integrationTestImplementation"("info.picocli:picocli:4.7.7")
     "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-test")
+    "integrationTestImplementation"("org.springframework.boot:spring-boot-resttestclient")
     "integrationTestImplementation"("org.awaitility:awaitility:4.2.0")
     "integrationTestImplementation"(platform("org.junit:junit-bom:5.11.4"))
     "integrationTestImplementation"("org.junit.jupiter:junit-jupiter")

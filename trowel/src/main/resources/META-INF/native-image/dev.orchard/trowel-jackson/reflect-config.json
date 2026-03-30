@@ -1,0 +1,50 @@
+[
+  {
+    "name" : "dev.orchard.trowel.client.OrchardClient$PlantGroveRequest",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
+    "name" : "dev.orchard.trowel.client.OrchardClient$GroveResponse",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
+    "name" : "dev.orchard.trowel.client.OrchardClient$SeedlingInfo",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
+    "name" : "dev.orchard.trowel.client.OrchardClient$FruitInfo",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
+    "name" : "dev.orchard.trowel.client.OrchardClient$HealthResponse",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
+    "name" : "dev.orchard.trowel.command.DevServerCommand$ServerInfo",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  }
+]
