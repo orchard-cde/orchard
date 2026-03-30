@@ -10,9 +10,9 @@ CREATE TABLE prebuilds (
     completed_at    TIMESTAMP
 );
 
--- Only one RIPE prebuild per repository+branch combination
-CREATE UNIQUE INDEX idx_prebuilds_ripe_repo_branch
-    ON prebuilds (repository_url, branch) WHERE state = 'RIPE';
+-- Index for finding RIPE prebuilds by repo+branch (uniqueness enforced at application layer)
+CREATE INDEX idx_prebuilds_state_repo_branch
+    ON prebuilds (state, repository_url, branch);
 
 -- Index for looking up prebuilds by repo and branch
 CREATE INDEX idx_prebuilds_repo_branch

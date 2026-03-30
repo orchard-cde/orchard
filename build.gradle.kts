@@ -2,6 +2,7 @@ plugins {
     java
     id("org.springframework.boot") version "4.0.3" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
+    id("org.graalvm.buildtools.native") version "0.11.4" apply false
     id("org.openrewrite.rewrite") version "latest.release"
 }
 
@@ -44,7 +45,7 @@ subprojects {
 
     java {
         toolchain {
-            languageVersion.set(JavaLanguageVersion.of(21))
+            languageVersion.set(JavaLanguageVersion.of(25))
         }
     }
 
@@ -64,4 +65,17 @@ subprojects {
     tasks.withType<Test> {
         useJUnitPlatform()
     }
+}
+
+tasks.register<Copy>("install") {
+    description = "Builds and installs native executables into ~/.orchard/bin/"
+    group = "distribution"
+
+    val installDir = File(System.getProperty("user.home"), ".orchard/bin")
+
+    dependsOn(":trellis:nativeCompile", ":trowel:nativeCompile")
+
+    from(project(":trellis").layout.buildDirectory.dir("native/nativeCompile"))
+    from(project(":trowel").layout.buildDirectory.dir("native/nativeCompile"))
+    into(installDir)
 }

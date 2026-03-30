@@ -1,6 +1,6 @@
 plugins {
     id("org.springframework.boot")
-    id("org.graalvm.buildtools.native") version "0.11.4"
+    id("org.graalvm.buildtools.native")
 }
 
 graalvmNative {
