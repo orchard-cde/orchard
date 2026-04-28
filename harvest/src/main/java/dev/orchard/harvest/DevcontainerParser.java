@@ -189,10 +189,14 @@ public class DevcontainerParser {
             builder.service(root.get("service").asText());
         }
 
-        // Features
+        // Features — preserve each feature's options map (empty options become Map.of(), never null)
         if (root.has("features")) {
             Map<String, Map<String, Object>> features = new LinkedHashMap<>();
-            root.get("features").propertyNames().forEach(id -> features.put(id, Map.of()));
+            root.get("features").properties().forEach(entry -> {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> options = objectMapper.convertValue(entry.getValue(), Map.class);
+                features.put(entry.getKey(), options == null ? Map.of() : options);
+            });
             builder.features(features);
         }
 

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,6 +124,39 @@ class DevcontainerParserTest {
     }
 
     @Test
+    void parseJson_featureOptionsPreserved() {
+        Optional<Seed> result = parser.parseJson("""
+                {"image": "ubuntu", "features": {"ghcr.io/devcontainers/features/java:1": {"version": "21"}}}""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().features())
+                .containsEntry("ghcr.io/devcontainers/features/java:1", Map.of("version", "21"));
+    }
+
+    @Test
+    void parseJson_featureWithEmptyOptionsIsEmptyNotNull() {
+        Optional<Seed> result = parser.parseJson("""
+                {"image": "ubuntu", "features": {"ghcr.io/devcontainers/features/node:1": {}}}""");
+
+        assertThat(result).isPresent();
+        Map<String, Object> options = result.get().features().get("ghcr.io/devcontainers/features/node:1");
+        assertThat(options).isNotNull().isEmpty();
+    }
+
+    @Test
+    void parseJson_featureOptionsHeterogeneousValues() {
+        Optional<Seed> result = parser.parseJson("""
+                {"image": "ubuntu", "features": {"example/feature:1": {"name": "alice", "enabled": true, "count": 3}}}""");
+
+        assertThat(result).isPresent();
+        Map<String, Object> options = result.get().features().get("example/feature:1");
+        assertThat(options)
+                .containsEntry("name", "alice")
+                .containsEntry("enabled", true)
+                .containsEntry("count", 3);
+    }
+
+    @Test
     void parseJson_postCreateCommandString() {
         Optional<Seed> result = parser.parseJson("""
                 {"image": "ubuntu", "postCreateCommand": "npm install"}""");
@@ -194,6 +228,8 @@ class DevcontainerParserTest {
         assertThat(seed.name()).isEqualTo("Full Dev Environment");
         assertThat(seed.image()).isEqualTo("mcr.microsoft.com/devcontainers/base:ubuntu");
         assertThat(seed.features()).hasSize(2);
+        assertThat(seed.features()).containsEntry("ghcr.io/devcontainers/features/java:1", Map.of("version", "21"));
+        assertThat(seed.features().get("ghcr.io/devcontainers/features/node:1")).isNotNull().isEmpty();
         assertThat(seed.forwardPorts()).containsExactly("3000", "5432", "8080");
         assertThat(seed.containerEnv()).hasSize(2);
         assertThat(seed.postCreateCommands()).containsExactly("npm install", "gradle build");
