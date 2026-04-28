@@ -116,7 +116,7 @@ class DevcontainerParserTest {
                 {"image": "ubuntu", "features": {"ghcr.io/devcontainers/features/node:1": {}, "ghcr.io/devcontainers/features/python:1": {}}}""");
 
         assertThat(result).isPresent();
-        assertThat(result.get().features()).containsExactlyInAnyOrder(
+        assertThat(result.get().features()).containsOnlyKeys(
                 "ghcr.io/devcontainers/features/node:1",
                 "ghcr.io/devcontainers/features/python:1"
         );

@@ -191,8 +191,8 @@ public class DevcontainerParser {
 
         // Features
         if (root.has("features")) {
-            List<String> features = new ArrayList<>();
-            root.get("features").propertyNames().forEach(features::add);
+            Map<String, Map<String, Object>> features = new LinkedHashMap<>();
+            root.get("features").propertyNames().forEach(id -> features.put(id, Map.of()));
             builder.features(features);
         }
 
