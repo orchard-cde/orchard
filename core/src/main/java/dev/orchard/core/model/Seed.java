@@ -6,6 +6,10 @@ import java.util.Map;
 /**
  * A Seed is the specification for growing Fruit (a devcontainer.json).
  * It contains all the genetic information needed to produce a container.
+ *
+ * @param features Devcontainer features keyed by feature ID; each value is the
+ *                 feature's options map (empty when no options are configured,
+ *                 never null). Insertion order from devcontainer.json is preserved.
  */
 public record Seed(
     String name,

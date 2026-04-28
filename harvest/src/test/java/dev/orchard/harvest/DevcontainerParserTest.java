@@ -121,6 +121,10 @@ class DevcontainerParserTest {
                 "ghcr.io/devcontainers/features/node:1",
                 "ghcr.io/devcontainers/features/python:1"
         );
+        assertThat(result.get().features().keySet()).containsExactly(
+                "ghcr.io/devcontainers/features/node:1",
+                "ghcr.io/devcontainers/features/python:1"
+        );
     }
 
     @Test
