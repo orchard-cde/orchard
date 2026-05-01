@@ -6,6 +6,10 @@ import java.util.Map;
 /**
  * A Seed is the specification for growing Fruit (a devcontainer.json).
  * It contains all the genetic information needed to produce a container.
+ *
+ * @param features Devcontainer features keyed by feature ID; each value is the
+ *                 feature's options map (empty when no options are configured,
+ *                 never null). Insertion order from devcontainer.json is preserved.
  */
 public record Seed(
     String name,
@@ -14,7 +18,7 @@ public record Seed(
     String dockerComposeFile,
     String service,
     Map<String, String> buildArgs,
-    List<String> features,
+    Map<String, Map<String, Object>> features,
     List<String> forwardPorts,
     Map<String, String> containerEnv,
     List<String> postCreateCommands,
@@ -37,7 +41,7 @@ public record Seed(
         private String dockerComposeFile;
         private String service;
         private Map<String, String> buildArgs = Map.of();
-        private List<String> features = List.of();
+        private Map<String, Map<String, Object>> features = Map.of();
         private List<String> forwardPorts = List.of();
         private Map<String, String> containerEnv = Map.of();
         private List<String> postCreateCommands = List.of();
@@ -74,7 +78,7 @@ public record Seed(
             return this;
         }
 
-        public Builder features(List<String> features) {
+        public Builder features(Map<String, Map<String, Object>> features) {
             this.features = features;
             return this;
         }

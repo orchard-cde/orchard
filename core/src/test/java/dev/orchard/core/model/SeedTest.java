@@ -33,7 +33,7 @@ class SeedTest {
                 .dockerComposeFile("docker-compose.yml")
                 .service("app")
                 .buildArgs(Map.of("VARIANT", "21"))
-                .features(List.of("ghcr.io/devcontainers/features/java:1"))
+                .features(Map.of("ghcr.io/devcontainers/features/java:1", Map.of()))
                 .forwardPorts(List.of("8080"))
                 .containerEnv(Map.of("JAVA_HOME", "/usr/lib/jvm/java-21"))
                 .postCreateCommands(List.of("./gradlew build"))
@@ -47,7 +47,7 @@ class SeedTest {
         assertThat(seed.dockerComposeFile()).isEqualTo("docker-compose.yml");
         assertThat(seed.service()).isEqualTo("app");
         assertThat(seed.buildArgs()).containsEntry("VARIANT", "21");
-        assertThat(seed.features()).containsExactly("ghcr.io/devcontainers/features/java:1");
+        assertThat(seed.features()).containsOnlyKeys("ghcr.io/devcontainers/features/java:1");
         assertThat(seed.vscodeCustomizations()).isEqualTo(vscode);
     }
 
