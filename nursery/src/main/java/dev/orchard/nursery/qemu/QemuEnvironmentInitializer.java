@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -45,33 +46,36 @@ public class QemuEnvironmentInitializer {
                         ? "Install with: brew install qemu"
                         : "Install with: apt install qemu-system-x86");
 
-        validateBinary(config.qemuImgBinary(), config.qemuImgBinary().getFileName().toString(),
+        Path qemuImgBinary = validateBinary(config.qemuImgBinary(),
+                config.qemuImgBinary().getFileName().toString(),
                 QemuPlatformDefaults.isMacOS()
                         ? "Install with: brew install qemu"
                         : "Install with: apt install qemu-utils");
 
         checkIsoTool();
-        provisionBaseImage(config);
+        provisionBaseImage(config, qemuImgBinary);
         provisionSshKey(config);
 
         log.info("QEMU environment initialization complete.");
     }
 
     /**
-     * Validates that a binary exists and is executable. Falls back to checking the system PATH
-     * via {@code which}. Throws if the binary cannot be found.
+     * Validates that a binary exists and is executable. Falls back to resolving via the system
+     * PATH using {@code which}. Returns the absolute path of the binary that should be used for
+     * subsequent {@link ProcessBuilder} invocations. Throws if the binary cannot be found.
      */
-    private void validateBinary(Path configuredPath, String binaryName, String installHint) {
+    Path validateBinary(Path configuredPath, String binaryName, String installHint) {
         if (Files.isExecutable(configuredPath)) {
             log.info("Found binary: {}", configuredPath);
-            return;
+            return configuredPath;
         }
 
         log.debug("Binary not found at configured path {}, checking PATH for '{}'", configuredPath, binaryName);
 
-        if (isCommandAvailable(binaryName)) {
-            log.info("Found '{}' on PATH", binaryName);
-            return;
+        Optional<Path> resolved = resolveOnPath(binaryName);
+        if (resolved.isPresent()) {
+            log.info("Found '{}' on PATH at {}", binaryName, resolved.get());
+            return resolved.get();
         }
 
         throw new IllegalStateException(
@@ -104,7 +108,7 @@ public class QemuEnvironmentInitializer {
      * Checks whether the base image exists. If missing and auto-provision is enabled,
      * downloads the Ubuntu cloud image, converts it to qcow2, and resizes it.
      */
-    private void provisionBaseImage(QemuConfig config) {
+    private void provisionBaseImage(QemuConfig config, Path qemuImgBinary) {
         Path baseImagePath = config.baseImagePath();
 
         if (Files.exists(baseImagePath)) {
@@ -133,14 +137,14 @@ public class QemuEnvironmentInitializer {
 
             // Convert to qcow2
             log.info("Converting image to qcow2 format...");
-            runCommand(config.qemuImgBinary().toString(),
+            runCommand(qemuImgBinary.toString(),
                     "convert", "-f", "qcow2", "-O", "qcow2",
                     downloadPath.toString(), baseImagePath.toString());
             log.info("Conversion complete: {}", baseImagePath);
 
             // Resize
             log.info("Resizing image to {}...", RESIZE_TARGET);
-            runCommand(config.qemuImgBinary().toString(),
+            runCommand(qemuImgBinary.toString(),
                     "resize", baseImagePath.toString(), RESIZE_TARGET);
             log.info("Resize complete.");
 
@@ -218,17 +222,36 @@ public class QemuEnvironmentInitializer {
      * @return {@code true} if the command is found
      */
     private boolean isCommandAvailable(String command) {
+        return resolveOnPath(command).isPresent();
+    }
+
+    /**
+     * Resolves a command to an absolute path via {@code which}. Returns {@link Optional#empty()}
+     * when the command is not found or {@code which} fails.
+     */
+    private Optional<Path> resolveOnPath(String command) {
         try {
             Process process = new ProcessBuilder("which", command)
-                    .redirectErrorStream(true)
+                    .redirectErrorStream(false)
                     .start();
+            String firstLine;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                firstLine = reader.readLine();
+            }
             boolean finished = process.waitFor(5, TimeUnit.SECONDS);
-            return finished && process.exitValue() == 0;
+            if (!finished) {
+                process.destroyForcibly();
+                return Optional.empty();
+            }
+            if (process.exitValue() != 0 || firstLine == null || firstLine.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(Path.of(firstLine.trim()));
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            return false;
+            return Optional.empty();
         }
     }
 

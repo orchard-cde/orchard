@@ -349,7 +349,7 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         throw new IOException("No available SSH ports in range " + start + "-" + end);
     }
 
-    private void waitForSsh(String host, int port) {
+    private void waitForSsh(String host, int port) throws IOException {
         log.info("Waiting for SSH to be available at {}:{}", host, port);
 
         // Phase 1: Wait for the TCP port to open
@@ -363,14 +363,13 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                 break;
             } catch (IOException e) {
                 if (i == maxPortAttempts - 1) {
-                    log.warn("Timeout waiting for SSH port at {}:{}", host, port);
-                    return;
+                    throw new IOException("Timeout waiting for SSH port at " + host + ":" + port);
                 }
                 try {
                     Thread.sleep(2000);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    return;
+                    throw new IOException("Interrupted while waiting for SSH port at " + host + ":" + port, ie);
                 }
             }
         }
@@ -409,10 +408,10 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                 Thread.sleep(5000);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
-                return;
+                throw new IOException("Interrupted while waiting for SSH authentication at " + host + ":" + port, ie);
             }
         }
-        log.warn("Timeout waiting for SSH authentication at {}:{}", host, port);
+        throw new IOException("Timeout waiting for SSH authentication at " + host + ":" + port);
     }
 
     public void shutdown() {

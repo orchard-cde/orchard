@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -64,6 +65,25 @@ class QemuEnvironmentInitializerTest {
         assertThatThrownBy(() -> initializer.initialize(config))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("setup-base-image.sh or enable auto-provision");
+    }
+
+    @Test
+    void validateBinary_returnsResolvedAbsolutePathWhenOnlyOnPath() {
+        Path qemuImgOnPath = QemuPlatformDefaults.defaultQemuImgBinary();
+        assumeTrue(Files.isExecutable(qemuImgOnPath),
+                "qemu-img not installed, skipping");
+
+        Path resolved = initializer.validateBinary(
+                Path.of("/nonexistent/qemu-img"),
+                "qemu-img",
+                "Install with: brew install qemu");
+
+        // The resolved path must be an absolute, executable file — never the bogus configured path.
+        // This guards the regression where the old impl returned void and downstream callers kept
+        // executing the original (broken) configured path.
+        assertThat(resolved).isAbsolute();
+        assertThat(Files.isExecutable(resolved)).isTrue();
+        assertThat(resolved).isNotEqualTo(Path.of("/nonexistent/qemu-img"));
     }
 
     @Test

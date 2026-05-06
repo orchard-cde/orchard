@@ -99,15 +99,17 @@ orchard:
     work-dir: /tmp/orchard/greenhouse
 
   qemu:
-    qemu-binary: /usr/bin/qemu-system-x86_64
-    qemu-img-binary: /usr/bin/qemu-img
+    # qemu-binary and qemu-img-binary intentionally omitted: defaults come from
+    # QemuPlatformDefaults so macOS picks up /opt/homebrew/bin/* and Linux picks
+    # up /usr/bin/*. QemuEnvironmentInitializer also falls back to PATH.
     base-image-path: /tmp/orchard/images/base.qcow2
     vm-storage-path: /tmp/orchard/vms
     cloud-init-template-path: /tmp/orchard/cloud-init
     ssh-port-range-start: 49152
     ssh-port-range-end: 49999
-    enable-kvm: true
-    serial-output: stdio
+    # enable-kvm and serial-output intentionally omitted: defaults come from
+    # QemuPlatformDefaults so macOS uses HVF (enable-kvm=false, serial=file)
+    # and Linux uses KVM (enable-kvm=true, serial=stdio).
     ssh-public-key: ${ORCHARD_SSH_PUBLIC_KEY:}
     auto-provision: true
 

@@ -3,6 +3,7 @@ package dev.orchard.trellis.websocket;
 import dev.orchard.api.event.GroveStateChangedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Component;
  * </ul>
  */
 @Component
+@RegisterReflectionForBinding(GroveStateMessage.class)
 public class GroveEventBroadcaster {
 
     private static final Logger log = LoggerFactory.getLogger(GroveEventBroadcaster.class);
