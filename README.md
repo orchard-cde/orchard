@@ -62,6 +62,40 @@ java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar grove list
 java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar grove connect <grove-id>
 ```
 
+## Download Native Binaries
+
+Pre-built native binaries are available for each [release](https://github.com/orchard-cde/orchard/releases):
+
+| Binary | linux-amd64 | linux-arm64 | macos-arm64 |
+|---|---|---|---|
+| **orchard-server** | `orchard-server-linux-amd64.tar.gz` | `orchard-server-linux-arm64.tar.gz` | `orchard-server-macos-arm64.tar.gz` |
+| **trowel** | `trowel-linux-amd64.tar.gz` | `trowel-linux-arm64.tar.gz` | `trowel-macos-arm64.tar.gz` |
+
+Each tarball contains a single statically-linked executable. Download, extract, and run:
+
+```bash
+# Example: download and run trowel on Linux amd64
+curl -L https://github.com/orchard-cde/orchard/releases/latest/download/trowel-linux-amd64.tar.gz | tar xz
+./trowel --version
+```
+
+### macOS Gatekeeper
+
+On macOS, you may need to remove the quarantine attribute before running:
+
+```bash
+xattr -d com.apple.quarantine orchard-server
+xattr -d com.apple.quarantine trowel
+```
+
+### Verify Checksums
+
+Each release includes a `checksums-sha256.txt` file. Verify a download with:
+
+```bash
+sha256sum --check checksums-sha256.txt --ignore-missing
+```
+
 ## Architecture
 
 ```
