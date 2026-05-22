@@ -13,6 +13,14 @@ graalvmNative {
     }
 }
 
+springBoot {
+    buildInfo()
+}
+
+tasks.named("nativeCompile") {
+    dependsOn(tasks.named("bootBuildInfo"))
+}
+
 dependencies {
     implementation(project(":core"))
     implementation(project(":roots"))

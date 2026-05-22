@@ -2,6 +2,8 @@ package dev.orchard.api.controller;
 
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.SeedlingProvider;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,17 +16,20 @@ import java.util.Map;
 public class HealthController {
 
     private final ProviderRegistry providerRegistry;
+    private final BuildProperties buildProperties;
 
-    public HealthController(ProviderRegistry providerRegistry) {
+    public HealthController(ProviderRegistry providerRegistry, ObjectProvider<BuildProperties> buildPropertiesProvider) {
         this.providerRegistry = providerRegistry;
+        this.buildProperties = buildPropertiesProvider.getIfAvailable();
     }
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> health() {
+        var version = buildProperties != null ? buildProperties.getVersion() : "unknown";
         return ResponseEntity.ok(Map.of(
             "status", "healthy",
             "name", "Orchard",
-            "version", "0.1.0-SNAPSHOT"
+            "version", version
         ));
     }
 
