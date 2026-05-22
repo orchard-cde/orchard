@@ -9,9 +9,24 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build Native Images & Release
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - label: linux-amd64
+            runner: ubuntu-latest
+            os: linux
+            arch: amd64
+          - label: linux-arm64
+            runner: ubuntu-24.04-arm
+            os: linux
+            arch: arm64
+          - label: macos-arm64
+            runner: macos-latest
+            os: macos
+            arch: arm64
 
     steps:
       - name: Checkout
@@ -20,29 +35,79 @@ jobs:
       - name: Set up GraalVM
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Build native images
-        run: ./gradlew :trellis:nativeCompile :trowel:nativeCompile
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare release artifacts
+      - name: Build native images
+        run: ./gradlew -Pversion=${{ steps.version.outputs.version }} :trellis:nativeCompile :trowel:nativeCompile
+
+      - name: Smoke test trowel
         run: |
-          mkdir -p release-artifacts
-          cp trellis/build/native/nativeCompile/orchard-server release-artifacts/orchard-server-linux-amd64
-          cp trowel/build/native/nativeCompile/trowel release-artifacts/trowel-linux-amd64
-          cd release-artifacts
-          sha256sum * > checksums-sha256.txt
+          echo "=== trowel --version ==="
+          ./trowel/build/native/nativeCompile/trowel --version
+          echo "=== trowel --help ==="
+          ./trowel/build/native/nativeCompile/trowel --help
+
+      - name: Smoke test orchard-server
+        run: |
+          echo "=== orchard-server --help ==="
+          ./trellis/build/native/nativeCompile/orchard-server --help
+
+      - name: Package artifacts
+        run: |
+          mkdir -p artifacts
+          cd artifacts
+
+          cp ../trellis/build/native/nativeCompile/orchard-server .
+          tar czf orchard-server-${{ matrix.os }}-${{ matrix.arch }}.tar.gz orchard-server
+          rm orchard-server
+
+          cp ../trowel/build/native/nativeCompile/trowel .
+          tar czf trowel-${{ matrix.os }}-${{ matrix.arch }}.tar.gz trowel
+          rm trowel
+
+          sha256sum *.tar.gz | tee checksums-sha256.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.label }}
+          path: artifacts/
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            release-artifacts/orchard-server-linux-amd64
-            release-artifacts/trowel-linux-amd64
-            release-artifacts/checksums-sha256.txt
+            orchard-server-linux-amd64.tar.gz
+            orchard-server-linux-arm64.tar.gz
+            orchard-server-macos-arm64.tar.gz
+            trowel-linux-amd64.tar.gz
+            trowel-linux-arm64.tar.gz
+            trowel-macos-arm64.tar.gz
+            checksums-sha256.txt
