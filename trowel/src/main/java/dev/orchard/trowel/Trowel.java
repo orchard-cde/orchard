@@ -14,7 +14,7 @@ import java.util.concurrent.Callable;
 @Command(
     name = "trowel",
     mixinStandardHelpOptions = true,
-    version = "Trowel 0.1.0 - The Orchard Planting Tool",
+    versionProvider = TrowelVersionProvider.class,
     description = "Cultivate your cloud development environments",
     subcommands = {
         GroveCommand.class,

@@ -45,6 +45,12 @@ tasks.register<Jar>("fatJar") {
     })
 }
 
+tasks.named<ProcessResources>("processResources") {
+    filesMatching("version.properties") {
+        expand("version" to project.version)
+    }
+}
+
 tasks.build {
     dependsOn(tasks.named("fatJar"))
 }
