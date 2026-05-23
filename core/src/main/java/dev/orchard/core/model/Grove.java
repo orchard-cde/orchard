@@ -95,7 +95,16 @@ public record Grove(
         if (seedling == null || seedling.ipAddress() == null) {
             return null;
         }
-        return "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s/.ssh/orchard_ed25519 -p %d cultivator@%s".formatted(
-            System.getProperty("user.home"), seedling.sshPort(), seedling.ipAddress());
+        String keyPath = resolveSshKeyPath();
+        return "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s -p %d cultivator@%s".formatted(
+            keyPath, seedling.sshPort(), seedling.ipAddress());
+    }
+
+    private static String resolveSshKeyPath() {
+        String keyPath = System.getProperty("orchard.ssh.key-path");
+        if (keyPath != null && !keyPath.isBlank()) {
+            return keyPath;
+        }
+        return "%s/.ssh/orchard_ed25519".formatted(System.getProperty("user.home"));
     }
 }

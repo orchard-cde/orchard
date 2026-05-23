@@ -138,7 +138,8 @@ class GroveLifecycleE2ETest {
         assertThat(latestResponse).as("latestResponse must be set").isNotNull();
 
         int sshPort = latestResponse.seedling().sshPort();
-        Path privateKey = Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519");
+        Path privateKey = Path.of(System.getProperty("orchard.ssh.key-path",
+            System.getProperty("user.home") + "/.ssh/orchard_ed25519"));
 
         ProcessBuilder pb = new ProcessBuilder(
             "ssh",

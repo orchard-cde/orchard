@@ -10,7 +10,9 @@ public record CreateGroveRequest(
 
     String name,
 
-    String machineSize
+    String machineSize,
+
+    String serialOutput
 ) {
     public String branch() {
         return branch != null ? branch : "main";

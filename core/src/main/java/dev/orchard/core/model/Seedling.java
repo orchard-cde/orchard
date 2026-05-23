@@ -22,18 +22,19 @@ public record Seedling(
         int cpuCores,
         int memoryMb,
         int diskGb,
-        String machineType
+        String machineType,
+        String serialOutput
     ) {
         public static SeedlingSpec small() {
-            return new SeedlingSpec(2, 4096, 20, "small");
+            return new SeedlingSpec(2, 4096, 20, "small", null);
         }
 
         public static SeedlingSpec medium() {
-            return new SeedlingSpec(4, 8192, 40, "medium");
+            return new SeedlingSpec(4, 8192, 40, "medium", null);
         }
 
         public static SeedlingSpec large() {
-            return new SeedlingSpec(8, 16384, 80, "large");
+            return new SeedlingSpec(8, 16384, 80, "large", null);
         }
     }
 

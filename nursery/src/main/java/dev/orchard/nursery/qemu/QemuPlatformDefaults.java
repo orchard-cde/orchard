@@ -113,6 +113,14 @@ public final class QemuPlatformDefaults {
     }
 
     /**
+     * Returns the default path to the Orchard SSH key pair
+     * ({@code ~/.ssh/orchard_ed25519}).
+     */
+    public static Path defaultSshKeyPath() {
+        return Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519");
+    }
+
+    /**
      * Returns the Ubuntu Jammy cloud image download URL appropriate for the current architecture.
      * <ul>
      *   <li>aarch64: ARM64 image</li>

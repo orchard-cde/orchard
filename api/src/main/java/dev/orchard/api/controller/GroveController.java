@@ -83,12 +83,14 @@ public class GroveController {
 
                 var seedling = grove.seedling();
                 String hostName = "orchard-" + grove.name().replaceAll("[^a-zA-Z0-9-]", "-");
+                String identityFile = resolveSshKeyPath();
                 String sshConfig = String.format("""
                     # Orchard Grove: %s
                     Host %s
                       HostName %s
                       Port %d
                       User cultivator
+                      IdentityFile %s
                       StrictHostKeyChecking no
                       UserKnownHostsFile /dev/null
                       ForwardAgent yes
@@ -96,7 +98,8 @@ public class GroveController {
                     grove.name(),
                     hostName,
                     seedling.ipAddress(),
-                    seedling.sshPort()
+                    seedling.sshPort(),
+                    identityFile
                 );
 
                 return ResponseEntity.ok(sshConfig);
@@ -118,6 +121,18 @@ public class GroveController {
         return groveService.getGrove(groveId)
             .map(grove -> ResponseEntity.ok(GroveResponse.fromModel(grove)))
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Resolves the SSH private key path from the system property
+     * {@code orchard.ssh.key-path}, falling back to {@code ~/.ssh/orchard_ed25519}.
+     */
+    private static String resolveSshKeyPath() {
+        String keyPath = System.getProperty("orchard.ssh.key-path");
+        if (keyPath != null && !keyPath.isBlank()) {
+            return keyPath;
+        }
+        return "%s/.ssh/orchard_ed25519".formatted(System.getProperty("user.home"));
     }
 
     /**

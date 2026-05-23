@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Executes commands on a Seedling (VM) over SSH.
@@ -16,6 +17,7 @@ import java.util.Optional;
 public class SshExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(SshExecutor.class);
+    private static final long DEFAULT_TIMEOUT_SECONDS = 60;
 
     private final Seedling seedling;
 
@@ -32,14 +34,16 @@ public class SshExecutor {
      * @throws InterruptedException if the current thread is interrupted while waiting
      */
     public String execute(String command) throws IOException, InterruptedException {
+        return execute(command, DEFAULT_TIMEOUT_SECONDS);
+    }
+
+    public String execute(String command, long timeoutSeconds) throws IOException, InterruptedException {
         var cmd = new java.util.ArrayList<String>();
         cmd.add("ssh");
         cmd.add("-o"); cmd.add("StrictHostKeyChecking=no");
         cmd.add("-o"); cmd.add("UserKnownHostsFile=/dev/null");
         cmd.add("-o"); cmd.add("ConnectTimeout=10");
-        // Use the Orchard SSH key if it exists
-        java.nio.file.Path orchardKey = java.nio.file.Path.of(
-            System.getProperty("user.home"), ".ssh", "orchard_ed25519");
+        java.nio.file.Path orchardKey = resolveSshKeyPath();
         if (java.nio.file.Files.exists(orchardKey)) {
             cmd.add("-i"); cmd.add(orchardKey.toString());
         }
@@ -51,6 +55,13 @@ public class SshExecutor {
         log.debug("Executing SSH command on seedling {}: {}", seedling.id(), command);
         Process process = pb.start();
 
+        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+        if (!finished) {
+            process.destroyForcibly();
+            throw new IOException("SSH command timed out after " + timeoutSeconds + "s: " + command);
+        }
+
+        int exitCode = process.exitValue();
         StringBuilder stdout = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
@@ -59,7 +70,6 @@ public class SshExecutor {
             }
         }
 
-        int exitCode = process.waitFor();
         if (exitCode != 0) {
             StringBuilder stderr = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
@@ -73,6 +83,18 @@ public class SshExecutor {
         }
 
         return stdout.toString();
+    }
+
+    /**
+     * Resolves the SSH private key path from the system property
+     * {@code orchard.ssh.key-path}, falling back to {@code ~/.ssh/orchard_ed25519}.
+     */
+    static java.nio.file.Path resolveSshKeyPath() {
+        String keyPath = System.getProperty("orchard.ssh.key-path");
+        if (keyPath != null && !keyPath.isBlank()) {
+            return java.nio.file.Path.of(keyPath);
+        }
+        return java.nio.file.Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519");
     }
 
     /**

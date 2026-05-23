@@ -18,6 +18,8 @@ public class QemuStartupRunner implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(QemuStartupRunner.class);
 
+    static final String SSH_KEY_PATH_PROPERTY = "orchard.ssh.key-path";
+
     private final QemuConfig qemuConfig;
 
     public QemuStartupRunner(QemuConfig qemuConfig) {
@@ -29,5 +31,11 @@ public class QemuStartupRunner implements ApplicationRunner {
         log.info("Running QEMU environment initialization...");
         QemuEnvironmentInitializer initializer = new QemuEnvironmentInitializer();
         initializer.initialize(qemuConfig);
+
+        // Expose the SSH key path as a system property for cross-module access
+        // (Grove model, SshExecutor, GroveController, etc.)
+        String keyPath = qemuConfig.sshKeyPath().toString();
+        System.setProperty(SSH_KEY_PATH_PROPERTY, keyPath);
+        log.info("Set {}={}", SSH_KEY_PATH_PROPERTY, keyPath);
     }
 }

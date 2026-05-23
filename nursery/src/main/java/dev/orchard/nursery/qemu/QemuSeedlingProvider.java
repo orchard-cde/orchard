@@ -193,7 +193,7 @@ public class QemuSeedlingProvider implements SeedlingProvider {
             // Resolve SSH public key: config property, then fallback to well-known file
             String sshPubKey = config.sshPublicKey();
             if (sshPubKey == null || sshPubKey.isBlank()) {
-                Path defaultKeyPath = Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519.pub");
+                Path defaultKeyPath = Path.of(config.sshKeyPath() + ".pub");
                 if (Files.exists(defaultKeyPath)) {
                     sshPubKey = Files.readString(defaultKeyPath).trim();
                     log.info("Using SSH public key from {}", defaultKeyPath);
@@ -212,7 +212,7 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                 userData.append("      - ").append(sshPubKey).append("\n");
             } else {
                 log.warn("No SSH public key configured - VM will not be accessible via SSH key auth. " +
-                    "Set ORCHARD_SSH_PUBLIC_KEY or place key at ~/.ssh/orchard_ed25519.pub");
+                    "Set orchard.qemu.ssh-public-key or place key at {}.pub", config.sshKeyPath());
             }
             userData.append("packages:\n");
             userData.append("  - docker.io\n");
@@ -277,6 +277,11 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         return config.qemuBinary().toString().contains("aarch64");
     }
 
+    private boolean isKvmAccessible() {
+        var kvm = java.nio.file.Paths.get("/dev/kvm");
+        return Files.exists(kvm) && Files.isReadable(kvm) && Files.isWritable(kvm);
+    }
+
     private Process startQemuProcess(Seedling seedling, Path diskImage, Path cloudInitIso, int sshPort)
             throws IOException {
         var spec = seedling.spec();
@@ -308,23 +313,26 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         cmd.add("-nographic");
 
         Path vmDir = diskImage.getParent();
-        if ("file".equalsIgnoreCase(config.serialOutput())) {
-            Path serialLog = vmDir.resolve("serial.log");
-            cmd.add("-serial"); cmd.add("file:" + serialLog);
+        String serialOutput = spec.serialOutput() != null ? spec.serialOutput() : config.serialOutput();
+        if ("file".equalsIgnoreCase(serialOutput)) {
+            cmd.add("-serial"); cmd.add("file:" + vmDir.resolve("serial.log"));
         } else {
             cmd.add("-serial"); cmd.add("mon:stdio");
         }
 
         if (config.enableKvm()) {
-            cmd.add("-enable-kvm");
+            if (isKvmAccessible()) {
+                cmd.add("-enable-kvm");
+            } else {
+                log.warn("KVM enabled in config but /dev/kvm is not accessible — falling back to TCG (software emulation). " +
+                    "Add user to the kvm group for hardware acceleration.");
+            }
         }
 
+        Path qemuLog = vmDir.resolve("qemu.log");
         ProcessBuilder pb = new ProcessBuilder(cmd);
-        if ("file".equalsIgnoreCase(config.serialOutput())) {
-            Path qemuLog = vmDir.resolve("qemu.log");
-            pb.redirectOutput(qemuLog.toFile());
-            pb.redirectErrorStream(true);
-        }
+        pb.redirectOutput(qemuLog.toFile());
+        pb.redirectErrorStream(true);
         log.info("Starting QEMU: {}", String.join(" ", pb.command()));
         return pb.start();
     }
@@ -375,8 +383,7 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         }
 
         // Phase 2: Wait for actual SSH authentication to work (cloud-init must finish)
-        java.nio.file.Path orchardKey = java.nio.file.Path.of(
-            System.getProperty("user.home"), ".ssh", "orchard_ed25519");
+        java.nio.file.Path orchardKey = config.sshKeyPath();
         int maxAuthAttempts = 30;
         for (int i = 0; i < maxAuthAttempts; i++) {
             try {

@@ -29,7 +29,6 @@ public class QemuEnvironmentInitializer {
 
     private static final Logger log = LoggerFactory.getLogger(QemuEnvironmentInitializer.class);
     private static final String RESIZE_TARGET = "20G";
-    private static final Path SSH_KEY_PATH = Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519");
 
     /**
      * Main entry point. Validates QEMU prerequisites and optionally provisions
@@ -169,28 +168,29 @@ public class QemuEnvironmentInitializer {
      * generates a new ed25519 key pair.
      */
     private void provisionSshKey(QemuConfig config) {
-        if (Files.exists(SSH_KEY_PATH)) {
-            log.info("Orchard SSH key found at {}", SSH_KEY_PATH);
+        Path sshKeyPath = config.sshKeyPath();
+        if (Files.exists(sshKeyPath)) {
+            log.info("Orchard SSH key found at {}", sshKeyPath);
             return;
         }
 
         if (!config.autoProvision()) {
             log.warn("Orchard SSH key not found at {}. Generate one with: ssh-keygen -t ed25519 -f {} -N \"\" -C \"orchard-cde\"",
-                    SSH_KEY_PATH, SSH_KEY_PATH);
+                    sshKeyPath, sshKeyPath);
             return;
         }
 
-        log.info("Generating Orchard SSH key pair at {}...", SSH_KEY_PATH);
+        log.info("Generating Orchard SSH key pair at {}...", sshKeyPath);
         try {
             // Ensure .ssh directory exists
-            Files.createDirectories(SSH_KEY_PATH.getParent());
+            Files.createDirectories(sshKeyPath.getParent());
 
             runCommand("ssh-keygen", "-t", "ed25519",
-                    "-f", SSH_KEY_PATH.toString(),
+                    "-f", sshKeyPath.toString(),
                     "-N", "",
                     "-C", "orchard-cde");
 
-            Path publicKeyPath = Path.of(SSH_KEY_PATH + ".pub");
+            Path publicKeyPath = Path.of(sshKeyPath + ".pub");
             log.info("SSH key pair generated. Public key: {}", publicKeyPath);
 
         } catch (IOException e) {

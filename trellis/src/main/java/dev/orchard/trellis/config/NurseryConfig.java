@@ -49,6 +49,7 @@ public class NurseryConfig {
             .sshPublicKey(props.getSshPublicKey())
             .serialOutput(props.getSerialOutput())
             .autoProvision(props.isAutoProvision())
+            .sshKeyPath(Path.of(props.getSshKeyPath()))
             .build();
     }
 
@@ -199,6 +200,7 @@ public class NurseryConfig {
         private String sshPublicKey = "";
         private String serialOutput = QemuPlatformDefaults.defaultSerialOutput();
         private boolean autoProvision = true;
+        private String sshKeyPath = QemuPlatformDefaults.defaultSshKeyPath().toString();
 
         public String getQemuBinary() { return qemuBinary; }
         public void setQemuBinary(String qemuBinary) { this.qemuBinary = qemuBinary; }
@@ -232,6 +234,9 @@ public class NurseryConfig {
 
         public boolean isAutoProvision() { return autoProvision; }
         public void setAutoProvision(boolean autoProvision) { this.autoProvision = autoProvision; }
+
+        public String getSshKeyPath() { return sshKeyPath; }
+        public void setSshKeyPath(String sshKeyPath) { this.sshKeyPath = sshKeyPath; }
     }
 
     public static class AwsConfigProperties {

@@ -53,7 +53,7 @@ class GroveServiceTest {
     void plantGrove_createsGroveInPlantingState() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/my-repo", "main", null, null);
+            var request = new CreateGroveRequest("https://github.com/user/my-repo", "main", null, null, null);
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
@@ -68,7 +68,7 @@ class GroveServiceTest {
     void plantGrove_autoGeneratesNameFromRepoUrl() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/my-repo.git", "develop", null, null);
+            var request = new CreateGroveRequest("https://github.com/user/my-repo.git", "develop", null, null, null);
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
@@ -80,7 +80,7 @@ class GroveServiceTest {
     void plantGrove_usesProvidedName() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/repo", "main", "custom-name", null);
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", "custom-name", null, null);
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
@@ -92,7 +92,7 @@ class GroveServiceTest {
     void plantGrove_defaultsToSmallMachineSize() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null);
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null, null);
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
@@ -105,7 +105,7 @@ class GroveServiceTest {
     void plantGrove_respectsMediumMachineSize() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, "medium");
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, "medium", null);
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
@@ -117,7 +117,7 @@ class GroveServiceTest {
     void plantGrove_respectsLargeMachineSize() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, "large");
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, "large", null);
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
@@ -129,7 +129,7 @@ class GroveServiceTest {
     void plantGrove_callsEnsureCultivator() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null);
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null, null);
 
             groveService.plantGrove(cultivatorId, request);
 
@@ -141,7 +141,7 @@ class GroveServiceTest {
     void plantGrove_savesGroveEntity() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null);
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null, null);
 
             groveService.plantGrove(cultivatorId, request);
 
@@ -156,7 +156,7 @@ class GroveServiceTest {
     void plantGrove_createsSeedlingInGerminatingState() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
-            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null);
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null, null);
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 

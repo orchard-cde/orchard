@@ -111,6 +111,8 @@ orchard:
     # QemuPlatformDefaults so macOS uses HVF (enable-kvm=false, serial=file)
     # and Linux uses KVM (enable-kvm=true, serial=stdio).
     ssh-public-key: ${ORCHARD_SSH_PUBLIC_KEY:}
+    # ssh-key-path defaults to ~/.ssh/orchard_ed25519 (via QemuPlatformDefaults)
+    # ssh-key-path: /home/user/.ssh/orchard_ed25519
     auto-provision: true
 
 logging:

@@ -75,9 +75,9 @@ public class GroveService {
 
         // Determine seedling spec
         Seedling.SeedlingSpec spec = switch (request.machineSize()) {
-            case "medium" -> Seedling.SeedlingSpec.medium();
-            case "large" -> Seedling.SeedlingSpec.large();
-            default -> Seedling.SeedlingSpec.small();
+            case "medium" -> new Seedling.SeedlingSpec(4, 8192, 40, "medium", request.serialOutput());
+            case "large" -> new Seedling.SeedlingSpec(8, 16384, 80, "large", request.serialOutput());
+            default -> new Seedling.SeedlingSpec(2, 4096, 20, "small", request.serialOutput());
         };
 
         // Create seedling
@@ -449,7 +449,7 @@ public class GroveService {
                 entity.getSeedlingIpAddress(),
                 entity.getSeedlingSshPort() != null ? entity.getSeedlingSshPort() : 22,
                 entity.getSeedlingState(),
-                new Seedling.SeedlingSpec(2, 4096, 20, "small"),
+                new Seedling.SeedlingSpec(2, 4096, 20, "small", null),
                 entity.getPlantedAt(),
                 null
             );
