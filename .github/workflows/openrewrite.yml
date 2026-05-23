@@ -50,7 +50,7 @@ jobs:
 
       - name: Open pull request
         if: ${{ !inputs.dry_run }}
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: 'chore: apply OpenRewrite recipes'
           title: 'chore: apply OpenRewrite recipes'
