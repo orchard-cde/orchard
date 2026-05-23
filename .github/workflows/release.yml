@@ -13,6 +13,7 @@ jobs:
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - label: linux-amd64
@@ -52,14 +53,18 @@ jobs:
       - name: Smoke test trowel
         run: |
           echo "=== trowel --version ==="
-          ./trowel/build/native/nativeCompile/trowel --version
+          BIN=./trowel/build/native/nativeCompile/trowel
+          $BIN --version
+          $BIN --version | grep -q "${{ steps.version.outputs.version }}" && echo "Version matches tag"
           echo "=== trowel --help ==="
-          ./trowel/build/native/nativeCompile/trowel --help
+          file $BIN
+          $BIN --help
 
       - name: Smoke test orchard-server
         run: |
-          echo "=== orchard-server --help ==="
-          ./trellis/build/native/nativeCompile/orchard-server --help
+          echo "=== orchard-server binary verification ==="
+          file trellis/build/native/nativeCompile/orchard-server
+          strings trellis/build/native/nativeCompile/orchard-server | grep -q "${{ steps.version.outputs.version }}" && echo "Version string found in binary"
 
       - name: Package artifacts
         run: |
