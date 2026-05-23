@@ -22,7 +22,7 @@ dependencies {
     "integrationTestImplementation"("info.picocli:picocli:4.7.7")
     "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-test")
     "integrationTestImplementation"("org.springframework.boot:spring-boot-resttestclient")
-    "integrationTestImplementation"("org.awaitility:awaitility:4.2.0")
+    "integrationTestImplementation"("org.awaitility:awaitility:4.3.0")
     "integrationTestImplementation"(platform("org.junit:junit-bom:5.11.4"))
     "integrationTestImplementation"("org.junit.jupiter:junit-jupiter")
     "integrationTestImplementation"("org.assertj:assertj-core:3.27.7")
