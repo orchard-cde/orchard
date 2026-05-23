@@ -9,6 +9,7 @@ graalvmNative {
             imageName.set("trowel")
             mainClass.set("dev.orchard.trowel.Trowel")
             buildArgs.add("--no-fallback")
+            buildArgs.add("-H:IncludeResources=version\\.properties")
         }
     }
 }
