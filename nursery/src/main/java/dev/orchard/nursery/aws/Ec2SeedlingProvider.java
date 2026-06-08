@@ -28,7 +28,7 @@ import java.util.concurrent.Executors;
  * <i>not</i> terminated (matches QEMU's leak-and-return-BLIGHTED behavior;
  * operators are expected to clean up via the AWS console).
  */
-public class Ec2SeedlingProvider implements SeedlingProvider {
+public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Ec2SeedlingProvider.class);
     private static final String PROVIDER_ID = "aws-ec2";
@@ -91,6 +91,8 @@ public class Ec2SeedlingProvider implements SeedlingProvider {
                     seedling.plantedAt(),
                     Instant.now()
                 );
+            // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
+            // and surface as RuntimeException, caught below.
             } catch (Exception e) {
                 log.error("Failed to plant seedling {} (instance={}): {}",
                     seedling.id(), instanceId, e.getMessage(), e);
@@ -109,6 +111,8 @@ public class Ec2SeedlingProvider implements SeedlingProvider {
                 String ip = selectIp(desc);
                 return seedling.withProviderDetails(seedling.providerInstanceId(), ip)
                     .withState(SeedlingState.SAPLING);
+            // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
+            // and surface as RuntimeException, caught below.
             } catch (Exception e) {
                 log.error("Failed to water seedling {} (instance={}): {}",
                     seedling.id(), seedling.providerInstanceId(), e.getMessage(), e);
@@ -185,6 +189,16 @@ public class Ec2SeedlingProvider implements SeedlingProvider {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Shuts down the virtual-thread executor. Called by Spring on context shutdown
+     * when the provider bean is destroyed.
+     */
+    @Override
+    public void close() {
+        log.info("Shutting down EC2 seedling provider executor");
+        executor.shutdown();
     }
 
     private String readPublicKey() {

@@ -265,6 +265,21 @@ class Ec2SeedlingProviderTest {
     }
 
     @Test
+    void inspect_mapsUnknownToCurrentState() {
+        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
+            .withState(SeedlingState.SAPLING);
+        when(ops.describeInstance("i-abc")).thenReturn(
+            new InstanceDescription("i-abc", AwsInstanceState.UNKNOWN, null, null));
+
+        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .inspect(planted).join();
+
+        // UNKNOWN: preserve current state rather than mapping to a fixed lifecycle state.
+        // We don't know what's happening; a later inspect should resolve to a real state.
+        assertThat(result.state()).isEqualTo(SeedlingState.SAPLING);
+    }
+
+    @Test
     void inspect_instanceNotFound_returnsWithered() {
         Seedling planted = germinated.withProviderDetails("i-gone", "1.2.3.4")
             .withState(SeedlingState.SAPLING);
@@ -297,6 +312,19 @@ class Ec2SeedlingProviderTest {
             Map.of(2, "t3.small"),
             Ec2Config.IpMode.AUTO,
             tempDir.resolve("nonexistent-key")
+        );
+
+        assertThat(new Ec2SeedlingProvider(config, ops, waiter).isAvailable()).isFalse();
+        verifyNoInteractions(ops);
+    }
+
+    @Test
+    void isAvailable_falseWhenSshKeyPathNull() {
+        Ec2Config config = new Ec2Config(
+            "us-east-1", "ami-1", "key-1", "sg-1", "subnet-1",
+            Map.of(2, "t3.small"),
+            Ec2Config.IpMode.AUTO,
+            (Path) null  // explicitly null sshKeyPath
         );
 
         assertThat(new Ec2SeedlingProvider(config, ops, waiter).isAvailable()).isFalse();
