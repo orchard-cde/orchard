@@ -71,7 +71,9 @@ public class NurseryConfig {
             props.getKeyPairName(),
             props.getSecurityGroupId(),
             props.getSubnetId(),
-            props.getInstanceTypeMapping()
+            props.getInstanceTypeMapping(),
+            Ec2Config.IpMode.parse(props.getIpMode()),
+            props.getSshKeyPath() == null ? null : java.nio.file.Path.of(props.getSshKeyPath())
         );
     }
 
@@ -268,6 +270,15 @@ public class NurseryConfig {
 
         public Map<Integer, String> getInstanceTypeMapping() { return instanceTypeMapping; }
         public void setInstanceTypeMapping(Map<Integer, String> instanceTypeMapping) { this.instanceTypeMapping = instanceTypeMapping; }
+
+        private String ipMode = "AUTO";
+        private String sshKeyPath;
+
+        public String getIpMode() { return ipMode; }
+        public void setIpMode(String ipMode) { this.ipMode = ipMode; }
+
+        public String getSshKeyPath() { return sshKeyPath; }
+        public void setSshKeyPath(String sshKeyPath) { this.sshKeyPath = sshKeyPath; }
     }
 
     public static class GcpConfigProperties {
