@@ -67,7 +67,7 @@ orchard:
   #     4: t3.medium
   #     8: t3.xlarge
   #   ip-mode: AUTO                       # AUTO (default), PUBLIC, or PRIVATE
-  #   ssh-key-path: ~/.ssh/orchard_ed25519  # public key (.pub variant) injected into cloud-init
+  #   ssh-key-path: ~/.ssh/orchard_ed25519  # path to private key; the matching .pub is read and injected into cloud-init
 
   # GCP Compute Engine provider configuration
   # Uncomment and configure to enable:
