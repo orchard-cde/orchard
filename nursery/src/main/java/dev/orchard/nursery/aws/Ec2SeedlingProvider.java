@@ -32,6 +32,7 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Ec2SeedlingProvider.class);
     private static final String PROVIDER_ID = "aws-ec2";
+    private static final int SSH_PORT = 22;
 
     private final Ec2Config config;
     private final Ec2Operations operations;
@@ -78,14 +79,14 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
                 InstanceDescription desc = operations.describeInstance(instanceId);
                 String ip = selectIp(desc);
 
-                waiter.awaitSshReady(ip, 22);
+                waiter.awaitSshReady(ip, SSH_PORT);
 
                 return new Seedling(
                     seedling.id(),
                     seedling.groveId(),
                     instanceId,
                     ip,
-                    22,
+                    SSH_PORT,
                     SeedlingState.SAPLING,
                     seedling.spec(),
                     seedling.plantedAt(),

@@ -80,7 +80,7 @@ public class NurseryConfig {
             props.getSubnetId(),
             props.getInstanceTypeMapping(),
             Ec2Config.IpMode.parse(props.getIpMode()),
-            props.getSshKeyPath() == null ? null : Path.of(props.getSshKeyPath())
+            resolveSshKeyPath(props.getSshKeyPath())
         );
     }
 
@@ -110,6 +110,13 @@ public class NurseryConfig {
             Duration.ofSeconds(5),    // ssh poll interval
             Ec2InstanceWaiter.shellSshProbe(config.sshKeyPath())
         );
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
+    public Ec2SeedlingProvider ec2SeedlingProvider(
+            Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter) {
+        return new Ec2SeedlingProvider(config, operations, waiter);
     }
 
     // --- GCP Compute ---
@@ -159,9 +166,7 @@ public class NurseryConfig {
     public ProviderRegistry providerRegistry(
             @Value("${orchard.nursery.provider:qemu}") String defaultProvider,
             QemuConfig qemuConfig,
-            org.springframework.beans.factory.ObjectProvider<Ec2Config> ec2Config,
-            org.springframework.beans.factory.ObjectProvider<Ec2Operations> ec2Operations,
-            org.springframework.beans.factory.ObjectProvider<Ec2InstanceWaiter> ec2InstanceWaiter,
+            org.springframework.beans.factory.ObjectProvider<Ec2SeedlingProvider> ec2SeedlingProvider,
             org.springframework.beans.factory.ObjectProvider<ComputeConfig> computeConfig,
             org.springframework.beans.factory.ObjectProvider<AzureConfig> azureConfig) {
 
@@ -172,15 +177,11 @@ public class NurseryConfig {
         registry.register(qemuProvider);
         log.info("Registered seedling provider: {}", qemuProvider.getProviderId());
 
-        // Conditionally register AWS EC2
-        Ec2Config awsConfig = ec2Config.getIfAvailable();
-        Ec2Operations awsOps = ec2Operations.getIfAvailable();
-        Ec2InstanceWaiter awsWaiter = ec2InstanceWaiter.getIfAvailable();
-        if (awsConfig != null && awsOps != null && awsWaiter != null) {
-            Ec2SeedlingProvider ec2Provider = new Ec2SeedlingProvider(awsConfig, awsOps, awsWaiter);
-            registry.register(ec2Provider);
-            log.info("Registered seedling provider: {}", ec2Provider.getProviderId());
-        }
+        // Conditionally register AWS EC2 — Spring instantiates and manages the bean lifecycle.
+        ec2SeedlingProvider.ifAvailable(provider -> {
+            registry.register(provider);
+            log.info("Registered seedling provider: {}", provider.getProviderId());
+        });
 
         // Conditionally register GCP Compute
         computeConfig.ifAvailable(config -> {
@@ -213,6 +214,16 @@ public class NurseryConfig {
     @Bean
     public FruitGrower fruitGrower() {
         return new FruitGrower();
+    }
+
+    private static java.nio.file.Path resolveSshKeyPath(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String expanded = raw.startsWith("~/") || raw.equals("~")
+            ? System.getProperty("user.home") + raw.substring(1)
+            : raw;
+        return java.nio.file.Path.of(expanded);
     }
 
     /**
