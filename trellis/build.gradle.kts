@@ -3,6 +3,13 @@ plugins {
     id("org.graalvm.buildtools.native")
 }
 
+configurations.all {
+    // AWS SDK service modules pull apache-client and netty-nio-client transitively.
+    // We use UrlConnectionHttpClient (smallest native-image surface), so exclude both.
+    exclude(group = "software.amazon.awssdk", module = "apache-client")
+    exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+}
+
 graalvmNative {
     binaries {
         named("main") {
@@ -28,6 +35,12 @@ dependencies {
     implementation(project(":nursery"))
     implementation(project(":greenhouse"))
     implementation(project(":api"))
+
+    // AWS SDK needed to wire Ec2Client / Ec2Operations / Ec2InstanceWaiter beans in NurseryConfig.
+    // nursery declares these as `implementation` (not `api`), so we must repeat them here.
+    implementation(platform("software.amazon.awssdk:bom:2.30.0"))
+    implementation("software.amazon.awssdk:ec2")
+    implementation("software.amazon.awssdk:url-connection-client")
 
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-websocket")

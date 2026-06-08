@@ -58,7 +58,7 @@ orchard:
   # Uncomment and configure to enable:
   # aws:
   #   region: us-east-1
-  #   ami-id: ami-0123456789abcdef0
+  #   ami-id: ami-0123456789abcdef0       # vanilla Ubuntu LTS recommended
   #   key-pair-name: orchard-keypair
   #   security-group-id: sg-0123456789abcdef0
   #   subnet-id: subnet-0123456789abcdef0
@@ -66,6 +66,8 @@ orchard:
   #     2: t3.small
   #     4: t3.medium
   #     8: t3.xlarge
+  #   ip-mode: AUTO                       # AUTO (default), PUBLIC, or PRIVATE
+  #   ssh-key-path: ~/.ssh/orchard_ed25519  # public key (.pub variant) injected into cloud-init
 
   # GCP Compute Engine provider configuration
   # Uncomment and configure to enable:
