@@ -8,7 +8,8 @@ import dev.orchard.nursery.aws.Ec2Config;
 import dev.orchard.nursery.aws.Ec2InstanceWaiter;
 import dev.orchard.nursery.aws.Ec2Operations;
 import dev.orchard.nursery.aws.Ec2SeedlingProvider;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,20 +40,21 @@ class Ec2ProviderIntegrationTest {
 
     @Container
     static LocalStackContainer localstack =
-        new LocalStackContainer(DockerImageName.parse("localstack/localstack:3"))
+        new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.8.0"))
             .withServices(LocalStackContainer.Service.EC2);
 
     @TempDir
     static Path tempDir;
 
-    private Ec2Client rawClient;
-    private Ec2Operations ops;
-    private Ec2SeedlingProvider provider;
-    private String securityGroupId;
-    private String subnetId;
+    // class-scoped resources — created once in @BeforeAll, torn down in @AfterAll
+    private static Ec2Client rawClient;
+    private static Ec2Operations ops;
+    private static Ec2SeedlingProvider provider;
+    private static String securityGroupId;
+    private static String subnetId;
 
-    @BeforeEach
-    void setUp() throws Exception {
+    @BeforeAll
+    static void setUpAll() throws Exception {
         Path keyPath = tempDir.resolve("orchard_int_ed25519");
         Files.writeString(keyPath, "private-fake");
         Files.writeString(Path.of(keyPath + ".pub"), "ssh-ed25519 AAAA testkey orchard@int");
@@ -105,8 +107,18 @@ class Ec2ProviderIntegrationTest {
         provider = new Ec2SeedlingProvider(config, ops, waiter);
     }
 
+    @AfterAll
+    static void tearDownAll() {
+        if (provider != null) {
+            provider.close();
+        }
+        if (rawClient != null) {
+            rawClient.close();
+        }
+    }
+
     @Test
-    void provider_planAttempt_doesNotCrashAgainstLocalStack() {
+    void provider_plant_completesWithoutUnhandledExceptionAgainstLocalStack() {
         Seedling germinated = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
 
         // LocalStack does not bind a real socket on the instance's IP, so the SSH wait
