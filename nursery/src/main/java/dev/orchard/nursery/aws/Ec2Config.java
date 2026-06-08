@@ -15,6 +15,8 @@ import java.util.Map;
  * @param ipMode              How to select the instance's IP address for SSH
  * @param sshKeyPath          Path to the orchard private SSH key. The matching public key
  *                            ({@code <sshKeyPath>.pub}) is injected into cloud-init.
+ *                            May be {@code null}; in that case {@code Ec2SeedlingProvider.isAvailable()}
+ *                            returns false rather than throwing at construction time.
  */
 public record Ec2Config(
     String region,
@@ -53,7 +55,12 @@ public record Ec2Config(
             if (value == null || value.isBlank()) {
                 return AUTO;
             }
-            return IpMode.valueOf(value.trim().toUpperCase());
+            try {
+                return IpMode.valueOf(value.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                    "Invalid ip-mode '" + value + "'. Valid values: AUTO, PUBLIC, PRIVATE", e);
+            }
         }
     }
 }

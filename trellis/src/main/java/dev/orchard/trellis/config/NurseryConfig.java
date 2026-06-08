@@ -73,7 +73,7 @@ public class NurseryConfig {
             props.getSubnetId(),
             props.getInstanceTypeMapping(),
             Ec2Config.IpMode.parse(props.getIpMode()),
-            props.getSshKeyPath() == null ? null : java.nio.file.Path.of(props.getSshKeyPath())
+            props.getSshKeyPath() == null ? null : Path.of(props.getSshKeyPath())
         );
     }
 
@@ -252,6 +252,8 @@ public class NurseryConfig {
             4, "t3.medium",
             8, "t3.xlarge"
         );
+        private String ipMode = "AUTO";
+        private String sshKeyPath;
 
         public String getRegion() { return region; }
         public void setRegion(String region) { this.region = region; }
@@ -270,9 +272,6 @@ public class NurseryConfig {
 
         public Map<Integer, String> getInstanceTypeMapping() { return instanceTypeMapping; }
         public void setInstanceTypeMapping(Map<Integer, String> instanceTypeMapping) { this.instanceTypeMapping = instanceTypeMapping; }
-
-        private String ipMode = "AUTO";
-        private String sshKeyPath;
 
         public String getIpMode() { return ipMode; }
         public void setIpMode(String ipMode) { this.ipMode = ipMode; }

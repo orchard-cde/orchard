@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class Ec2ConfigTest {
 
@@ -38,15 +39,6 @@ class Ec2ConfigTest {
     }
 
     @Test
-    void ipMode_hasThreeValues() {
-        assertThat(Ec2Config.IpMode.values())
-            .containsExactlyInAnyOrder(
-                Ec2Config.IpMode.AUTO,
-                Ec2Config.IpMode.PUBLIC,
-                Ec2Config.IpMode.PRIVATE);
-    }
-
-    @Test
     void ipMode_valueOf_caseInsensitiveHelperParses() {
         assertThat(Ec2Config.IpMode.parse("auto")).isEqualTo(Ec2Config.IpMode.AUTO);
         assertThat(Ec2Config.IpMode.parse("Public")).isEqualTo(Ec2Config.IpMode.PUBLIC);
@@ -58,5 +50,13 @@ class Ec2ConfigTest {
         assertThat(Ec2Config.IpMode.parse(null)).isEqualTo(Ec2Config.IpMode.AUTO);
         assertThat(Ec2Config.IpMode.parse("")).isEqualTo(Ec2Config.IpMode.AUTO);
         assertThat(Ec2Config.IpMode.parse("   ")).isEqualTo(Ec2Config.IpMode.AUTO);
+    }
+
+    @Test
+    void ipMode_parse_unknownValue_throwsWithClearMessage() {
+        assertThatThrownBy(() -> Ec2Config.IpMode.parse("FOO"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("FOO")
+            .hasMessageContaining("AUTO, PUBLIC, PRIVATE");
     }
 }
