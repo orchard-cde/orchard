@@ -2,6 +2,14 @@ plugins {
     `java-library`
 }
 
+configurations.all {
+    // AWS SDK service modules pull apache-client and netty-nio-client transitively.
+    // We use UrlConnectionHttpClient (smallest native-image surface), so exclude both
+    // to keep the classpath minimal and avoid HTTP-client ambiguity.
+    exclude(group = "software.amazon.awssdk", module = "apache-client")
+    exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+}
+
 dependencies {
     api(project(":core"))
 
@@ -10,11 +18,6 @@ dependencies {
     implementation(platform("software.amazon.awssdk:bom:2.30.0"))
     implementation("software.amazon.awssdk:ec2")
     implementation("software.amazon.awssdk:url-connection-client")
-    implementation("software.amazon.awssdk:apache-client") {
-        // We use UrlConnectionHttpClient (native-image friendly). Exclude Apache HTTP
-        // client which is the SDK's transitive default.
-        isTransitive = false
-    }
     runtimeOnly("software.amazon.awssdk:sts") // for default credential chain (web-identity tokens)
 
     testRuntimeOnly("org.slf4j:slf4j-simple")
