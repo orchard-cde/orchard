@@ -125,6 +125,20 @@ class DefaultEc2OperationsTest {
     }
 
     @Test
+    void describeInstance_nonNotFoundAwsError_propagates() {
+        AwsServiceException authFailure = (AwsServiceException) Ec2Exception.builder()
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("AuthFailure").build())
+            .message("not authorized")
+            .build();
+        when(client.describeInstances(any(DescribeInstancesRequest.class))).thenThrow(authFailure);
+
+        assertThatThrownBy(() -> ops.describeInstance("i-anything"))
+            .isInstanceOf(AwsServiceException.class)
+            .isNotInstanceOf(InstanceNotFoundException.class)
+            .hasMessageContaining("not authorized");
+    }
+
+    @Test
     void terminateInstance_sendsCorrectRequest() {
         ops.terminateInstance("i-abc");
 
@@ -156,6 +170,33 @@ class DefaultEc2OperationsTest {
             ArgumentCaptor.forClass(StartInstancesRequest.class);
         verify(client).startInstances(captor.capture());
         assertThat(captor.getValue().instanceIds()).containsExactly("i-abc");
+    }
+
+    @Test
+    void startInstance_nonIncorrectStateAwsError_propagates() {
+        AwsServiceException authFailure = (AwsServiceException) Ec2Exception.builder()
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("AuthFailure").build())
+            .message("not authorized")
+            .build();
+        when(client.startInstances(any(StartInstancesRequest.class))).thenThrow(authFailure);
+
+        assertThatThrownBy(() -> ops.startInstance("i-anything"))
+            .isInstanceOf(AwsServiceException.class)
+            .hasMessageContaining("not authorized");
+    }
+
+    @Test
+    void startInstance_swallowsIncorrectInstanceState() {
+        AwsServiceException already = (AwsServiceException) Ec2Exception.builder()
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("IncorrectInstanceState").build())
+            .message("already running")
+            .build();
+        when(client.startInstances(any(StartInstancesRequest.class))).thenThrow(already);
+
+        // Must not throw
+        ops.startInstance("i-running");
+
+        verify(client).startInstances(any(StartInstancesRequest.class));
     }
 
     @Test

@@ -27,6 +27,7 @@ public class DefaultEc2Operations implements Ec2Operations {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultEc2Operations.class);
     private static final String NOT_FOUND_CODE = "InvalidInstanceID.NotFound";
+    private static final String INCORRECT_STATE_CODE = "IncorrectInstanceState";
 
     private final Ec2Client client;
 
@@ -77,7 +78,7 @@ public class DefaultEc2Operations implements Ec2Operations {
                 instance.privateIpAddress()
             );
         } catch (AwsServiceException e) {
-            if (isNotFound(e)) {
+            if (isErrorCode(e, NOT_FOUND_CODE)) {
                 throw new InstanceNotFoundException(instanceId, e);
             }
             throw e;
@@ -91,8 +92,8 @@ public class DefaultEc2Operations implements Ec2Operations {
                 .instanceIds(instanceId)
                 .build());
         } catch (AwsServiceException e) {
-            if (isNotFound(e)) {
-                log.debug("Instance {} already terminated, swallowing NotFound", instanceId);
+            if (isErrorCode(e, NOT_FOUND_CODE)) {
+                log.info("Instance {} already terminated; treating as success", instanceId);
                 return;
             }
             throw e;
@@ -106,10 +107,8 @@ public class DefaultEc2Operations implements Ec2Operations {
                 .instanceIds(instanceId)
                 .build());
         } catch (AwsServiceException e) {
-            if (e.awsErrorDetails() != null
-                    && "IncorrectInstanceState".equals(e.awsErrorDetails().errorCode())) {
-                log.debug("Instance {} already running or pending, swallowing IncorrectInstanceState",
-                    instanceId);
+            if (isErrorCode(e, INCORRECT_STATE_CODE)) {
+                log.info("Instance {} already running or pending; treating as success", instanceId);
                 return;
             }
             throw e;
@@ -127,8 +126,7 @@ public class DefaultEc2Operations implements Ec2Operations {
         }
     }
 
-    private static boolean isNotFound(AwsServiceException e) {
-        return e.awsErrorDetails() != null
-            && NOT_FOUND_CODE.equals(e.awsErrorDetails().errorCode());
+    private static boolean isErrorCode(AwsServiceException e, String code) {
+        return e.awsErrorDetails() != null && code.equals(e.awsErrorDetails().errorCode());
     }
 }
