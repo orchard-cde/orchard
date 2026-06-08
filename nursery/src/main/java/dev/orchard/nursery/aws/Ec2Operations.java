@@ -13,6 +13,9 @@ public interface Ec2Operations {
     /**
      * Launches a single EC2 instance.
      * @return the instance id of the launched instance (e.g. {@code i-0abc...})
+     * @throws RuntimeException (typically wrapping an AWS SDK exception) if the
+     *     instance could not be launched — common causes: insufficient capacity,
+     *     IAM permission denied, invalid subnet, or AMI/region mismatch.
      */
     String runInstance(RunInstanceParams params);
 
@@ -31,7 +34,9 @@ public interface Ec2Operations {
     void terminateInstance(String instanceId);
 
     /**
-     * Starts a stopped EC2 instance.
+     * Starts a stopped EC2 instance. Implementations should swallow
+     * {@code IncorrectInstanceState} errors when the instance is already running
+     * or pending — making this idempotent for concurrent {@code water} / {@code plant} calls.
      */
     void startInstance(String instanceId);
 
@@ -80,15 +85,18 @@ public interface Ec2Operations {
         SHUTTING_DOWN,
         STOPPING,
         STOPPED,
-        TERMINATED;
+        TERMINATED,
+        /** AWS reported a state we don't recognize. Consumers should fail fast rather than poll. */
+        UNKNOWN;
 
         /**
          * Maps an SDK state-name string (e.g. {@code "running"}, {@code "shutting-down"})
-         * to a value here. Unknown values map to {@link #PENDING} (conservative —
-         * treat as "not yet ready").
+         * to a value here. Null or unrecognized values map to {@link #UNKNOWN} so the
+         * caller can fail fast — mapping unknowns to {@code PENDING} would cause the
+         * instance waiter to poll forever on a state that will never resolve.
          */
         public static AwsInstanceState fromSdkName(String name) {
-            if (name == null) return PENDING;
+            if (name == null) return UNKNOWN;
             return switch (name) {
                 case "pending" -> PENDING;
                 case "running" -> RUNNING;
@@ -96,7 +104,7 @@ public interface Ec2Operations {
                 case "stopping" -> STOPPING;
                 case "stopped" -> STOPPED;
                 case "terminated" -> TERMINATED;
-                default -> PENDING;
+                default -> UNKNOWN;
             };
         }
     }
@@ -108,6 +116,9 @@ public interface Ec2Operations {
     class InstanceNotFoundException extends RuntimeException {
         public InstanceNotFoundException(String instanceId) {
             super("EC2 instance not found: " + instanceId);
+        }
+        public InstanceNotFoundException(String instanceId, Throwable cause) {
+            super("EC2 instance not found: " + instanceId, cause);
         }
     }
 }
