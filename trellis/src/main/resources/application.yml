@@ -54,11 +54,15 @@ orchard:
     # Default provider: qemu, aws, gcp, azure
     provider: qemu
 
-  # AWS EC2 provider configuration
+  # AWS EC2 provider configuration.
+  # Required IAM permissions:
+  #   ec2:RunInstances, ec2:DescribeInstances, ec2:TerminateInstances,
+  #   ec2:StartInstances, ec2:DescribeRegions, ec2:CreateTags
+  # Credentials are resolved via the AWS SDK default chain (env vars, profile, IMDS, IRSA).
   # Uncomment and configure to enable:
   # aws:
   #   region: us-east-1
-  #   ami-id: ami-0123456789abcdef0
+  #   ami-id: ami-0123456789abcdef0       # vanilla Ubuntu LTS recommended
   #   key-pair-name: orchard-keypair
   #   security-group-id: sg-0123456789abcdef0
   #   subnet-id: subnet-0123456789abcdef0
@@ -66,6 +70,8 @@ orchard:
   #     2: t3.small
   #     4: t3.medium
   #     8: t3.xlarge
+  #   ip-mode: AUTO                       # AUTO (default), PUBLIC, or PRIVATE
+  #   ssh-key-path: ~/.ssh/orchard_ed25519  # path to private key (tilde is expanded); the matching .pub is read and injected into cloud-init
 
   # GCP Compute Engine provider configuration
   # Uncomment and configure to enable:

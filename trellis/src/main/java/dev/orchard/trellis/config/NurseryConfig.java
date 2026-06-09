@@ -2,8 +2,14 @@ package dev.orchard.trellis.config;
 
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
+import dev.orchard.nursery.aws.DefaultEc2Operations;
 import dev.orchard.nursery.aws.Ec2Config;
+import dev.orchard.nursery.aws.Ec2InstanceWaiter;
+import dev.orchard.nursery.aws.Ec2Operations;
 import dev.orchard.nursery.aws.Ec2SeedlingProvider;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.ec2.Ec2Client;
 import dev.orchard.nursery.azure.AzureConfig;
 import dev.orchard.nursery.azure.AzureVmSeedlingProvider;
 import dev.orchard.nursery.gcp.ComputeConfig;
@@ -20,6 +26,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
 
 @Configuration
@@ -71,8 +78,45 @@ public class NurseryConfig {
             props.getKeyPairName(),
             props.getSecurityGroupId(),
             props.getSubnetId(),
-            props.getInstanceTypeMapping()
+            props.getInstanceTypeMapping(),
+            Ec2Config.IpMode.parse(props.getIpMode()),
+            resolveSshKeyPath(props.getSshKeyPath())
         );
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
+    public Ec2Client ec2Client(Ec2Config config) {
+        return Ec2Client.builder()
+            .region(Region.of(config.region()))
+            .httpClient(UrlConnectionHttpClient.create())
+            .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
+    public Ec2Operations ec2Operations(Ec2Client ec2Client) {
+        return new DefaultEc2Operations(ec2Client);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
+    public Ec2InstanceWaiter ec2InstanceWaiter(Ec2Operations operations, Ec2Config config) {
+        return new Ec2InstanceWaiter(
+            operations,
+            Duration.ofMinutes(3),    // running timeout
+            Duration.ofSeconds(5),    // running poll interval
+            Duration.ofMinutes(3),    // ssh timeout
+            Duration.ofSeconds(5),    // ssh poll interval
+            Ec2InstanceWaiter.shellSshProbe(config.sshKeyPath())
+        );
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
+    public Ec2SeedlingProvider ec2SeedlingProvider(
+            Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter) {
+        return new Ec2SeedlingProvider(config, operations, waiter);
     }
 
     // --- GCP Compute ---
@@ -122,7 +166,7 @@ public class NurseryConfig {
     public ProviderRegistry providerRegistry(
             @Value("${orchard.nursery.provider:qemu}") String defaultProvider,
             QemuConfig qemuConfig,
-            org.springframework.beans.factory.ObjectProvider<Ec2Config> ec2Config,
+            org.springframework.beans.factory.ObjectProvider<Ec2SeedlingProvider> ec2SeedlingProvider,
             org.springframework.beans.factory.ObjectProvider<ComputeConfig> computeConfig,
             org.springframework.beans.factory.ObjectProvider<AzureConfig> azureConfig) {
 
@@ -133,11 +177,10 @@ public class NurseryConfig {
         registry.register(qemuProvider);
         log.info("Registered seedling provider: {}", qemuProvider.getProviderId());
 
-        // Conditionally register AWS EC2
-        ec2Config.ifAvailable(config -> {
-            Ec2SeedlingProvider ec2Provider = new Ec2SeedlingProvider(config);
-            registry.register(ec2Provider);
-            log.info("Registered seedling provider: {}", ec2Provider.getProviderId());
+        // Conditionally register AWS EC2 — Spring instantiates and manages the bean lifecycle.
+        ec2SeedlingProvider.ifAvailable(provider -> {
+            registry.register(provider);
+            log.info("Registered seedling provider: {}", provider.getProviderId());
         });
 
         // Conditionally register GCP Compute
@@ -171,6 +214,16 @@ public class NurseryConfig {
     @Bean
     public FruitGrower fruitGrower() {
         return new FruitGrower();
+    }
+
+    private static java.nio.file.Path resolveSshKeyPath(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String expanded = raw.startsWith("~/") || raw.equals("~")
+            ? System.getProperty("user.home") + raw.substring(1)
+            : raw;
+        return java.nio.file.Path.of(expanded);
     }
 
     /**
@@ -250,6 +303,8 @@ public class NurseryConfig {
             4, "t3.medium",
             8, "t3.xlarge"
         );
+        private String ipMode = "AUTO";
+        private String sshKeyPath;
 
         public String getRegion() { return region; }
         public void setRegion(String region) { this.region = region; }
@@ -268,6 +323,12 @@ public class NurseryConfig {
 
         public Map<Integer, String> getInstanceTypeMapping() { return instanceTypeMapping; }
         public void setInstanceTypeMapping(Map<Integer, String> instanceTypeMapping) { this.instanceTypeMapping = instanceTypeMapping; }
+
+        public String getIpMode() { return ipMode; }
+        public void setIpMode(String ipMode) { this.ipMode = ipMode; }
+
+        public String getSshKeyPath() { return sshKeyPath; }
+        public void setSshKeyPath(String sshKeyPath) { this.sshKeyPath = sshKeyPath; }
     }
 
     public static class GcpConfigProperties {
