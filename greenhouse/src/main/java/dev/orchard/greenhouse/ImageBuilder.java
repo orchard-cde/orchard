@@ -1,5 +1,6 @@
 package dev.orchard.greenhouse;
 
+import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import dev.orchard.greenhouse.config.GreenhouseConfig;
 import org.slf4j.Logger;
@@ -162,10 +163,14 @@ public class ImageBuilder {
                 dockerfile.append("ENV ").append(key).append("=").append(value).append("\n"));
         }
 
-        // Run post-create commands during build
-        if (seed.postCreateCommands() != null && !seed.postCreateCommands().isEmpty()) {
-            for (String cmd : seed.postCreateCommands()) {
-                dockerfile.append("RUN ").append(cmd).append("\n");
+        // Run post-create command during build
+        if (seed.postCreateCommand() != null) {
+            switch (seed.postCreateCommand()) {
+                case LifecycleCommand.Sequential s ->
+                    dockerfile.append("RUN ").append(String.join(" ", s.args())).append("\n");
+                case LifecycleCommand.Parallel p ->
+                    p.steps().values().forEach(args ->
+                        dockerfile.append("RUN ").append(String.join(" ", args)).append("\n"));
             }
         }
 

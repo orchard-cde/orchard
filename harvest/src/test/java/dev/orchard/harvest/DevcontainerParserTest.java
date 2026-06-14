@@ -1,5 +1,6 @@
 package dev.orchard.harvest;
 
+import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -7,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -31,8 +33,8 @@ class DevcontainerParserTest {
         assertThat(seed.features()).isEmpty();
         assertThat(seed.forwardPorts()).isEmpty();
         assertThat(seed.containerEnv()).isEmpty();
-        assertThat(seed.postCreateCommands()).isEmpty();
-        assertThat(seed.postStartCommands()).isEmpty();
+        assertThat(seed.postCreateCommand()).isNull();
+        assertThat(seed.postStartCommand()).isNull();
         assertThat(seed.vscodeCustomizations()).isNull();
     }
 
@@ -166,7 +168,8 @@ class DevcontainerParserTest {
                 {"image": "ubuntu", "postCreateCommand": "npm install"}""");
 
         assertThat(result).isPresent();
-        assertThat(result.get().postCreateCommands()).containsExactly("npm install");
+        assertThat(result.get().postCreateCommand())
+            .isEqualTo(new LifecycleCommand.Sequential(List.of("npm install")));
     }
 
     @Test
@@ -175,7 +178,8 @@ class DevcontainerParserTest {
                 {"image": "ubuntu", "postCreateCommand": ["npm install", "npm run build"]}""");
 
         assertThat(result).isPresent();
-        assertThat(result.get().postCreateCommands()).containsExactly("npm install", "npm run build");
+        assertThat(result.get().postCreateCommand())
+            .isEqualTo(new LifecycleCommand.Sequential(List.of("npm install", "npm run build")));
     }
 
     @Test
@@ -184,7 +188,8 @@ class DevcontainerParserTest {
                 {"image": "ubuntu", "postStartCommand": "npm start"}""");
 
         assertThat(result).isPresent();
-        assertThat(result.get().postStartCommands()).containsExactly("npm start");
+        assertThat(result.get().postStartCommand())
+            .isEqualTo(new LifecycleCommand.Sequential(List.of("npm start")));
     }
 
     @Test
@@ -236,8 +241,10 @@ class DevcontainerParserTest {
         assertThat(seed.features().get("ghcr.io/devcontainers/features/node:1")).isNotNull().isEmpty();
         assertThat(seed.forwardPorts()).containsExactly("3000", "5432", "8080");
         assertThat(seed.containerEnv()).hasSize(2);
-        assertThat(seed.postCreateCommands()).containsExactly("npm install", "gradle build");
-        assertThat(seed.postStartCommands()).containsExactly("npm run dev");
+        assertThat(seed.postCreateCommand())
+            .isEqualTo(new LifecycleCommand.Sequential(List.of("npm install", "gradle build")));
+        assertThat(seed.postStartCommand())
+            .isEqualTo(new LifecycleCommand.Sequential(List.of("npm run dev")));
         assertThat(seed.vscodeCustomizations().extensions()).hasSize(2);
     }
 

@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
  * Executes commands on a Seedling (VM) over SSH.
  * Shared utility for any component that needs to run remote commands.
  */
-public class SshExecutor {
+public class SshExecutor implements CommandRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SshExecutor.class);
     private static final long DEFAULT_TIMEOUT_SECONDS = 60;
@@ -85,10 +85,6 @@ public class SshExecutor {
         return stdout.toString();
     }
 
-    /**
-     * Resolves the SSH private key path from the system property
-     * {@code orchard.ssh.key-path}, falling back to {@code ~/.ssh/orchard_ed25519}.
-     */
     static java.nio.file.Path resolveSshKeyPath() {
         String keyPath = System.getProperty("orchard.ssh.key-path");
         if (keyPath != null && !keyPath.isBlank()) {

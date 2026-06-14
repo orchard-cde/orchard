@@ -2,8 +2,10 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
+import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.WaitFor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +15,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
 
 /**
  * Grows Fruit (containers) on Seedlings (VMs).
@@ -28,6 +31,7 @@ public class FruitGrower {
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
+
     /**
      * Grows a fruit (starts a devcontainer) on the given seedling.
      */
@@ -37,6 +41,12 @@ public class FruitGrower {
                 log.info("Growing fruit {} on seedling {}", fruit.id(), seedling.id());
 
                 Seed seed = fruit.seed();
+
+                // initializeCommand runs on the host VM before the container starts
+                if (seed.initializeCommand() != null) {
+                    runLifecycleCommand(seed.initializeCommand(), cmd -> executeSsh(seedling, cmd));
+                }
+
                 String containerId;
 
                 if (seed.image() != null) {
@@ -52,16 +62,28 @@ public class FruitGrower {
                 // Get port mappings
                 List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
 
-                // Run post-create commands
-                if (seed.postCreateCommands() != null) {
-                    for (String cmd : seed.postCreateCommands()) {
-                        executeInContainer(seedling, containerId, cmd);
-                    }
+                // Lifecycle commands — executed in spec order
+                if (seed.onCreateCommand() != null) {
+                    runLifecycleCommand(seed.onCreateCommand(), cmd -> inContainer(seedling, containerId, cmd));
+                }
+                if (seed.postCreateCommand() != null) {
+                    runLifecycleCommand(seed.postCreateCommand(), cmd -> inContainer(seedling, containerId, cmd));
+                }
+                if (seed.updateContentCommand() != null) {
+                    runLifecycleCommand(seed.updateContentCommand(), cmd -> inContainer(seedling, containerId, cmd));
                 }
 
-                return fruit
-                    .withContainerDetails(containerId, ports)
-                    .withState(FruitState.RIPE);
+                Fruit result = fruit.withContainerDetails(containerId, ports);
+                if (seed.effectiveWaitFor() != WaitFor.POST_ATTACH_COMMAND) {
+                    result = result.withState(FruitState.RIPE);
+                }
+
+                // postStartCommand is a per-start hook; runs after RIPE is set for the default waitFor
+                if (seed.postStartCommand() != null) {
+                    runLifecycleCommand(seed.postStartCommand(), cmd -> inContainer(seedling, containerId, cmd));
+                }
+
+                return result;
 
             } catch (Exception e) {
                 log.error("Failed to grow fruit {}", fruit.id(), e);
@@ -120,10 +142,15 @@ public class FruitGrower {
 
                     if (containerId != null) {
                         List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
-                        // Run post-create commands for the primary service
-                        if (fruit.seed() != null && fruit.seed().postCreateCommands() != null) {
-                            for (String cmd : fruit.seed().postCreateCommands()) {
-                                executeInContainer(seedling, containerId, cmd);
+                        // Run lifecycle commands for the primary service
+                        if (fruit.seed() != null) {
+                            Seed s = fruit.seed();
+                            String cid = containerId;
+                            if (s.onCreateCommand() != null) {
+                                runLifecycleCommand(s.onCreateCommand(), cmd -> inContainer(seedling, cid, cmd));
+                            }
+                            if (s.postCreateCommand() != null) {
+                                runLifecycleCommand(s.postCreateCommand(), cmd -> inContainer(seedling, cid, cmd));
                             }
                         }
                         grownFruits.add(fruit
@@ -229,14 +256,12 @@ public class FruitGrower {
 
         executeSsh(seedling, buildCmd.toString());
 
-        // Now run the built image
+        // Now run the built image — lifecycle commands are handled in grow(), not here
         Seed imageOnlySeed = Seed.builder()
             .name(seed.name())
             .image("orchard-fruit-" + fruit.id().toString().substring(0, 8))
             .containerEnv(seed.containerEnv())
             .forwardPorts(seed.forwardPorts())
-            .postCreateCommands(seed.postCreateCommands())
-            .postStartCommands(seed.postStartCommands())
             .build();
 
         Fruit imageFruit = new Fruit(
@@ -274,13 +299,54 @@ public class FruitGrower {
         return parsePortOutput(output);
     }
 
-    private void executeInContainer(Seedling seedling, String containerId, String command)
+    private void inContainer(Seedling seedling, String containerId, String command)
             throws IOException, InterruptedException {
         executeSsh(seedling, "docker exec " + containerId + " /bin/sh -c '" + command + "'");
     }
 
     private String executeSsh(Seedling seedling, String command) throws IOException, InterruptedException {
         return new SshExecutor(seedling).execute(command);
+    }
+
+    @FunctionalInterface
+    private interface CommandStep {
+        void run(String command) throws IOException, InterruptedException;
+    }
+
+    private void runLifecycleCommand(LifecycleCommand cmd, CommandStep step)
+            throws IOException, InterruptedException {
+        switch (cmd) {
+            case LifecycleCommand.Sequential s ->
+                step.run(String.join(" ", s.args()));
+            case LifecycleCommand.Parallel p -> {
+                List<CompletableFuture<Void>> futures = p.steps().values().stream()
+                    .map(args -> CompletableFuture.runAsync(() -> {
+                        try { step.run(String.join(" ", args)); }
+                        catch (Exception e) { throw new RuntimeException(e); }
+                    }, executor))
+                    .toList();
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            }
+        }
+    }
+
+    public CompletableFuture<Fruit> attach(Seedling seedling, Fruit fruit) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Seed seed = fruit.seed();
+                if (seed.postAttachCommand() != null) {
+                    runLifecycleCommand(seed.postAttachCommand(),
+                        cmd -> inContainer(seedling, fruit.containerId(), cmd));
+                }
+                if (seed.waitFor() == WaitFor.POST_ATTACH_COMMAND) {
+                    return fruit.withState(FruitState.RIPE);
+                }
+                return fruit;
+            } catch (Exception e) {
+                log.error("Failed to attach to fruit {}", fruit.id(), e);
+                return fruit;
+            }
+        }, executor);
     }
 
     public void shutdown() {

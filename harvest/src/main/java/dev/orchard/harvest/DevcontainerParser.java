@@ -5,7 +5,9 @@ import tools.jackson.core.json.JsonReadFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
+import dev.orchard.core.model.WaitFor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -212,13 +214,30 @@ public class DevcontainerParser {
             builder.containerEnv(parseStringMap(root.get("containerEnv")));
         }
 
+
         // Lifecycle commands
+        if (root.has("initializeCommand")) {
+            builder.initializeCommand(parseLifecycleCommand(root.get("initializeCommand")));
+        }
+        if (root.has("onCreateCommand")) {
+            builder.onCreateCommand(parseLifecycleCommand(root.get("onCreateCommand")));
+        }
+        if (root.has("updateContentCommand")) {
+            builder.updateContentCommand(parseLifecycleCommand(root.get("updateContentCommand")));
+        }
         if (root.has("postCreateCommand")) {
-            builder.postCreateCommands(parseCommand(root.get("postCreateCommand")));
+            builder.postCreateCommand(parseLifecycleCommand(root.get("postCreateCommand")));
+        }
+        if (root.has("postStartCommand")) {
+            builder.postStartCommand(parseLifecycleCommand(root.get("postStartCommand")));
+        }
+        if (root.has("postAttachCommand")) {
+            builder.postAttachCommand(parseLifecycleCommand(root.get("postAttachCommand")));
         }
 
-        if (root.has("postStartCommand")) {
-            builder.postStartCommands(parseCommand(root.get("postStartCommand")));
+        // WaitFor
+        if (root.has("waitFor")) {
+            builder.waitFor(parseWaitFor(root.get("waitFor").asText()));
         }
 
         // VS Code customizations
@@ -230,11 +249,9 @@ public class DevcontainerParser {
             if (vscode.has("extensions")) {
                 vscode.get("extensions").forEach(ext -> extensions.add(ext.asText()));
             }
-
             if (vscode.has("settings")) {
                 settings = objectMapper.convertValue(vscode.get("settings"), Map.class);
             }
-
             builder.vscodeCustomizations(new Seed.VsCodeCustomizations(extensions, settings));
         }
 
@@ -248,14 +265,45 @@ public class DevcontainerParser {
         return map;
     }
 
-    private List<String> parseCommand(JsonNode node) {
+    private LifecycleCommand parseLifecycleCommand(JsonNode node) {
         if (node.isTextual()) {
-            return List.of(node.asText());
+            return new LifecycleCommand.Sequential(List.of(node.asText()));
         } else if (node.isArray()) {
-            List<String> commands = new ArrayList<>();
-            node.forEach(cmd -> commands.add(cmd.asText()));
-            return commands;
+            List<String> args = new ArrayList<>();
+            node.forEach(n -> args.add(n.asText()));
+            return new LifecycleCommand.Sequential(args);
+        } else if (node.isObject()) {
+            // Spec object form: {"stepName": "cmd" | ["cmd", "arg"], ...} — all steps run in parallel
+            Map<String, List<String>> steps = new LinkedHashMap<>();
+            node.properties().forEach(e -> {
+                JsonNode v = e.getValue();
+                List<String> args = new ArrayList<>();
+                if (v.isTextual()) {
+                    args.add(v.asText());
+                } else if (v.isArray()) {
+                    v.forEach(n -> args.add(n.asText()));
+                }
+                steps.put(e.getKey(), args);
+            });
+            return new LifecycleCommand.Parallel(steps);
         }
-        return List.of();
+        log.warn("Unrecognised lifecycle command node type, ignoring");
+        return null;
+    }
+
+    private WaitFor parseWaitFor(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return switch (value.toLowerCase()) {
+            case "initializecommand"    -> WaitFor.INITIALIZE_COMMAND;
+            case "oncreatecommand"      -> WaitFor.ON_CREATE_COMMAND;
+            case "updatecontentcommand" -> WaitFor.UPDATE_CONTENT_COMMAND;
+            case "postattachcommand"    -> WaitFor.POST_ATTACH_COMMAND;
+            default -> {
+                log.warn("Unknown waitFor value '{}', ignoring", value);
+                yield null;
+            }
+        };
     }
 }
