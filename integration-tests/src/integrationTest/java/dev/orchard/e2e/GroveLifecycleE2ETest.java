@@ -66,7 +66,7 @@ class GroveLifecycleE2ETest {
     @Test
     @Order(2)
     void plantGrove_returnsCreated() {
-        var request = new CreateGroveRequest(TEST_REPO_URL, TEST_REPO_BRANCH, null, "small");
+        var request = new CreateGroveRequest(TEST_REPO_URL, TEST_REPO_BRANCH, null, "small", null);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-Cultivator-Id", TEST_CULTIVATOR_ID.toString());
