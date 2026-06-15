@@ -38,6 +38,11 @@ class SshExecutorStreamingTest {
         }
 
         @Override
+        public String execute(String command, long timeoutSeconds) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void executeStreaming(String command, Consumer<String> lineConsumer, long timeoutSeconds)
                 throws IOException, InterruptedException {
             for (String line : lines) {

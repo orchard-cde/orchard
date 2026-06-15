@@ -21,6 +21,19 @@ public interface CommandRunner {
     String execute(String command) throws IOException, InterruptedException;
 
     /**
+     * Like {@link #execute(String)} but with an explicit timeout (seconds).
+     * Default impls delegate to {@code execute(command)} with a fixed timeout; {@link SshExecutor}
+     * honours the value.
+     *
+     * @param command the remote command
+     * @param timeoutSeconds process timeout
+     * @return the standard output from the command
+     * @throws IOException if the command exits non-zero, times out, or an I/O error occurs
+     * @throws InterruptedException if the current thread is interrupted while waiting
+     */
+    String execute(String command, long timeoutSeconds) throws IOException, InterruptedException;
+
+    /**
      * Executes a command and streams each stdout line to the given consumer as it arrives.
      * Blocks until the command exits or the timeout elapses. Stderr is drained concurrently
      * (to avoid the child blocking on a full pipe buffer) and surfaced on non-zero exit.

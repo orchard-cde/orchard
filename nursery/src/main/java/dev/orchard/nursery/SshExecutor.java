@@ -44,6 +44,7 @@ public class SshExecutor implements CommandRunner {
         return execute(command, DEFAULT_TIMEOUT_SECONDS);
     }
 
+    @Override
     public String execute(String command, long timeoutSeconds) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(buildSshCommand(command));
 
