@@ -54,6 +54,22 @@ orchard:
     # Default provider: qemu, aws, gcp, azure
     provider: qemu
 
+    # Feature-flag gating the new devcontainer-CLI grow path (issue #74).
+    # When true (default), FruitGrower delegates to @devcontainers/cli on the
+    # Seedling — this is the only path that honours `seed.features()`.
+    # Flip to false to fall back to the legacy raw-docker path for one release
+    # cycle while the new path bakes in production (spec Locked decision #12).
+    use-devcontainer-cli: true
+
+    # @devcontainers/cli wrapper configuration. Cloud-init pins the same version
+    # on every Seedling (spec Locked decision #6); SeedlingProvider preflight
+    # asserts they match. Timeouts apply to `devcontainer up` / `devcontainer exec`
+    # respectively; defaults cover feature-heavy builds.
+    devcontainer-cli:
+      version: 0.87.0
+      up-timeout-seconds: 600
+      exec-timeout-seconds: 60
+
   # AWS EC2 provider configuration.
   # Required IAM permissions:
   #   ec2:RunInstances, ec2:DescribeInstances, ec2:TerminateInstances,

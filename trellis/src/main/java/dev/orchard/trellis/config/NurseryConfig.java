@@ -1,5 +1,6 @@
 package dev.orchard.trellis.config;
 
+import dev.orchard.nursery.DevcontainerCli;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
@@ -215,8 +216,16 @@ public class NurseryConfig {
     }
 
     @Bean
-    public FruitGrower fruitGrower() {
-        return new FruitGrower();
+    public DevcontainerCli devcontainerCli(DevcontainerCliConfig config) {
+        return new DevcontainerCli(config);
+    }
+
+    @Bean
+    public FruitGrower fruitGrower(
+            DevcontainerCli devcontainerCli,
+            @Value("${orchard.nursery.use-devcontainer-cli:true}") boolean useDevcontainerCli,
+            org.springframework.context.ApplicationEventPublisher events) {
+        return new FruitGrower(devcontainerCli, useDevcontainerCli, events);
     }
 
     private static java.nio.file.Path resolveSshKeyPath(String raw) {
