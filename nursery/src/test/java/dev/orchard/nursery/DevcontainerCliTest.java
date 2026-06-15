@@ -58,7 +58,7 @@ class DevcontainerCliTest {
     }
 
     private static DevcontainerCli cliFor(CannedRunner runner) {
-        return new DevcontainerCli(new DevcontainerCliConfig(null, 0, 0), s -> runner);
+        return new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 0, 0), s -> runner);
     }
 
     @Test

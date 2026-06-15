@@ -105,7 +105,7 @@ class Ec2ProviderIntegrationTest {
             keyPath
         );
 
-        provider = new Ec2SeedlingProvider(config, ops, waiter, new DevcontainerCliConfig(null, 0, 0));
+        provider = new Ec2SeedlingProvider(config, ops, waiter, new DevcontainerCliConfig("0.87.0", 0, 0));
     }
 
     @AfterAll

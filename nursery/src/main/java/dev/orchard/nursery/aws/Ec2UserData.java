@@ -1,16 +1,22 @@
 package dev.orchard.nursery.aws;
 
 import dev.orchard.core.model.Seedling.SeedlingSpec;
+import dev.orchard.nursery.CloudInitTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Map;
 
 /**
  * Renders the cloud-init {@code #cloud-config} YAML used to bootstrap an EC2 instance.
- * Pure function — no I/O, no SDK calls. The same template is used by QEMU's
- * NoCloud ISO; see {@code QemuSeedlingProvider} for the original.
+ * Pure function — no SDK calls. Loads the YAML body from the classpath template
+ * {@code /cloud-init/aws.yaml.tpl} and substitutes {@code ${ssh_public_key}} /
+ * {@code ${cli_version}}. The QEMU provider uses a sibling template
+ * ({@code qemu.yaml.tpl}) via {@link CloudInitTemplate}.
  */
 public final class Ec2UserData {
+
+    private static final String TEMPLATE_PATH = "/cloud-init/aws.yaml.tpl";
 
     private Ec2UserData() {}
 
@@ -31,27 +37,10 @@ public final class Ec2UserData {
         if (devcontainerCliVersion == null || devcontainerCliVersion.isBlank()) {
             throw new IllegalArgumentException("devcontainerCliVersion must not be null or blank");
         }
-        return """
-                #cloud-config
-                users:
-                  - name: cultivator
-                    sudo: ALL=(ALL) NOPASSWD:ALL
-                    shell: /bin/bash
-                    ssh_authorized_keys:
-                      - %s
-                packages:
-                  - docker.io
-                  - git
-                  - curl
-                runcmd:
-                  - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-                  - apt-get install -y nodejs
-                  - npm install -g @devcontainers/cli@%s
-                  - systemctl enable --now docker
-                  - usermod -aG docker cultivator
-                  - mkdir -p /workspace
-                  - chown cultivator:cultivator /workspace
-                """.formatted(publicKey, devcontainerCliVersion);
+        return CloudInitTemplate.render(TEMPLATE_PATH, Map.of(
+            "ssh_public_key", publicKey,
+            "cli_version", devcontainerCliVersion
+        ));
     }
 
     /**

@@ -2,6 +2,7 @@ package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.CloudInitTemplate;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.SeedlingProvider;
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -209,35 +211,22 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                 }
             }
 
-            // Build user-data with SSH public key
-            StringBuilder userData = new StringBuilder();
-            userData.append("#cloud-config\n");
-            userData.append("users:\n");
-            userData.append("  - name: cultivator\n");
-            userData.append("    sudo: ALL=(ALL) NOPASSWD:ALL\n");
-            userData.append("    shell: /bin/bash\n");
+            // Build user-data from the classpath template. The SSH block is conditional —
+            // when no key is configured, ${ssh_authorized_keys_block} substitutes to empty.
+            String sshBlock;
             if (sshPubKey != null && !sshPubKey.isBlank()) {
-                userData.append("    ssh_authorized_keys:\n");
-                userData.append("      - ").append(sshPubKey).append("\n");
+                sshBlock = "    ssh_authorized_keys:\n      - " + sshPubKey + "\n";
             } else {
+                sshBlock = "";
                 log.warn("No SSH public key configured - VM will not be accessible via SSH key auth. " +
                     "Set orchard.qemu.ssh-public-key or place key at {}.pub", config.sshKeyPath());
             }
-            userData.append("packages:\n");
-            userData.append("  - docker.io\n");
-            userData.append("  - git\n");
-            userData.append("  - curl\n");
-            userData.append("runcmd:\n");
-            userData.append("  - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -\n");
-            userData.append("  - apt-get install -y nodejs\n");
-            userData.append("  - npm install -g @devcontainers/cli@").append(devcontainerCliConfig.version()).append("\n");
-            userData.append("  - systemctl enable docker\n");
-            userData.append("  - systemctl start docker\n");
-            userData.append("  - usermod -aG docker cultivator\n");
-            userData.append("  - mkdir -p /workspace\n");
-            userData.append("  - chown cultivator:cultivator /workspace\n");
+            String userData = CloudInitTemplate.render("/cloud-init/qemu.yaml.tpl", Map.of(
+                "ssh_authorized_keys_block", sshBlock,
+                "cli_version", devcontainerCliConfig.version()
+            ));
 
-            Files.writeString(tempDir.resolve("user-data"), userData.toString());
+            Files.writeString(tempDir.resolve("user-data"), userData);
 
             // Generate ISO - try genisoimage first, then mkisofs (macOS via cdrtools)
             if (!tryGenerateIso(isoPath, tempDir, "genisoimage") &&

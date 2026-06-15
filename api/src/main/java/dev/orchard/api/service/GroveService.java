@@ -162,6 +162,9 @@ public class GroveService {
     private Grove provisionPrimaryFruit(Grove grove, Seedling seedling, Seed seed) {
         // For compose-mode, attach the primary service name so consumers can correlate the
         // Fruit with the compose service. For single-container, serviceName stays null.
+        // TODO: serviceName should evolve to fruitName — root compose service name in
+        // compose mode, repo-name-with-uniqueness applied otherwise. Tracked for follow-up
+        // per reviewer feedback on PR #110.
         String serviceName = seed.dockerComposeFile() != null ? seed.service() : null;
         Fruit fruit = Fruit.bud(grove.id(), seedling.id(), seed, serviceName);
         grove = grove.withFruit(fruit);

@@ -40,7 +40,7 @@ class Ec2SeedlingProviderTest {
     @Mock Ec2Operations ops;
     @Mock Ec2InstanceWaiter waiter;
 
-    private static final DevcontainerCliConfig CLI_CONFIG = new DevcontainerCliConfig(null, 0, 0);
+    private static final DevcontainerCliConfig CLI_CONFIG = new DevcontainerCliConfig("0.87.0", 0, 0);
 
     /** Returns the pinned CLI version so the +P1 preflight passes; integration tests cover real SSH. */
     private static final Function<Seedling, CommandRunner> FAKE_RUNNER =
