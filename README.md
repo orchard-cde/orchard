@@ -203,7 +203,7 @@ cultivator=<your-uuid>
 
 ## License
 
-TBD
+Orchard is licensed under the [Apache License, Version 2.0](LICENSE). See the [NOTICE](NOTICE) file for attribution.
 
 ## Contributing
 
