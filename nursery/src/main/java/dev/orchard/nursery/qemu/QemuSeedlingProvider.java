@@ -2,6 +2,7 @@ package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.SeedlingProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,11 +26,13 @@ public class QemuSeedlingProvider implements SeedlingProvider {
     private static final String PROVIDER_ID = "qemu-local";
 
     private final QemuConfig config;
+    private final DevcontainerCliConfig devcontainerCliConfig;
     private final ExecutorService executor;
     private final ConcurrentHashMap<UUID, Process> runningVms;
 
-    public QemuSeedlingProvider(QemuConfig config) {
+    public QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig) {
         this.config = config;
+        this.devcontainerCliConfig = devcontainerCliConfig;
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
         this.runningVms = new ConcurrentHashMap<>();
     }
@@ -217,7 +220,11 @@ public class QemuSeedlingProvider implements SeedlingProvider {
             userData.append("packages:\n");
             userData.append("  - docker.io\n");
             userData.append("  - git\n");
+            userData.append("  - curl\n");
             userData.append("runcmd:\n");
+            userData.append("  - curl -fsSL https://deb.nodesource.com/setup_20.x | bash -\n");
+            userData.append("  - apt-get install -y nodejs\n");
+            userData.append("  - npm install -g @devcontainers/cli@").append(devcontainerCliConfig.version()).append("\n");
             userData.append("  - systemctl enable docker\n");
             userData.append("  - systemctl start docker\n");
             userData.append("  - usermod -aG docker cultivator\n");

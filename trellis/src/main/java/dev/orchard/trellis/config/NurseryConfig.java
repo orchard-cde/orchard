@@ -1,5 +1,6 @@
 package dev.orchard.trellis.config;
 
+import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.aws.DefaultEc2Operations;
@@ -115,8 +116,9 @@ public class NurseryConfig {
     @Bean
     @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
     public Ec2SeedlingProvider ec2SeedlingProvider(
-            Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter) {
-        return new Ec2SeedlingProvider(config, operations, waiter);
+            Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
+            DevcontainerCliConfig devcontainerCliConfig) {
+        return new Ec2SeedlingProvider(config, operations, waiter, devcontainerCliConfig);
     }
 
     // --- GCP Compute ---
@@ -166,6 +168,7 @@ public class NurseryConfig {
     public ProviderRegistry providerRegistry(
             @Value("${orchard.nursery.provider:qemu}") String defaultProvider,
             QemuConfig qemuConfig,
+            DevcontainerCliConfig devcontainerCliConfig,
             org.springframework.beans.factory.ObjectProvider<Ec2SeedlingProvider> ec2SeedlingProvider,
             org.springframework.beans.factory.ObjectProvider<ComputeConfig> computeConfig,
             org.springframework.beans.factory.ObjectProvider<AzureConfig> azureConfig) {
@@ -173,7 +176,7 @@ public class NurseryConfig {
         ProviderRegistry registry = new ProviderRegistry();
 
         // Always register QEMU
-        QemuSeedlingProvider qemuProvider = new QemuSeedlingProvider(qemuConfig);
+        QemuSeedlingProvider qemuProvider = new QemuSeedlingProvider(qemuConfig, devcontainerCliConfig);
         registry.register(qemuProvider);
         log.info("Registered seedling provider: {}", qemuProvider.getProviderId());
 

@@ -3,6 +3,7 @@ package dev.orchard.nursery.aws;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.aws.Ec2Operations.AwsInstanceState;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceNotFoundException;
@@ -34,6 +35,8 @@ class Ec2SeedlingProviderTest {
     @Mock Ec2Operations ops;
     @Mock Ec2InstanceWaiter waiter;
 
+    private static final DevcontainerCliConfig CLI_CONFIG = new DevcontainerCliConfig(null, 0, 0);
+
     @TempDir Path tempDir;
 
     private Path keyPath;
@@ -58,7 +61,7 @@ class Ec2SeedlingProviderTest {
     }
 
     private Ec2SeedlingProvider providerWith(Ec2Config config) {
-        return new Ec2SeedlingProvider(config, ops, waiter);
+        return new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG);
     }
 
     @Test
@@ -314,7 +317,7 @@ class Ec2SeedlingProviderTest {
             tempDir.resolve("nonexistent-key")
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter).isAvailable()).isFalse();
+        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG).isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }
 
@@ -327,7 +330,7 @@ class Ec2SeedlingProviderTest {
             (Path) null  // explicitly null sshKeyPath
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter).isAvailable()).isFalse();
+        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG).isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }
 
@@ -340,7 +343,7 @@ class Ec2SeedlingProviderTest {
             keyPath
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter).isAvailable()).isFalse();
+        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG).isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }
 }

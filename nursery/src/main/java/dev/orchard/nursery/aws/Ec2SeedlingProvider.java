@@ -2,6 +2,7 @@ package dev.orchard.nursery.aws;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.SeedlingProvider;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceNotFoundException;
@@ -37,12 +38,15 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
     private final Ec2Config config;
     private final Ec2Operations operations;
     private final Ec2InstanceWaiter waiter;
+    private final DevcontainerCliConfig devcontainerCliConfig;
     private final ExecutorService executor;
 
-    public Ec2SeedlingProvider(Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter) {
+    public Ec2SeedlingProvider(Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
+                               DevcontainerCliConfig devcontainerCliConfig) {
         this.config = config;
         this.operations = operations;
         this.waiter = waiter;
+        this.devcontainerCliConfig = devcontainerCliConfig;
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
@@ -58,7 +62,8 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
             try {
                 String publicKey = readPublicKey();
 
-                String userDataBase64 = Ec2UserData.renderBase64(seedling.spec(), publicKey);
+                String userDataBase64 = Ec2UserData.renderBase64(
+                    seedling.spec(), publicKey, devcontainerCliConfig.version());
                 String instanceType = config.resolveInstanceType(seedling.spec().cpuCores());
 
                 Map<String, String> tags = Map.of(
