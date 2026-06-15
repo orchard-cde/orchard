@@ -3,6 +3,7 @@ package dev.orchard.nursery.aws;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.CommandRunner;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.aws.Ec2Operations.AwsInstanceState;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
@@ -15,10 +16,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -37,10 +42,25 @@ class Ec2SeedlingProviderTest {
 
     private static final DevcontainerCliConfig CLI_CONFIG = new DevcontainerCliConfig(null, 0, 0);
 
+    /** Returns the pinned CLI version so the +P1 preflight passes; integration tests cover real SSH. */
+    private static final Function<Seedling, CommandRunner> FAKE_RUNNER =
+        s -> new FixedVersionRunner(CLI_CONFIG.version());
+
     @TempDir Path tempDir;
 
     private Path keyPath;
     private Seedling germinated;
+
+    private static final class FixedVersionRunner implements CommandRunner {
+        private final String version;
+        FixedVersionRunner(String version) { this.version = version; }
+        @Override public String execute(String c) { return version + "\n"; }
+        @Override public String execute(String c, long t) { return version + "\n"; }
+        @Override public Optional<String> readFile(String p) { return Optional.empty(); }
+        @Override public void executeStreaming(String c, Consumer<String> l, long t) throws IOException {
+            throw new IOException("not used in unit tests");
+        }
+    }
 
     @BeforeEach
     void setUp() throws Exception {
@@ -61,7 +81,7 @@ class Ec2SeedlingProviderTest {
     }
 
     private Ec2SeedlingProvider providerWith(Ec2Config config) {
-        return new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG);
+        return new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, FAKE_RUNNER);
     }
 
     @Test

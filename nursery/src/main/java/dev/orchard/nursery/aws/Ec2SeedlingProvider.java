@@ -2,8 +2,10 @@ package dev.orchard.nursery.aws;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.CommandRunner;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.SeedlingProvider;
+import dev.orchard.nursery.SshExecutor;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceNotFoundException;
 import dev.orchard.nursery.aws.Ec2Operations.RunInstanceParams;
@@ -17,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
 
 /**
  * AWS EC2 implementation of {@link SeedlingProvider}.
@@ -39,14 +42,23 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
     private final Ec2Operations operations;
     private final Ec2InstanceWaiter waiter;
     private final DevcontainerCliConfig devcontainerCliConfig;
+    private final Function<Seedling, CommandRunner> runnerFactory;
     private final ExecutorService executor;
 
     public Ec2SeedlingProvider(Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
                                DevcontainerCliConfig devcontainerCliConfig) {
+        this(config, operations, waiter, devcontainerCliConfig, SshExecutor::new);
+    }
+
+    /** Test seam — production callers use the four-arg constructor. */
+    Ec2SeedlingProvider(Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
+                        DevcontainerCliConfig devcontainerCliConfig,
+                        Function<Seedling, CommandRunner> runnerFactory) {
         this.config = config;
         this.operations = operations;
         this.waiter = waiter;
         this.devcontainerCliConfig = devcontainerCliConfig;
+        this.runnerFactory = runnerFactory;
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
@@ -86,7 +98,11 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
 
                 waiter.awaitSshReady(ip, SSH_PORT);
 
-                return new Seedling(
+                // Provisioning preflight: a SAPLING with no devcontainer CLI would silently
+                // fail every grow() call, so verify cloud-init actually installed the pinned
+                // version before we declare the seedling READY. Failure → BLIGHTED (matches
+                // the rest of the catch block, instance kept alive for operator forensics).
+                Seedling sapling = new Seedling(
                     seedling.id(),
                     seedling.groveId(),
                     instanceId,
@@ -97,6 +113,9 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
                     seedling.plantedAt(),
                     Instant.now()
                 );
+                SeedlingProvider.verifyDevcontainerCli(
+                    sapling, devcontainerCliConfig.version(), runnerFactory.apply(sapling));
+                return sapling;
             // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
             // and surface as RuntimeException, caught below.
             } catch (Exception e) {
