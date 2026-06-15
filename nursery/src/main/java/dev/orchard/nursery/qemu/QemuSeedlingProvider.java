@@ -2,6 +2,8 @@ package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.CloudInitTemplate;
+import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.SeedlingProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,11 +28,13 @@ public class QemuSeedlingProvider implements SeedlingProvider {
     private static final String PROVIDER_ID = "qemu-local";
 
     private final QemuConfig config;
+    private final DevcontainerCliConfig devcontainerCliConfig;
     private final ExecutorService executor;
     private final ConcurrentHashMap<UUID, Process> runningVms;
 
-    public QemuSeedlingProvider(QemuConfig config) {
+    public QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig) {
         this.config = config;
+        this.devcontainerCliConfig = devcontainerCliConfig;
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
         this.runningVms = new ConcurrentHashMap<>();
     }
@@ -72,7 +77,11 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                 // Wait for VM to be ready (SSH accessible)
                 waitForSsh("127.0.0.1", sshPort);
 
-                return new Seedling(
+                // Provisioning preflight: a SAPLING with no devcontainer CLI would silently
+                // fail every grow() call, so verify cloud-init actually installed the pinned
+                // version before we declare the seedling READY. Failure → BLIGHTED (matches
+                // the rest of the catch block, instance kept alive for operator forensics).
+                Seedling sapling = new Seedling(
                     sprouting.id(),
                     sprouting.groveId(),
                     sprouting.providerInstanceId(),
@@ -83,6 +92,8 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                     sprouting.plantedAt(),
                     java.time.Instant.now()
                 );
+                verifyDevcontainerCli(sapling, devcontainerCliConfig.version());
+                return sapling;
 
             } catch (Exception e) {
                 log.error("Failed to plant seedling {}", seedling.id(), e);
@@ -200,31 +211,22 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                 }
             }
 
-            // Build user-data with SSH public key
-            StringBuilder userData = new StringBuilder();
-            userData.append("#cloud-config\n");
-            userData.append("users:\n");
-            userData.append("  - name: cultivator\n");
-            userData.append("    sudo: ALL=(ALL) NOPASSWD:ALL\n");
-            userData.append("    shell: /bin/bash\n");
+            // Build user-data from the classpath template. The SSH block is conditional —
+            // when no key is configured, ${ssh_authorized_keys_block} substitutes to empty.
+            String sshBlock;
             if (sshPubKey != null && !sshPubKey.isBlank()) {
-                userData.append("    ssh_authorized_keys:\n");
-                userData.append("      - ").append(sshPubKey).append("\n");
+                sshBlock = "    ssh_authorized_keys:\n      - " + sshPubKey + "\n";
             } else {
+                sshBlock = "";
                 log.warn("No SSH public key configured - VM will not be accessible via SSH key auth. " +
                     "Set orchard.qemu.ssh-public-key or place key at {}.pub", config.sshKeyPath());
             }
-            userData.append("packages:\n");
-            userData.append("  - docker.io\n");
-            userData.append("  - git\n");
-            userData.append("runcmd:\n");
-            userData.append("  - systemctl enable docker\n");
-            userData.append("  - systemctl start docker\n");
-            userData.append("  - usermod -aG docker cultivator\n");
-            userData.append("  - mkdir -p /workspace\n");
-            userData.append("  - chown cultivator:cultivator /workspace\n");
+            String userData = CloudInitTemplate.render("/cloud-init/qemu.yaml.tpl", Map.of(
+                "ssh_authorized_keys_block", sshBlock,
+                "cli_version", devcontainerCliConfig.version()
+            ));
 
-            Files.writeString(tempDir.resolve("user-data"), userData.toString());
+            Files.writeString(tempDir.resolve("user-data"), userData);
 
             // Generate ISO - try genisoimage first, then mkisofs (macOS via cdrtools)
             if (!tryGenerateIso(isoPath, tempDir, "genisoimage") &&

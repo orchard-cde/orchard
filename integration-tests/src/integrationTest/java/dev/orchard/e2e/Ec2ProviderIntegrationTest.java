@@ -3,6 +3,7 @@ package dev.orchard.e2e;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.aws.DefaultEc2Operations;
 import dev.orchard.nursery.aws.Ec2Config;
 import dev.orchard.nursery.aws.Ec2InstanceWaiter;
@@ -104,7 +105,7 @@ class Ec2ProviderIntegrationTest {
             keyPath
         );
 
-        provider = new Ec2SeedlingProvider(config, ops, waiter);
+        provider = new Ec2SeedlingProvider(config, ops, waiter, new DevcontainerCliConfig("0.87.0", 0, 0));
     }
 
     @AfterAll

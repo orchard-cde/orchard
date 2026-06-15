@@ -22,7 +22,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -131,12 +130,16 @@ public class GroveService {
             // Discover devcontainer.json from the cloned repo on the VM
             Seed seed = discoverSeed(plantedSeedling);
 
-            // Check if this is a Docker Compose-based workspace
-            if (seed.dockerComposeFile() != null) {
-                grove = provisionComposeFruits(grove, plantedSeedling, seed);
-            } else {
-                grove = provisionSingleFruit(grove, plantedSeedling, seed);
-            }
+            // Single grow path for both single-container and compose-mode devcontainers.
+            // For compose-mode (seed.dockerComposeFile() != null), the devcontainer CLI brings
+            // up the entire compose stack as a side effect of `devcontainer up`. Only the
+            // primary service (seed.service()) is tracked as a Fruit; sibling containers run
+            // but are not represented as separate Fruit records yet — see follow-up below.
+            //
+            // Spec Locked decision #11: sibling-service enumeration via `docker compose ps`
+            // is deferred so this PR can stop routing compose through the deprecated
+            // FruitGrower#growCompose path. File-tracking siblings is a future PR.
+            grove = provisionPrimaryFruit(grove, plantedSeedling, seed);
 
             log.info("Grove {} is now {}", grove.id(), grove.state());
 
@@ -148,10 +151,22 @@ public class GroveService {
     }
 
     /**
-     * Provisions a single fruit (the traditional single-container workflow).
+     * Provisions the primary fruit for a grove. Works for both single-container devcontainers
+     * and compose-mode devcontainers — in the latter case the devcontainer CLI brings up the
+     * entire compose stack as a side effect of {@code devcontainer up} on the primary service.
+     *
+     * <p>For compose-mode, only the primary service is tracked as a {@link Fruit}; sibling
+     * service containers run on the seedling but are not represented as separate Fruit rows.
+     * Sibling enumeration via {@code docker compose ps} is a follow-up PR (spec #11).
      */
-    private Grove provisionSingleFruit(Grove grove, Seedling seedling, Seed seed) {
-        Fruit fruit = Fruit.bud(grove.id(), seedling.id(), seed);
+    private Grove provisionPrimaryFruit(Grove grove, Seedling seedling, Seed seed) {
+        // For compose-mode, attach the primary service name so consumers can correlate the
+        // Fruit with the compose service. For single-container, serviceName stays null.
+        // TODO: serviceName should evolve to fruitName — root compose service name in
+        // compose mode, repo-name-with-uniqueness applied otherwise. Tracked for follow-up
+        // per reviewer feedback on PR #110.
+        String serviceName = seed.dockerComposeFile() != null ? seed.service() : null;
+        Fruit fruit = Fruit.bud(grove.id(), seedling.id(), seed, serviceName);
         grove = grove.withFruit(fruit);
         saveFruits(grove.fruits());
         updateGroveState(grove);
@@ -168,86 +183,6 @@ public class GroveService {
 
         updateGroveState(grove);
         return grove;
-    }
-
-    /**
-     * Provisions multiple fruits via Docker Compose.
-     * Creates a Fruit for each service in the compose file, with the primary
-     * service (specified by the seed's "service" field) listed first.
-     */
-    private Grove provisionComposeFruits(Grove grove, Seedling seedling, Seed seed) {
-        String composeFile = seed.dockerComposeFile();
-        String primaryService = seed.service();
-
-        // Discover services from the compose file on the VM
-        List<String> services = discoverComposeServices(seedling, composeFile);
-        if (services.isEmpty()) {
-            log.warn("No services found in compose file {}, falling back to single fruit", composeFile);
-            return provisionSingleFruit(grove, seedling, seed);
-        }
-
-        // Create a fruit for each service, primary first
-        List<Fruit> fruits = new ArrayList<>();
-        if (primaryService != null && services.contains(primaryService)) {
-            fruits.add(Fruit.bud(grove.id(), seedling.id(), seed, primaryService));
-            for (String svc : services) {
-                if (!svc.equals(primaryService)) {
-                    Seed svcSeed = Seed.builder().name(svc).build();
-                    fruits.add(Fruit.bud(grove.id(), seedling.id(), svcSeed, svc));
-                }
-            }
-        } else {
-            // No primary service specified; use all services in order
-            for (String svc : services) {
-                Seed svcSeed = svc.equals(services.getFirst()) ? seed :
-                    Seed.builder().name(svc).build();
-                fruits.add(Fruit.bud(grove.id(), seedling.id(), svcSeed, svc));
-            }
-        }
-
-        grove = grove.withFruits(fruits);
-        saveFruits(grove.fruits());
-        updateGroveState(grove);
-
-        // Grow all fruits via compose
-        List<Fruit> grownFruits = fruitGrower.growCompose(seedling, fruits, composeFile).join();
-        grove = grove.withFruits(grownFruits);
-        saveFruits(grove.fruits());
-
-        boolean allRipe = grownFruits.stream().allMatch(f -> f.state() == FruitState.RIPE);
-        if (allRipe) {
-            grove = grove.withState(GroveState.FLOURISHING);
-        } else {
-            grove = grove.withState(GroveState.BLIGHTED);
-        }
-
-        updateGroveState(grove);
-        return grove;
-    }
-
-    /**
-     * Discovers Docker Compose service names from a compose file on the VM.
-     */
-    private List<String> discoverComposeServices(Seedling seedling, String composeFile) {
-        try {
-            SshExecutor ssh = new SshExecutor(seedling);
-            String composePath = composeFile.startsWith("/") ? composeFile : "/workspace/" + composeFile;
-            String output = ssh.execute("docker compose -f " + composePath + " config --services");
-            List<String> services = new ArrayList<>();
-            for (String line : output.split("\n")) {
-                String trimmed = line.trim();
-                if (!trimmed.isEmpty()) {
-                    services.add(trimmed);
-                }
-            }
-            return services;
-        } catch (IOException | InterruptedException e) {
-            log.error("Failed to discover compose services from {}: {}", composeFile, e.getMessage());
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return List.of();
-        }
     }
 
     private void waitForCloudInit(Seedling seedling) {
