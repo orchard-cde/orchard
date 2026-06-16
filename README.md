@@ -2,7 +2,7 @@
 
 > Cloud Development Environments - Growing the Future of Code
 
-Orchard is a cloud development environment (CDE) platform that provisions ready-to-code workspaces from any Git repository. Think Gitpod, but with an orchard theme and designed for integration with [Moderne](https://moderne.io) and [OpenRewrite](https://openrewrite.org).
+Orchard is a cloud development environment (CDE) platform that provisions ready-to-code workspaces from any Git repository. Think Gitpod, but with an orchard theme and designed for integration with [OpenRewrite](https://openrewrite.org).
 
 ## Features
 
@@ -195,7 +195,6 @@ cultivator=<your-uuid>
 
 - [ ] OAuth2/OIDC authentication
 - [ ] Cloud providers (AWS EC2, GCP Compute, Azure VMs)
-- [ ] Moderne SaaS integration for OpenRewrite recipes
 - [ ] Workspace prebuilds and image caching
 - [ ] Real-time status updates via WebSocket
 - [ ] VS Code extension for direct integration
