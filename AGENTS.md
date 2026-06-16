@@ -40,12 +40,12 @@ orchard/
 
 ## Tech Stack
 
-- **Language**: Java 21 (records, virtual threads, pattern matching)
+- **Language**: Java 25 (records, virtual threads, pattern matching)
 - **Build**: Gradle 8.12 with Kotlin DSL
-- **Framework**: Spring Boot 3.4.2
+- **Framework**: Spring Boot 4.1
 - **Database**: PostgreSQL with Flyway migrations
 - **CLI**: Picocli 4.7.6
-- **VM Provider**: QEMU (local), extensible to cloud providers
+- **VM Provider**: QEMU (local), AWS EC2 (GCP and Azure stubbed)
 
 ## Key Patterns
 

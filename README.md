@@ -159,11 +159,12 @@ For detailed documentation including architecture deep-dives and usage guides, s
 
 ## Tech Stack
 
-- **Java 21** - Modern Java with records, virtual threads, pattern matching
-- **Spring Boot 3.4** - Application framework
+- **Java 25** - Modern Java with records, virtual threads, pattern matching
+- **Spring Boot 4.1** - Application framework
 - **PostgreSQL** - Database with Flyway migrations
 - **Picocli** - CLI framework
 - **QEMU/KVM** - Local VM provisioning
+- **AWS EC2, GCP Compute, Azure VMs** - Cloud VM provisioning
 - **Gradle** - Build system with Kotlin DSL
 
 ## Configuration
@@ -194,7 +195,8 @@ cultivator=<your-uuid>
 ## Roadmap
 
 - [ ] OAuth2/OIDC authentication
-- [ ] Cloud providers (AWS EC2, GCP Compute, Azure VMs)
+- [x] AWS EC2 cloud provider
+- [ ] GCP Compute and Azure VM providers
 - [ ] Workspace prebuilds and image caching
 - [ ] Real-time status updates via WebSocket
 - [ ] VS Code extension for direct integration
