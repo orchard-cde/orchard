@@ -1,7 +1,22 @@
+import java.io.File
+import java.net.URI
+import java.security.MessageDigest
+
 plugins {
     id("org.springframework.boot")
     id("org.graalvm.buildtools.native")
 }
+
+fun downloadTo(url: String, dest: File) {
+    dest.parentFile.mkdirs()
+    URI(url).toURL().openStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
+}
+fun sha256(file: File): String =
+    MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+fun sha256FromChecksums(checksumFile: File, tarballName: String): String =
+    checksumFile.readLines().firstOrNull { it.trim().endsWith(tarballName) }
+        ?.trim()?.split(Regex("\\s+"))?.first()
+        ?: throw GradleException("No sha256 entry for $tarballName in ${checksumFile.name}")
 
 configurations.all {
     // AWS SDK service modules pull apache-client and netty-nio-client transitively.
@@ -61,3 +76,43 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-postgresql:2.0.5")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter:2.0.5")
 }
+
+val orchardUiBundleVersion = providers.gradleProperty("orchardUiBundleVersion").get()
+val uiBundleDir = layout.buildDirectory.dir("ui-bundle")
+val uiResourcesDir = layout.buildDirectory.dir("generated/ui-resources") // holds static/
+
+val fetchUiBundle by tasks.registering {
+    val version = orchardUiBundleVersion
+    val tarballFile = uiBundleDir.map { it.file("orchard-ui-bundle-$version.tar.gz") }
+    val checksumFile = uiBundleDir.map { it.file("checksums-sha256.txt") }
+    inputs.property("version", version)
+    outputs.file(tarballFile)
+    // Prevent Gradle's stale-output cleanup from deleting a pre-seeded bootstrap file.
+    // The task manages its own output: it skips the download when the sha256 already matches.
+    doNotTrackState("download task manages its own output; pre-seed bootstrap file must not be cleaned")
+    doLast {
+        val base = "https://github.com/orchard-cde/orchard-ui/releases/download/v$version"
+        val tarball = tarballFile.get().asFile
+        val checksum = checksumFile.get().asFile
+        // Anonymous GET; only fetch files not already present (pre-seed bootstrap).
+        if (!checksum.exists()) downloadTo("$base/checksums-sha256.txt", checksum)
+        val expected = sha256FromChecksums(checksum, tarball.name)
+        if (!tarball.exists()) {
+            downloadTo("$base/orchard-ui-bundle-$version.tar.gz", tarball)
+        }
+        val actual = sha256(tarball)
+        if (actual != expected) throw GradleException(
+            "orchard-ui bundle checksum mismatch for v$version (expected=$expected actual=$actual). " +
+            "If orchard-ui is still private, pre-seed $tarball and ${checksum.name} (see CONTRIBUTING)."
+        )
+    }
+}
+
+val unpackUiBundle by tasks.registering(Copy::class) {
+    dependsOn(fetchUiBundle)
+    from(tarTree(resources.gzip(uiBundleDir.get().file("orchard-ui-bundle-$orchardUiBundleVersion.tar.gz").asFile)))
+    into(uiResourcesDir.map { it.dir("static") }) // archive root -> static/index.html
+}
+
+sourceSets.named("main") { resources.srcDir(uiResourcesDir) } // static/** on classpath
+tasks.named("processResources") { dependsOn(unpackUiBundle) }
