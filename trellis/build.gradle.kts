@@ -14,8 +14,10 @@ fun downloadTo(url: String, dest: File) {
 fun sha256(file: File): String =
     MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
 fun sha256FromChecksums(checksumFile: File, tarballName: String): String =
-    checksumFile.readLines().firstOrNull { it.trim().endsWith(tarballName) }
-        ?.trim()?.split(Regex("\\s+"))?.first()
+    checksumFile.readLines()
+        .map { it.trim().split(Regex("\\s+")) }
+        .firstOrNull { it.size >= 2 && it.last() == tarballName }
+        ?.first()
         ?: throw GradleException("No sha256 entry for $tarballName in ${checksumFile.name}")
 
 configurations.all {

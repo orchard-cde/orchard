@@ -21,6 +21,10 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
  * RequestMappingHandlerMapping catch-all outranks the static ResourceHttpRequestHandler
  * and would shadow every asset. /api/** still routes to the REST controllers, which
  * outrank the resource handler.
+ * <p>
+ * Real-file and index.html lookups are delegated to {@code super.getResource()} so that
+ * the stock {@code PathResourceResolver.checkResource} location-containment guard is
+ * applied to every served resource (prevents path-traversal).
  */
 @Configuration
 public class SpaResourceConfig implements WebMvcConfigurer {
@@ -43,16 +47,17 @@ public class SpaResourceConfig implements WebMvcConfigurer {
             if (isExcludedPrefix(resourcePath)) {
                 return null;
             }
-            Resource requested = location.createRelative(resourcePath);
-            if (requested.exists() && requested.isReadable()) {
-                return requested;
+            // Real file (super performs existence + checkResource location-containment guard).
+            Resource resource = super.getResource(resourcePath, location);
+            if (resource != null) {
+                return resource;
             }
             // Missing dotted asset -> real 404, not the SPA shell.
             if (hasExtension(resourcePath)) {
                 return null;
             }
-            Resource index = location.createRelative("index.html");
-            return (index.exists() && index.isReadable()) ? index : null;
+            // Client-routed path -> serve the SPA shell (also guarded by super).
+            return super.getResource("index.html", location);
         }
 
         private boolean isExcludedPrefix(String path) {
@@ -61,6 +66,14 @@ public class SpaResourceConfig implements WebMvcConfigurer {
                 || path.equals("ws") || path.startsWith("ws/");
         }
 
+        /**
+         * Returns true if the last path segment contains a dot, indicating a file extension.
+         * <p>
+         * Known constraint: a client-route path segment that itself contains a dot (e.g.
+         * {@code /groves/my.workspace}) would be treated as a missing asset (404) rather than
+         * falling back to the SPA shell. Current routes (UUIDs, /groves, /nursery) contain
+         * no dots, so this is acceptable.
+         */
         private boolean hasExtension(String path) {
             int slash = path.lastIndexOf('/');
             String last = path.substring(slash + 1);

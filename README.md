@@ -46,7 +46,7 @@ server for hot-reload instead:
 
 ```bash
 # In the sibling orchard-ui/ repository
-npm run dev   # Next.js on :3000, proxies API calls to :8080
+npm run dev   # Next.js on :3000, talks to the API at http://localhost:8080
 ```
 
 ### Using the CLI (Trowel)
