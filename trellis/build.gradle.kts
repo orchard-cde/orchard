@@ -82,35 +82,49 @@ val uiBundleDir = layout.buildDirectory.dir("ui-bundle")
 val uiResourcesDir = layout.buildDirectory.dir("generated/ui-resources") // holds static/
 
 val fetchUiBundle by tasks.registering {
-    val version = orchardUiBundleVersion
-    val tarballFile = uiBundleDir.map { it.file("orchard-ui-bundle-$version.tar.gz") }
+    val tarballFile = uiBundleDir.map { it.file("orchard-ui-bundle-$orchardUiBundleVersion.tar.gz") }
     val checksumFile = uiBundleDir.map { it.file("checksums-sha256.txt") }
-    inputs.property("version", version)
+    inputs.property("version", orchardUiBundleVersion)
     outputs.file(tarballFile)
     // Prevent Gradle's stale-output cleanup from deleting a pre-seeded bootstrap file.
     // The task manages its own output: it skips the download when the sha256 already matches.
     doNotTrackState("download task manages its own output; pre-seed bootstrap file must not be cleaned")
     doLast {
-        val base = "https://github.com/orchard-cde/orchard-ui/releases/download/v$version"
+        val base = "https://github.com/orchard-cde/orchard-ui/releases/download/v$orchardUiBundleVersion"
         val tarball = tarballFile.get().asFile
         val checksum = checksumFile.get().asFile
-        // Anonymous GET; only fetch files not already present (pre-seed bootstrap).
+        // Anonymous GET; guard the checksum download too.
         if (!checksum.exists()) downloadTo("$base/checksums-sha256.txt", checksum)
         val expected = sha256FromChecksums(checksum, tarball.name)
-        if (!tarball.exists()) {
-            downloadTo("$base/orchard-ui-bundle-$version.tar.gz", tarball)
+        if (!tarball.exists() || sha256(tarball) != expected) {
+            try {
+                downloadTo("$base/orchard-ui-bundle-$orchardUiBundleVersion.tar.gz", tarball)
+            } catch (e: java.io.IOException) {
+                if (tarball.exists()) {
+                    throw GradleException(
+                        "orchard-ui bundle v$orchardUiBundleVersion is present but its sha256 does not match $expected " +
+                        "and re-download failed (${e.message}). Delete $tarball and rebuild, or pre-seed a valid copy."
+                    )
+                }
+                throw GradleException(
+                    "Could not download orchard-ui bundle v$orchardUiBundleVersion (${e.message}). " +
+                    "If orchard-ui is still private, pre-seed $tarball and ${checksum.name} (see CONTRIBUTING)."
+                )
+            }
         }
         val actual = sha256(tarball)
-        if (actual != expected) throw GradleException(
-            "orchard-ui bundle checksum mismatch for v$version (expected=$expected actual=$actual). " +
-            "If orchard-ui is still private, pre-seed $tarball and ${checksum.name} (see CONTRIBUTING)."
-        )
+        if (actual != expected) {
+            throw GradleException(
+                "orchard-ui bundle checksum mismatch for v$orchardUiBundleVersion (expected=$expected actual=$actual). " +
+                "Delete $tarball and rebuild, or pre-seed a valid copy."
+            )
+        }
     }
 }
 
 val unpackUiBundle by tasks.registering(Copy::class) {
     dependsOn(fetchUiBundle)
-    from(tarTree(resources.gzip(uiBundleDir.get().file("orchard-ui-bundle-$orchardUiBundleVersion.tar.gz").asFile)))
+    from({ tarTree(resources.gzip(uiBundleDir.get().file("orchard-ui-bundle-$orchardUiBundleVersion.tar.gz").asFile)) })
     into(uiResourcesDir.map { it.dir("static") }) // archive root -> static/index.html
 }
 
