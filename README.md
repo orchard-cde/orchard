@@ -33,11 +33,20 @@ docker compose up -d postgres
 # Build the project
 ./gradlew build -x test
 
-# Run the API server (port 8080)
-./gradlew :trellis:bootRun
+# Start the dev server — serves the UI (Canopy) and API at http://localhost:8080
+trowel dev-server start
+```
 
-# For the Web UI (Canopy), see the separate repo:
-# https://github.com/orchard-cde/orchard-ui
+The dev server bundles a pinned static build of the Canopy UI (orchard-ui) and serves
+it alongside the API at a single URL. No separate `npm run dev` process is required to
+use the app.
+
+**Fast UI-development loop** — when actively working on orchard-ui, run the Next.js dev
+server for hot-reload instead:
+
+```bash
+# In the sibling orchard-ui/ repository
+npm run dev   # Next.js on :3000, proxies API calls to :8080
 ```
 
 ### Using the CLI (Trowel)
