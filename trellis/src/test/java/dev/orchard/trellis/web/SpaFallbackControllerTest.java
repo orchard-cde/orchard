@@ -28,6 +28,7 @@ class SpaFallbackControllerTest {
     @Test
     void forwardsTopLevelClientRoute() throws Exception {
         mvc.perform(get("/nursery"))
+            .andExpect(status().isOk())
             .andExpect(forwardedUrl("/index.html"));
     }
 
@@ -35,6 +36,7 @@ class SpaFallbackControllerTest {
     void doesNotForwardApiPaths() throws Exception {
         // No /api controller in this slice -> 404, but crucially NOT forwarded to index.html.
         mvc.perform(get("/api/health"))
+            .andExpect(status().isNotFound())
             .andExpect(forwardedUrl(null));
     }
 
@@ -42,6 +44,7 @@ class SpaFallbackControllerTest {
     void doesNotForwardAssetPaths() throws Exception {
         // Path with an extension is treated as an asset -> not forwarded (real 404 when absent).
         mvc.perform(get("/_next/static/chunks/main.js"))
+            .andExpect(status().isNotFound())
             .andExpect(forwardedUrl(null));
     }
 }

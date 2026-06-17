@@ -2,6 +2,7 @@ package dev.orchard.trellis.web;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,8 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 @Controller
 public class SpaFallbackController {
 
-    private static final java.util.regex.Pattern EXCLUDED =
-        java.util.regex.Pattern.compile("^/(api|actuator|ws)(/.*)?$");
+    private static final Pattern EXCLUDED =
+        Pattern.compile("^/(api|actuator|ws)(/.*)?$");
 
     /**
      * Catch-all handler: forwards extensionless non-API paths to the SPA shell.
