@@ -2,6 +2,14 @@
 
 > Cloud Development Environments - Growing the Future of Code
 
+<div align="center">
+
+[![CI](https://img.shields.io/github/actions/workflow/status/orchard-cde/orchard/ci.yml?branch=main&logo=github&label=CI)](https://github.com/orchard-cde/orchard/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/orchard-cde/orchard?logo=github&label=Release)](https://github.com/orchard-cde/orchard/releases)
+[![License](https://img.shields.io/github/license/orchard-cde/orchard?logo=apache&label=License)](LICENSE)
+
+</div>
+
 Orchard is a cloud development environment (CDE) platform that provisions ready-to-code workspaces from any Git repository. Think Gitpod, but with an orchard theme and designed for integration with [OpenRewrite](https://openrewrite.org).
 
 ## Features
