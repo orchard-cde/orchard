@@ -24,7 +24,7 @@ dependencies {
     implementation("org.springframework:spring-context")
     implementation("org.springframework.boot:spring-boot")
 
-    implementation(platform("software.amazon.awssdk:bom:2.30.0"))
+    implementation(platform("software.amazon.awssdk:bom:2.46.12"))
     implementation("software.amazon.awssdk:ec2")
     implementation("software.amazon.awssdk:url-connection-client")
     runtimeOnly("software.amazon.awssdk:sts") // for default credential chain (web-identity tokens)
