@@ -60,6 +60,30 @@ class DevCultivatorAuthFilterTest {
     }
 
     @Test
+    void retriesEnsureWhenFirstAttemptThrows() throws Exception {
+        CultivatorService service = mock(CultivatorService.class);
+        when(service.ensureCultivator(DEFAULT_ID))
+            .thenThrow(new RuntimeException("transient DB error"))
+            .thenReturn(null);
+        DevCultivatorAuthFilter filter = new DevCultivatorAuthFilter(service, DEFAULT_ID);
+
+        // First request: ensureCultivator throws, flag is reset
+        MockHttpServletRequest req1 = new MockHttpServletRequest();
+        try {
+            filter.doFilter(req1, new MockHttpServletResponse(), new MockFilterChain());
+        } catch (RuntimeException ignored) {
+            // expected
+        }
+
+        // Second request: flag was reset, so ensureCultivator is called again and succeeds
+        MockHttpServletRequest req2 = new MockHttpServletRequest();
+        filter.doFilter(req2, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(service, times(2)).ensureCultivator(DEFAULT_ID);
+        assertThat(req2.getAttribute("cultivatorId")).isEqualTo(DEFAULT_ID);
+    }
+
+    @Test
     void beanPresentWhenOauthDisabledAndAbsentWhenEnabled() {
         ApplicationContextRunner runner = new ApplicationContextRunner()
             .withBean(CultivatorService.class, () -> mock(CultivatorService.class))

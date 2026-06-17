@@ -34,7 +34,10 @@ public class DevCultivatorAuthFilter extends OncePerRequestFilter {
 
     public DevCultivatorAuthFilter(
             CultivatorService cultivatorService,
-            @Value("${orchard.dev.default-cultivator-id}") UUID defaultCultivatorId) {
+            // Default mirrors application-devserver.yml so a non-devserver run with oauth2
+            // disabled still starts (the property is only defined in the devserver profile).
+            // devserver yml and trowel's --orchard.dev.default-cultivator-id override this.
+            @Value("${orchard.dev.default-cultivator-id:11111111-1111-1111-1111-111111111111}") UUID defaultCultivatorId) {
         this.cultivatorService = cultivatorService;
         this.defaultCultivatorId = defaultCultivatorId;
     }
@@ -44,7 +47,12 @@ public class DevCultivatorAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         if (request.getHeader("X-Cultivator-Id") == null) {
             if (ensured.compareAndSet(false, true)) {
-                cultivatorService.ensureCultivator(defaultCultivatorId);
+                try {
+                    cultivatorService.ensureCultivator(defaultCultivatorId);
+                } catch (RuntimeException e) {
+                    ensured.set(false); // allow a later request to retry the upsert
+                    throw e;
+                }
             }
             request.setAttribute("cultivatorId", defaultCultivatorId);
         }
