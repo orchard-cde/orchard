@@ -39,12 +39,17 @@ public class SpaResourceConfig implements WebMvcConfigurer {
     static class SpaPathResourceResolver extends PathResourceResolver {
         @Override
         protected Resource getResource(String resourcePath, Resource location) throws IOException {
+            // Excluded prefixes must never be served the SPA shell or a static file.
+            if (isExcludedPrefix(resourcePath)) {
+                return null;
+            }
             Resource requested = location.createRelative(resourcePath);
             if (requested.exists() && requested.isReadable()) {
                 return requested;
             }
-            if (isExcludedPrefix(resourcePath) || hasExtension(resourcePath)) {
-                return null; // real 404 for api/actuator/ws and missing dotted assets
+            // Missing dotted asset -> real 404, not the SPA shell.
+            if (hasExtension(resourcePath)) {
+                return null;
             }
             Resource index = location.createRelative("index.html");
             return (index.exists() && index.isReadable()) ? index : null;

@@ -67,4 +67,9 @@ class SpaResourceConfigTest {
         Resource result = resolver.getResource("actuator/health", location);
         assertThat(result).isNull();
     }
+
+    @Test
+    void wsPrefixReturnsNull() throws IOException {
+        assertThat(resolver.getResource("ws/grove-events", location)).isNull();
+    }
 }
