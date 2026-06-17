@@ -11,11 +11,19 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
  * Serves the bundled orchard-ui static export (classpath:/static/) with SPA fallback (issue #78).
  * <p>
  * Registers a resource handler on /** whose resolver:
- *   - serves the real file when it exists (/, /_next/..., /favicon.ico),
- *   - falls back to index.html for extensionless client-routed paths (e.g. /groves/{uuid}),
- *     so the browser-side router can read window.location and render the route,
+ *   - serves the real file when it exists for extension-bearing paths (/_next/..., /favicon.ico),
+ *   - serves a prerendered per-route {@code <route>/index.html} when Next.js emitted one
+ *     (e.g. {@code groves/index.html} for the {@code /groves} route),
+ *   - falls back to the root {@code index.html} SPA shell for extensionless client-routed paths
+ *     that have no prerendered page (e.g. /groves/{uuid}),
  *   - returns null (-> 404) for /api, /actuator, /ws prefixes and for missing dotted
  *     asset paths, so those never receive the SPA shell.
+ * <p>
+ * Extensionless paths are NEVER served as raw directory resources. In the GraalVM native image,
+ * classpath directories report {@code isReadable()==true}; Spring would serve them as
+ * {@code application/octet-stream} (a directory listing). The resolver avoids this by routing
+ * all extensionless paths through the prerendered-index or SPA-shell lookup, never returning
+ * a raw directory.
  * <p>
  * Using the resource chain (not an @Controller catch-all) is deliberate: a
  * RequestMappingHandlerMapping catch-all outranks the static ResourceHttpRequestHandler
@@ -47,17 +55,33 @@ public class SpaResourceConfig implements WebMvcConfigurer {
             if (isExcludedPrefix(resourcePath)) {
                 return null;
             }
-            // Real file (super performs existence + checkResource location-containment guard).
-            Resource resource = super.getResource(resourcePath, location);
-            if (resource != null) {
-                return resource;
-            }
-            // Missing dotted asset -> real 404, not the SPA shell.
+            // Asset request (file extension in the last segment): serve the real file via
+            // super (existence + checkResource location guard), or null -> 404 if missing.
+            // Never falls back to the SPA shell.
             if (hasExtension(resourcePath)) {
-                return null;
+                return super.getResource(resourcePath, location);
             }
-            // Client-routed path -> serve the SPA shell (also guarded by super).
+            // Extensionless path = a client route, possibly a directory like "groves/".
+            // Serve the prerendered per-route index.html when Next emitted one, otherwise
+            // the SPA shell. Never return a raw directory resource: the native image
+            // reports classpath directories as readable, and Spring serves them as
+            // application/octet-stream, which browsers download.
+            String route = stripTrailingSlashes(resourcePath);
+            if (!route.isEmpty()) {
+                Resource routeIndex = super.getResource(route + "/index.html", location);
+                if (routeIndex != null) {
+                    return routeIndex;
+                }
+            }
             return super.getResource("index.html", location);
+        }
+
+        private String stripTrailingSlashes(String path) {
+            int end = path.length();
+            while (end > 0 && path.charAt(end - 1) == '/') {
+                end--;
+            }
+            return path.substring(0, end);
         }
 
         private boolean isExcludedPrefix(String path) {
