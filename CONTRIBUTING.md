@@ -28,5 +28,7 @@ trellis/build/ui-bundle/
 └── checksums-sha256.txt
 ```
 
+Download both files from the orchard-ui GitHub Releases page for the matching version (`v<version>`).
+
 Once orchard-ui is public, the build downloads the bundle anonymously with no pre-seed
 required.

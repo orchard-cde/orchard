@@ -215,4 +215,4 @@ Orchard is licensed under the [Apache License, Version 2.0](LICENSE). See the [N
 
 ## Contributing
 
-Contributions welcome! Please read the contribution guidelines before submitting PRs.
+Contributions welcome! Please read the [contribution guidelines](CONTRIBUTING.md) before submitting PRs.
