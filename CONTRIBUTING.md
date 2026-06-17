@@ -13,6 +13,12 @@ orchardUiBundleVersion=0.1.0
 
 To consume a newer orchard-ui release, bump that one line and open a PR.
 
+### Dev Mode UI Authentication
+
+When running `trowel dev-server start` in dev mode (oauth2 disabled), the UI automatically
+authenticates as the cultivator configured in trowel. To test as a different cultivator,
+set the `X-Cultivator-Id` header via browser localStorage.
+
 ### Pre-seeding the bundle (while orchard-ui is a private repo)
 
 The `:trellis` build downloads `orchard-ui-bundle-<version>.tar.gz` anonymously from

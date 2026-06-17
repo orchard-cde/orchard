@@ -39,7 +39,8 @@ trowel dev-server start
 
 The dev server bundles a pinned static build of the Canopy UI (orchard-ui) and serves
 it alongside the API at a single URL. No separate `npm run dev` process is required to
-use the app.
+use the app. In dev mode, the UI auto-authenticates as the cultivator configured in your
+trowel config (`~/.orchard/config.properties`), so no localStorage setup is needed.
 
 **Fast UI-development loop** — when actively working on orchard-ui, run the Next.js dev
 server for hot-reload instead:
