@@ -60,6 +60,17 @@ public class DevServerCommand implements Callable<Integer> {
         @ParentCommand
         DevServerCommand parent;
 
+        // Test seam: overrides the parent-resolved cultivator id when set (null = use parent chain).
+        private String cultivatorIdOverride;
+        void setCultivatorIdForTest(String cultivatorId) { this.cultivatorIdOverride = cultivatorId; }
+
+        private String resolveCultivatorId() {
+            if (cultivatorIdOverride != null) {
+                return cultivatorIdOverride;
+            }
+            return (parent != null && parent.parent != null) ? parent.parent.getCultivatorId() : null;
+        }
+
         @Option(names = {"--foreground", "-f"}, description = "Run in foreground (default: background)")
         boolean foreground;
 
@@ -107,11 +118,16 @@ public class DevServerCommand implements Callable<Integer> {
             }
         }
 
-        private ArrayList<String> buildCommand(Path binary) {
+        ArrayList<String> buildCommand(Path binary) {
             var command = new ArrayList<String>();
             command.add(binary.toString());
             command.add("--spring.profiles.active=devserver");
             command.add("--server.port=" + port);
+
+            String cultivatorId = resolveCultivatorId();
+            if (cultivatorId != null && !cultivatorId.isBlank()) {
+                command.add("--orchard.dev.default-cultivator-id=" + cultivatorId);
+            }
 
             if (verbose) {
                 command.add("--logging.level.dev.orchard=DEBUG");

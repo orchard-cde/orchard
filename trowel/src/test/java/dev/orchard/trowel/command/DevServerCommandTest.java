@@ -225,4 +225,24 @@ class DevServerCommandTest {
         assertThat(info.pid()).isEqualTo(12345);
         assertThat(info.port()).isEqualTo(9090);
     }
+
+    @Test
+    void includesCultivatorArgWhenConfigured() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCultivatorIdForTest("4fbe48ac-dcfd-41ac-a817-6b400e2b34ec");
+
+        java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
+
+        assertThat(cmd).contains("--orchard.dev.default-cultivator-id=4fbe48ac-dcfd-41ac-a817-6b400e2b34ec");
+    }
+
+    @Test
+    void omitsCultivatorArgWhenNotConfigured() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCultivatorIdForTest(null);
+
+        java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
+
+        assertThat(cmd).noneMatch(a -> a.startsWith("--orchard.dev.default-cultivator-id="));
+    }
 }
