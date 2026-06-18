@@ -14,8 +14,9 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
  *   - serves the real file when it exists for extension-bearing paths (/_next/..., /favicon.ico),
  *   - serves a prerendered per-route {@code <route>/index.html} when Next.js emitted one
  *     (e.g. {@code groves/index.html} for the {@code /groves} route),
- *   - falls back to the root {@code index.html} SPA shell for extensionless client-routed paths
- *     that have no prerendered page (e.g. /groves/{uuid}),
+ *   - serves the dynamic-route placeholder shell {@code <parent>/_/index.html} for a deep
+ *     client route with no exact page (e.g. {@code groves/_/index.html} for /groves/{uuid}),
+ *   - falls back to the root {@code index.html} SPA shell for any remaining extensionless route,
  *   - returns null (-> 404) for /api, /actuator, /ws prefixes and for missing dotted
  *     asset paths, so those never receive the SPA shell.
  * <p>
@@ -38,6 +39,13 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
 public class SpaResourceConfig implements WebMvcConfigurer {
 
     private static final String STATIC_LOCATION = "classpath:/static/";
+
+    /**
+     * Directory name Next.js static export uses for a dynamic route segment's prerendered
+     * placeholder shell (this app's {@code generateStaticParams} emits a single {@code _}
+     * param), e.g. {@code groves/_/index.html} for {@code /groves/[id]}.
+     */
+    private static final String DYNAMIC_ROUTE_PLACEHOLDER = "_";
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
@@ -71,6 +79,20 @@ public class SpaResourceConfig implements WebMvcConfigurer {
                 Resource routeIndex = super.getResource(route + "/index.html", location);
                 if (routeIndex != null) {
                     return routeIndex;
+                }
+                // Next.js static-export dynamic route: /groves/<id> has no exact prerendered
+                // page, but the export emits a placeholder shell at the dynamic segment
+                // (generateStaticParams -> groves/_/index.html). Try the parent route with the
+                // last segment replaced by the "_" placeholder before falling back to the root
+                // shell — the root index.html is an error shell, so serving it breaks deep links.
+                int lastSlash = route.lastIndexOf('/');
+                if (lastSlash >= 0) {
+                    String placeholderIndex =
+                        route.substring(0, lastSlash) + "/" + DYNAMIC_ROUTE_PLACEHOLDER + "/index.html";
+                    Resource dynamicIndex = super.getResource(placeholderIndex, location);
+                    if (dynamicIndex != null) {
+                        return dynamicIndex;
+                    }
                 }
             }
             return super.getResource("index.html", location);

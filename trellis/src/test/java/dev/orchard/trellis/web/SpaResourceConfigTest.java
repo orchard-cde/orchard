@@ -25,6 +25,10 @@ class SpaResourceConfigTest {
         // prerendered per-route page for the /groves route
         Files.createDirectories(staticDir.resolve("groves"));
         Files.writeString(staticDir.resolve("groves/index.html"), "<!doctype html><title>groves</title>");
+        // Next.js static-export placeholder shell for the dynamic /groves/[id] route
+        // (generateStaticParams emits a single "_" param dir).
+        Files.createDirectories(staticDir.resolve("groves/_"));
+        Files.writeString(staticDir.resolve("groves/_/index.html"), "<!doctype html><title>grove detail</title>");
         // trailing slash so createRelative resolves children correctly
         location = new FileSystemResource(staticDir.toFile().getPath() + "/");
     }
@@ -97,13 +101,23 @@ class SpaResourceConfigTest {
     }
 
     @Test
-    void grovesChildRouteWithNoPrerenderedPageFallsBackToRootShell() throws IOException {
-        // /groves/some-uuid has no prerendered index.html; must serve the top-level SPA shell.
+    void grovesDetailRouteServesDynamicPlaceholderShell() throws IOException {
+        // /groves/<uuid> has no exact prerendered page; it must serve the Next.js dynamic-route
+        // placeholder groves/_/index.html (the real detail shell), NOT the root index.html
+        // (which the export emits as an error shell — serving it breaks the detail page).
         Resource result = resolver.getResource("groves/some-uuid-1234", location);
         assertThat(result).isNotNull();
         assertThat(result.getFilename()).isEqualTo("index.html");
-        // Must be the root shell, not the groves one.
-        String canonicalPath = result.getFile().getCanonicalPath();
-        assertThat(canonicalPath).doesNotContain("/groves/");
+        assertThat(result.getFile().getCanonicalPath())
+            .contains("groves" + java.io.File.separator + "_");
+    }
+
+    @Test
+    void unknownDeepRouteWithNoPlaceholderFallsBackToRootShell() throws IOException {
+        // A route whose parent has no "_" placeholder must still fall back to the root SPA shell.
+        Resource result = resolver.getResource("unknown/child-route", location);
+        assertThat(result).isNotNull();
+        assertThat(result.getFilename()).isEqualTo("index.html");
+        assertThat(result.getFile().getCanonicalPath()).doesNotContain("groves");
     }
 }
