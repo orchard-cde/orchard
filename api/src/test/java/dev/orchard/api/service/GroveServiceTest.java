@@ -4,6 +4,7 @@ import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
 import dev.orchard.core.model.Seedling.SeedlingSpec;
+import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.roots.entity.FruitEntity;
@@ -45,6 +46,7 @@ class GroveServiceTest {
     void setUp() {
         groveService = new GroveService(
             groveRepository, fruitRepository, providerRegistry,
+            new DevcontainerCliConfig("0.87.0", 0, 0),
             fruitGrower, cultivatorService, eventPublisher
         );
     }

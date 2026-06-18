@@ -35,3 +35,4 @@ name: dev.orchard.SpringBootMigration
 displayName: Migrate to Spring Boot 4 (INACTIVE - see issue #10)
 recipeList:
   - org.openrewrite.java.spring.boot4.UpgradeSpringBoot_4_0
+---
