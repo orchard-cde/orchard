@@ -116,27 +116,45 @@ public class DevServerCommand implements Callable<Integer> {
                     return 0;
                 }
 
-                Path binary = serverBinary();
-                if (!Files.isExecutable(binary)) {
-                    System.err.println("Orchard server binary not found at: " + binary);
+                Path coreBinary = serverBinary();
+                if (!Files.isExecutable(coreBinary)) {
+                    System.err.println("Orchard server binary not found at: " + coreBinary);
                     System.err.println();
                     System.err.println("Build it from source with:");
                     System.err.println("  ./gradlew :trellis:nativeCompile");
                     System.err.println();
                     System.err.println("Then install it:");
-                    System.err.println("  mkdir -p " + binary.getParent());
-                    System.err.println("  cp trellis/build/native/nativeCompile/orchard-server " + binary);
+                    System.err.println("  mkdir -p " + coreBinary.getParent());
+                    System.err.println("  cp trellis/build/native/nativeCompile/orchard-server " + coreBinary);
                     return 1;
                 }
 
                 ensureDirectories();
 
-                var command = buildCommand(binary);
+                // ADJ-1: resolve UI binary BEFORE launching core (fail fast → nothing started)
+                Path uiBinary = null;
+                if (!noUi && !foreground) {
+                    try {
+                        String v = (uiVersion != null && !uiVersion.isBlank()) ? uiVersion
+                                 : dev.orchard.trowel.devserver.UiBackendResolver.DEFAULT_UI_VERSION;
+                        uiBinary = new dev.orchard.trowel.devserver.UiBackendResolver(uiBackendBinary(), v).resolve();
+                    } catch (dev.orchard.trowel.devserver.UiBackendUnavailableException e) {
+                        System.err.println(e.getMessage());
+                        return 1;   // nothing launched
+                    }
+                }
+
+                // ADJ-3: foreground can't run the UI (it blocks on core inheritIO)
+                if (foreground && !noUi) {
+                    System.out.println("foreground mode runs core only (:" + corePort + "); omit -f to also run the UI");
+                }
+
+                var command = buildCommand(coreBinary);
 
                 if (foreground) {
                     return runForeground(command);
                 } else {
-                    return runBackground(command);
+                    return runBackground(command, uiBinary);
                 }
 
             } catch (Exception e) {
@@ -163,9 +181,20 @@ public class DevServerCommand implements Callable<Integer> {
             return command;
         }
 
+        ArrayList<String> buildUiCommand(Path uiBinary) {
+            var command = new ArrayList<String>();
+            command.add(uiBinary.toString());
+            command.add("--server.port=" + port);
+            return command;
+        }
+
+        java.util.Map<String, String> uiEnv() {
+            return java.util.Map.of("ORCHARD_CORE_BASE_URL", "http://localhost:" + corePort);
+        }
+
         private int runForeground(ArrayList<String> command) throws IOException, InterruptedException {
-            System.out.println("\u001B[1;32mStarting Orchard dev-server (foreground)...\u001B[0m");
-            System.out.println("  Port: " + port);
+            System.out.println("[1;32mStarting Orchard dev-server (foreground)...[0m");
+            System.out.println("  Port: " + corePort);
             System.out.println("  Press Ctrl+C to stop");
             System.out.println();
 
@@ -182,8 +211,8 @@ public class DevServerCommand implements Callable<Integer> {
             return process.waitFor();
         }
 
-        private int runBackground(ArrayList<String> command) throws IOException, InterruptedException {
-            System.out.println("\u001B[1;32mStarting Orchard dev-server...\u001B[0m");
+        private int runBackground(ArrayList<String> command, Path uiBinary) throws IOException, InterruptedException {
+            System.out.println("[1;32mStarting Orchard dev-server...[0m");
 
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile().toFile()));
@@ -191,27 +220,34 @@ public class DevServerCommand implements Callable<Integer> {
             Process process = pb.start();
 
             long pid = process.pid();
-            Files.writeString(pidFile(), pid + "\n" + port);
+            Files.writeString(pidFile(), pid + "\n" + corePort);
 
             System.out.println("  PID: " + pid);
             System.out.println("  Logs: " + logFile());
 
             // Wait for health check
             System.out.print("  Waiting for server to start");
-            boolean healthy = waitForHealth(port, 30);
+            boolean coreHealthy = waitForHealth(process, corePort, "/api/health", 30);
 
-            if (healthy) {
-                System.out.println(" ready!");
-                printConnectionInfo(port);
-                return 0;
-            } else {
+            if (!coreHealthy) {
                 System.out.println(" timed out.");
                 System.err.println("Server may still be starting. Check logs: " + logFile());
                 return 1;
             }
+
+            System.out.println(" ready!");
+            if (uiBinary != null) {   // i.e. !noUi && !foreground
+                int r = startUiBackend(uiBinary);
+                if (r != 0) return r;
+                printConnectionInfo(port);   // BFF URL is what to open
+            } else {
+                printCoreOnlyInfo(corePort);
+            }
+            return 0;
         }
 
-        private boolean waitForHealth(int port, int timeoutSeconds) {
+        // ADJ-2: package-visible, gains Process param and bails if it died
+        boolean waitForHealth(Process process, int port, String healthPath, int timeoutSeconds) {
             HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
                 .build();
@@ -219,12 +255,17 @@ public class DevServerCommand implements Callable<Integer> {
             long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
 
             while (System.currentTimeMillis() < deadline) {
+                // ADJ-2: bail fast if the process already died
+                if (process != null && !process.isAlive()) {
+                    System.out.println(" exited.");
+                    return false;
+                }
                 try {
                     Thread.sleep(1000);
                     System.out.print(".");
 
                     HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create("http://localhost:" + port + "/api/health"))
+                        .uri(URI.create("http://localhost:" + port + healthPath))
                         .timeout(Duration.ofSeconds(2))
                         .GET()
                         .build();
@@ -238,6 +279,35 @@ public class DevServerCommand implements Callable<Integer> {
                 }
             }
             return false;
+        }
+
+        private int startUiBackend(Path uiBinary) throws IOException, InterruptedException {
+            System.out.println("[1;32mStarting orchard-ui...[0m");
+            ProcessBuilder pb = new ProcessBuilder(buildUiCommand(uiBinary));
+            pb.environment().putAll(uiEnv());
+            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(uiLogFile().toFile()));
+            pb.redirectErrorStream(true);
+            Process ui = pb.start();
+            Files.writeString(uiPidFile(), ui.pid() + "\n" + port);
+
+            System.out.print("  Waiting for UI to start");
+            boolean uiHealthy = waitForHealth(ui, port, "/actuator/health", 30);
+            if (!uiHealthy) {
+                System.out.println(" timed out.");
+                System.err.println("UI may still be starting. Check logs: " + uiLogFile());
+                return 1;
+            }
+            System.out.println(" ready!");
+
+            // ADJ-4: optional browser open
+            if (open) {
+                String url = "http://localhost:" + port;
+                String os = System.getProperty("os.name").toLowerCase();
+                String opener = (os.contains("mac") || os.contains("darwin")) ? "open" : "xdg-open";
+                try { new ProcessBuilder(opener, url).start(); }
+                catch (IOException ex) { System.out.println("  (could not auto-open browser: " + ex.getMessage() + ")"); }
+            }
+            return 0;
         }
     }
 
@@ -270,7 +340,7 @@ public class DevServerCommand implements Callable<Integer> {
                             .join();
 
                         if (exited) {
-                            System.out.println("\u001B[1;32mOrchard dev-server stopped.\u001B[0m");
+                            System.out.println("[1;32mOrchard dev-server stopped.[0m");
                         } else {
                             System.err.println("Server did not stop gracefully, force killing...");
                             handle.destroyForcibly();
@@ -300,7 +370,7 @@ public class DevServerCommand implements Callable<Integer> {
             try {
                 ServerInfo info = readServerInfo();
                 if (info == null) {
-                    System.out.println("Orchard dev-server: \u001B[31mstopped\u001B[0m");
+                    System.out.println("Orchard dev-server: [31mstopped[0m");
                     return 0;
                 }
 
@@ -309,12 +379,12 @@ public class DevServerCommand implements Callable<Integer> {
                     .orElse(false);
 
                 if (!processAlive) {
-                    System.out.println("Orchard dev-server: \u001B[31mstopped\u001B[0m (stale PID file)");
+                    System.out.println("Orchard dev-server: [31mstopped[0m (stale PID file)");
                     Files.deleteIfExists(pidFile());
                     return 0;
                 }
 
-                System.out.println("Orchard dev-server: \u001B[1;32mrunning\u001B[0m");
+                System.out.println("Orchard dev-server: [1;32mrunning[0m");
                 System.out.println("  PID: " + info.pid());
 
                 // Try health endpoint to get more info
@@ -384,11 +454,19 @@ public class DevServerCommand implements Callable<Integer> {
 
     private static void printConnectionInfo(int port) {
         System.out.println();
-        System.out.println("  \u001B[1mOrchard dev-server\u001B[0m");
-        System.out.println("  URL:  http://localhost:" + port);
-        System.out.println("  API:  http://localhost:" + port + "/api");
+        System.out.println("  [1mOrchard dev-server[0m");
+        System.out.println("  UI:   http://localhost:" + port);
+        System.out.println("  (API is proxied through the UI at /api)");
         System.out.println();
         System.out.println("  Use 'trowel grove list' to get started.");
+        System.out.println("  Use 'trowel dev-server stop' to shut down.");
+    }
+
+    private static void printCoreOnlyInfo(int corePort) {
+        System.out.println();
+        System.out.println("  [1mOrchard dev-server (core only)[0m");
+        System.out.println("  API:  http://localhost:" + corePort + "/api");
+        System.out.println();
         System.out.println("  Use 'trowel dev-server stop' to shut down.");
     }
 }
