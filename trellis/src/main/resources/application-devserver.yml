@@ -19,3 +19,5 @@ orchard:
   security:
     oauth2:
       enabled: false
+  dev:
+    default-cultivator-id: 11111111-1111-1111-1111-111111111111

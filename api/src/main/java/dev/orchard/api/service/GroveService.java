@@ -5,6 +5,7 @@ import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
 import dev.orchard.harvest.DevcontainerParser;
 import dev.orchard.harvest.SeedSerializer;
+import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.SeedlingProvider;
@@ -21,7 +22,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
+
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,10 +40,14 @@ import java.util.concurrent.CompletableFuture;
 public class GroveService {
 
     private static final Logger log = LoggerFactory.getLogger(GroveService.class);
+    private static final ObjectMapper devcontainerMapper = JsonMapper.builder()
+        .enable(SerializationFeature.INDENT_OUTPUT)
+        .build();
 
     private final GroveRepository groveRepository;
     private final FruitRepository fruitRepository;
     private final ProviderRegistry providerRegistry;
+    private final DevcontainerCliConfig devcontainerCliConfig;
     private final FruitGrower fruitGrower;
     private final CultivatorService cultivatorService;
     private final DevcontainerParser devcontainerParser;
@@ -45,12 +58,14 @@ public class GroveService {
             GroveRepository groveRepository,
             FruitRepository fruitRepository,
             ProviderRegistry providerRegistry,
+            DevcontainerCliConfig devcontainerCliConfig,
             FruitGrower fruitGrower,
             CultivatorService cultivatorService,
             ApplicationEventPublisher eventPublisher) {
         this.groveRepository = groveRepository;
         this.fruitRepository = fruitRepository;
         this.providerRegistry = providerRegistry;
+        this.devcontainerCliConfig = devcontainerCliConfig;
         this.fruitGrower = fruitGrower;
         this.cultivatorService = cultivatorService;
         this.devcontainerParser = new DevcontainerParser();
@@ -117,8 +132,11 @@ public class GroveService {
                 return;
             }
 
-            // Wait for cloud-init to finish (installs docker, git, etc.)
+            // Wait for cloud-init to finish (installs docker, git, node, devcontainer CLI, etc.)
             waitForCloudInit(plantedSeedling);
+
+            // Verify devcontainer CLI was installed by cloud-init's runcmd block
+            seedlingProvider.verifyDevcontainerCli(plantedSeedling, devcontainerCliConfig.version());
 
             // Clone repository to VM
             String commitSha = cloneRepository(plantedSeedling, grove.repositoryUrl(), grove.branch());
@@ -129,6 +147,10 @@ public class GroveService {
 
             // Discover devcontainer.json from the cloned repo on the VM
             Seed seed = discoverSeed(plantedSeedling);
+
+            // Ensure a devcontainer.json exists in the workspace — when the repo has none,
+            // we fall back to a default Seed but devcontainer up still needs the file on disk.
+            ensureDevcontainerConfig(plantedSeedling, seed);
 
             // Single grow path for both single-container and compose-mode devcontainers.
             // For compose-mode (seed.dockerComposeFile() != null), the devcontainer CLI brings
@@ -256,6 +278,48 @@ public class GroveService {
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .forwardPorts(List.of("8080", "3000"))
             .build();
+    }
+
+    /**
+     * Ensures a devcontainer.json exists at /workspace/.devcontainer/devcontainer.json
+     * on the seedling. If the cloned repo already has one, this is a no-op (the file
+     * test returns fast). Otherwise it serialises the given Seed to a valid
+     * devcontainer.json so that {@code devcontainer up --workspace-folder /workspace}
+     * does not fail with "Config not found".
+     */
+    private void ensureDevcontainerConfig(Seedling seedling, Seed seed) {
+        SshExecutor ssh = new SshExecutor(seedling);
+        try {
+            if (ssh.execute("test -f /workspace/.devcontainer/devcontainer.json && echo yes || echo no")
+                    .trim().equals("yes")) {
+                return;
+            }
+            log.info("Writing devcontainer.json to workspace on seedling {} from seed", seedling.id());
+
+            ObjectNode root = devcontainerMapper.createObjectNode();
+            if (seed.image() != null) {
+                root.put("image", seed.image());
+            }
+            if (!seed.forwardPorts().isEmpty()) {
+                ArrayNode ports = root.putArray("forwardPorts");
+                for (String port : seed.forwardPorts()) {
+                    try { ports.add(Integer.parseInt(port)); }
+                    catch (NumberFormatException e) { ports.add(port); }
+                }
+            }
+            if (!seed.features().isEmpty()) {
+                root.set("features", devcontainerMapper.valueToTree(seed.features()));
+            }
+            if (!seed.containerEnv().isEmpty()) {
+                root.set("containerEnv", devcontainerMapper.valueToTree(seed.containerEnv()));
+            }
+
+            String json = devcontainerMapper.writeValueAsString(root);
+            String b64 = Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
+            ssh.execute("mkdir -p /workspace/.devcontainer && echo '" + b64 + "' | base64 -d > /workspace/.devcontainer/devcontainer.json");
+        } catch (IOException | InterruptedException e) {
+            log.warn("Failed to ensure devcontainer.json on seedling {}", seedling.id(), e);
+        }
     }
 
     @Transactional

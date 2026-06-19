@@ -77,11 +77,12 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                 // Wait for VM to be ready (SSH accessible)
                 waitForSsh("127.0.0.1", sshPort);
 
-                // Provisioning preflight: a SAPLING with no devcontainer CLI would silently
-                // fail every grow() call, so verify cloud-init actually installed the pinned
-                // version before we declare the seedling READY. Failure → BLIGHTED (matches
-                // the rest of the catch block, instance kept alive for operator forensics).
-                Seedling sapling = new Seedling(
+                // A SAPLING that passes these checks has a running VM with SSH access.
+                // Cloud-init may still be installing the devcontainer CLI via its runcmd
+                // block (Node.js + @devcontainers/cli). CLI version verification is deferred
+                // to the caller (GroveService.provisionGrove) so it runs after cloud-init
+                // finishes — see SeedlingProvider.verifyDevcontainerCli.
+                return new Seedling(
                     sprouting.id(),
                     sprouting.groveId(),
                     sprouting.providerInstanceId(),
@@ -92,8 +93,6 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                     sprouting.plantedAt(),
                     java.time.Instant.now()
                 );
-                verifyDevcontainerCli(sapling, devcontainerCliConfig.version());
-                return sapling;
 
             } catch (Exception e) {
                 log.error("Failed to plant seedling {}", seedling.id(), e);

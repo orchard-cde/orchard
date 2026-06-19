@@ -45,3 +45,4 @@ docs/superpowers/
 
 # Worktrees
 .worktrees/
+.gstack/

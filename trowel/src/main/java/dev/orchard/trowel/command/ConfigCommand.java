@@ -142,7 +142,7 @@ public class ConfigCommand implements Callable<Integer> {
                 Files.createDirectories(configDir());
 
                 Properties props = new Properties();
-                props.setProperty("server", "http://localhost:8080");
+                props.setProperty("server", "http://localhost:7778");
                 props.setProperty("cultivator", java.util.UUID.randomUUID().toString());
 
                 props.store(Files.newBufferedWriter(configFile()), "Trowel CLI Configuration");

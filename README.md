@@ -41,11 +41,36 @@ docker compose up -d postgres
 # Build the project
 ./gradlew build -x test
 
-# Run the API server (port 8080)
-./gradlew :trellis:bootRun
+# Start the dev server — runs orchard core (:7778) + the Canopy UI BFF (:7777)
+trowel dev-server start        # open http://localhost:7777
+trowel dev-server start --no-ui  # core only on :7778 (API only, no UI)
+```
 
-# For the Web UI (Canopy), see the separate repo:
-# https://github.com/orchard-cde/orchard-ui
+`trowel dev-server start` launches **two processes**:
+
+- **orchard-server** (core, API only) on port **7778**
+- **orchard-ui-backend** (Canopy UI BFF) on port **7777** — serves the Canopy UI and
+  reverse-proxies `/api/**` to core. Open **http://localhost:7777** in your browser.
+
+In dev mode, the UI auto-authenticates as the cultivator configured in your trowel config
+(`~/.orchard/config.properties`), so no localStorage setup is needed.
+
+The BFF binary (`orchard-ui-backend`) is downloaded automatically from orchard-ui GitHub
+releases. Until a pre-built binary is available for your platform (macOS builds are not
+yet published), build it locally from the sibling `orchard-ui/` checkout:
+
+```bash
+# In the sibling orchard-ui/ repository
+./gradlew :backend:nativeCompile
+cp backend/build/native/nativeCompile/orchard-ui-backend ~/.orchard/bin/
+```
+
+**Fast UI-development loop** — when actively working on orchard-ui source, run the
+Next.js dev server for hot-reload instead:
+
+```bash
+# In the sibling orchard-ui/ repository
+npm run dev   # Next.js on :3000, talks to the core API at http://localhost:7778
 ```
 
 ### Using the CLI (Trowel)
@@ -196,7 +221,7 @@ orchard:
 ### CLI (`~/.orchard/config.properties`)
 
 ```properties
-server=http://localhost:8080
+server=http://localhost:7778
 cultivator=<your-uuid>
 ```
 
@@ -216,4 +241,4 @@ Orchard is licensed under the [Apache License, Version 2.0](LICENSE). See the [N
 
 ## Contributing
 
-Contributions welcome! Please read the contribution guidelines before submitting PRs.
+Contributions welcome! Please read the [contribution guidelines](CONTRIBUTING.md) before submitting PRs.
