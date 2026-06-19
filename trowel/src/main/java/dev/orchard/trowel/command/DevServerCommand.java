@@ -48,6 +48,18 @@ public class DevServerCommand implements Callable<Integer> {
         return orchardHome().resolve("bin").resolve("orchard-server");
     }
 
+    static Path uiPidFile() {
+        return orchardHome().resolve("run").resolve("orchard-ui.pid");
+    }
+
+    static Path uiLogFile() {
+        return orchardHome().resolve("logs").resolve("orchard-ui.log");
+    }
+
+    static Path uiBackendBinary() {
+        return orchardHome().resolve("bin").resolve("orchard-ui-backend");
+    }
+
     @Override
     public Integer call() {
         picocli.CommandLine.usage(this, System.out);
@@ -77,8 +89,23 @@ public class DevServerCommand implements Callable<Integer> {
         @Option(names = {"--verbose", "-v"}, description = "Enable debug logging")
         boolean verbose;
 
-        @Option(names = {"--port", "-p"}, description = "Server port (default: 8080)", defaultValue = "8080")
-        int port;
+        @Option(names = {"--port", "-p"}, description = "UI (browser) port (default: 7777)", defaultValue = "7777")
+        int port = 7777;
+
+        @Option(names = {"--core-port"}, description = "Orchard core API port (default: 7778)", defaultValue = "7778")
+        int corePort = 7778;
+
+        @Option(names = {"--no-ui"}, description = "Start orchard core only, without the UI")
+        boolean noUi;
+
+        @Option(names = {"--ui-version"}, description = "orchard-ui-backend release version to run")
+        String uiVersion;
+
+        @Option(names = {"--open"}, description = "Open the UI in your browser once it is ready")
+        boolean open;
+
+        // Test seam: override the core port without picocli parsing.
+        void setCorePortForTest(int p) { this.corePort = p; }
 
         @Override
         public Integer call() {
@@ -122,7 +149,7 @@ public class DevServerCommand implements Callable<Integer> {
             var command = new ArrayList<String>();
             command.add(binary.toString());
             command.add("--spring.profiles.active=devserver");
-            command.add("--server.port=" + port);
+            command.add("--server.port=" + corePort);
 
             String cultivatorId = resolveCultivatorId();
             if (cultivatorId != null && !cultivatorId.isBlank()) {
@@ -331,7 +358,7 @@ public class DevServerCommand implements Callable<Integer> {
         try {
             List<String> lines = Files.readAllLines(pid);
             long processId = Long.parseLong(lines.getFirst().trim());
-            int port = lines.size() > 1 ? Integer.parseInt(lines.get(1).trim()) : 8080;
+            int port = lines.size() > 1 ? Integer.parseInt(lines.get(1).trim()) : 7778;
             return new ServerInfo(processId, port);
         } catch (Exception e) {
             return null;

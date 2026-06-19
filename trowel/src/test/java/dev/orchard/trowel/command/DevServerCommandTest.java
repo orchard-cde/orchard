@@ -201,7 +201,7 @@ class DevServerCommandTest {
     }
 
     @Test
-    void readServerInfo_defaultsTo8080WhenPortMissing() throws Exception {
+    void readServerInfo_defaultsToCorePortWhenPortMissing() throws Exception {
         Path runDir = tempDir.resolve(".orchard").resolve("run");
         Files.createDirectories(runDir);
         Files.writeString(runDir.resolve("orchard-server.pid"), "12345");
@@ -210,7 +210,7 @@ class DevServerCommandTest {
 
         assertThat(info).isNotNull();
         assertThat(info.pid()).isEqualTo(12345);
-        assertThat(info.port()).isEqualTo(8080);
+        assertThat(info.port()).isEqualTo(7778);
     }
 
     @Test
@@ -244,5 +244,38 @@ class DevServerCommandTest {
         java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
 
         assertThat(cmd).noneMatch(a -> a.startsWith("--orchard.dev.default-cultivator-id="));
+    }
+
+    @Test
+    void start_buildCommand_usesCorePortDefault() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCultivatorIdForTest(null);
+
+        java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
+
+        assertThat(cmd).contains("--server.port=7778");
+    }
+
+    @Test
+    void start_buildCommand_honorsCorePortOverride() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCultivatorIdForTest(null);
+        start.setCorePortForTest(9001);
+
+        java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
+
+        assertThat(cmd).contains("--server.port=9001");
+    }
+
+    @Test
+    void uiBackendBinary_resolvesUnderOrchardBin() {
+        assertThat(DevServerCommand.uiBackendBinary().toString())
+            .endsWith("/.orchard/bin/orchard-ui-backend");
+    }
+
+    @Test
+    void uiPidFile_resolvesUnderRun() {
+        assertThat(DevServerCommand.uiPidFile().toString())
+            .endsWith("/.orchard/run/orchard-ui.pid");
     }
 }
