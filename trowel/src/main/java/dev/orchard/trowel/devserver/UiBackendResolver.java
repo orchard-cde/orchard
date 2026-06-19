@@ -60,7 +60,11 @@ public class UiBackendResolver {
             download();
             return binary;
         } catch (Exception e) {
-            throw new UiBackendUnavailableException(guidance(e.getMessage()), e);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            String cause = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            throw new UiBackendUnavailableException(guidance(cause), e);
         }
     }
 
