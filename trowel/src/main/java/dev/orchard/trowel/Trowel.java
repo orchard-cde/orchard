@@ -68,7 +68,7 @@ public class Trowel implements Callable<Integer> {
         if (config != null) {
             return config;
         }
-        return "http://localhost:8080";
+        return "http://localhost:7778";
     }
 
     public String getCultivatorId() {

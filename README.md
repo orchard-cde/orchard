@@ -212,7 +212,7 @@ orchard:
 ### CLI (`~/.orchard/config.properties`)
 
 ```properties
-server=http://localhost:8080
+server=http://localhost:7778
 cultivator=<your-uuid>
 ```
 

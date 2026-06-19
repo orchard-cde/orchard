@@ -230,14 +230,21 @@ public class DevServerCommand implements Callable<Integer> {
             boolean coreHealthy = waitForHealth(process, corePort, "/api/health", 30);
 
             if (!coreHealthy) {
-                System.out.println(" timed out.");
-                System.err.println("Server may still be starting. Check logs: " + logFile());
+                process.destroy();
+                Files.deleteIfExists(pidFile());
+                if (!process.isAlive()) {
+                    System.out.println(" exited.");
+                    System.err.println("orchard core exited on startup — check " + logFile());
+                } else {
+                    System.out.println(" timed out.");
+                    System.err.println("orchard core did not become healthy in time — check " + logFile());
+                }
                 return 1;
             }
 
             System.out.println(" ready!");
             if (uiBinary != null) {   // i.e. !noUi && !foreground
-                int r = startUiBackend(uiBinary);
+                int r = startUiBackend(uiBinary, process);
                 if (r != 0) return r;
                 printConnectionInfo(port);   // BFF URL is what to open
             } else {
@@ -281,7 +288,7 @@ public class DevServerCommand implements Callable<Integer> {
             return false;
         }
 
-        private int startUiBackend(Path uiBinary) throws IOException, InterruptedException {
+        private int startUiBackend(Path uiBinary, Process coreProcess) throws IOException, InterruptedException {
             System.out.println("[1;32mStarting orchard-ui...[0m");
             ProcessBuilder pb = new ProcessBuilder(buildUiCommand(uiBinary));
             pb.environment().putAll(uiEnv());
@@ -293,8 +300,17 @@ public class DevServerCommand implements Callable<Integer> {
             System.out.print("  Waiting for UI to start");
             boolean uiHealthy = waitForHealth(ui, port, "/actuator/health", 30);
             if (!uiHealthy) {
-                System.out.println(" timed out.");
-                System.err.println("UI may still be starting. Check logs: " + uiLogFile());
+                ui.destroy();
+                Files.deleteIfExists(uiPidFile());
+                coreProcess.destroy();
+                Files.deleteIfExists(pidFile());
+                if (!ui.isAlive()) {
+                    System.out.println(" exited.");
+                    System.err.println("orchard-ui exited on startup — check " + uiLogFile());
+                } else {
+                    System.out.println(" timed out.");
+                    System.err.println("orchard-ui did not become healthy in time — check " + uiLogFile());
+                }
                 return 1;
             }
             System.out.println(" ready!");
