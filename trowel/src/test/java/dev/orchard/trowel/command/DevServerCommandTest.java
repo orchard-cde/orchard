@@ -342,4 +342,59 @@ class DevServerCommandTest {
             System.clearProperty("orchard.ui.releaseBase");
         }
     }
+
+    @Test
+    void stop_killsBothProcessesAndClearsBothPidFiles() throws Exception {
+        Process core = new ProcessBuilder("sleep", "60").start();
+        Process ui = new ProcessBuilder("sleep", "60").start();
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
+        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
+
+        int exitCode = execute("dev-server", "stop");
+
+        assertThat(exitCode).isZero();
+        assertThat(Files.exists(runDir.resolve("orchard-server.pid"))).isFalse();
+        assertThat(Files.exists(runDir.resolve("orchard-ui.pid"))).isFalse();
+        assertThat(core.isAlive()).isFalse();
+        assertThat(ui.isAlive()).isFalse();
+    }
+
+    @Test
+    void stop_handlesCoreOnlyWhenNoUiPidFile() throws Exception {
+        Process core = new ProcessBuilder("sleep", "60").start();
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
+
+        int exitCode = execute("dev-server", "stop");
+
+        assertThat(exitCode).isZero();
+        assertThat(core.isAlive()).isFalse();
+        assertThat(Files.exists(runDir.resolve("orchard-server.pid"))).isFalse();
+    }
+
+    @Test
+    void status_reportsBothWhenUiRunning() throws Exception {
+        Process core = new ProcessBuilder("sleep", "60").start();
+        Process ui = new ProcessBuilder("sleep", "60").start();
+        try {
+            Path runDir = tempDir.resolve(".orchard").resolve("run");
+            Files.createDirectories(runDir);
+            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
+            Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
+
+            int exitCode = execute("dev-server", "status");
+
+            assertThat(exitCode).isZero();
+            String out = outContent.toString();
+            assertThat(out).contains("running");
+            assertThat(out).contains(String.valueOf(ui.pid()));
+            assertThat(out).contains("http://localhost:7777");
+        } finally {
+            core.destroyForcibly();
+            ui.destroyForcibly();
+        }
+    }
 }

@@ -317,41 +317,41 @@ public class DevServerCommand implements Callable<Integer> {
         @ParentCommand
         DevServerCommand parent;
 
+        private void stopOne(Path pidFile, String label) throws IOException {
+            if (!Files.exists(pidFile)) {
+                return;
+            }
+            try {
+                long processId = Long.parseLong(Files.readAllLines(pidFile).getFirst().trim());
+                ProcessHandle.of(processId).ifPresentOrElse(handle -> {
+                    System.out.println("Stopping " + label + " (PID: " + processId + ")...");
+                    handle.destroy();
+                    boolean exited = handle.onExit()
+                        .orTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                        .handle((result, ex) -> ex == null)
+                        .join();
+                    if (!exited) {
+                        System.err.println(label + " did not stop gracefully, force killing...");
+                        handle.destroyForcibly();
+                    }
+                }, () -> System.out.println(label + " process " + processId + " not running (stale PID file)."));
+            } catch (NumberFormatException ignored) {
+                // unreadable pid file; fall through to deletion
+            }
+            Files.deleteIfExists(pidFile);
+        }
+
         @Override
         public Integer call() {
             try {
-                ServerInfo info = readServerInfo();
-                if (info == null) {
+                if (!Files.exists(pidFile()) && !Files.exists(uiPidFile())) {
                     System.out.println("Orchard dev-server is not running (no PID file found).");
                     return 0;
                 }
-
-                long processId = info.pid();
-
-                ProcessHandle.of(processId).ifPresentOrElse(
-                    handle -> {
-                        System.out.println("Stopping Orchard dev-server (PID: " + processId + ")...");
-                        handle.destroy();
-
-                        // Wait for process to exit
-                        boolean exited = handle.onExit()
-                            .orTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-                            .handle((result, ex) -> ex == null)
-                            .join();
-
-                        if (exited) {
-                            System.out.println("[1;32mOrchard dev-server stopped.[0m");
-                        } else {
-                            System.err.println("Server did not stop gracefully, force killing...");
-                            handle.destroyForcibly();
-                        }
-                    },
-                    () -> System.out.println("Process " + processId + " is not running (stale PID file).")
-                );
-
-                Files.deleteIfExists(pidFile());
+                stopOne(uiPidFile(), "orchard-ui");   // proxy first
+                stopOne(pidFile(), "orchard core");   // then upstream
+                System.out.println("[1;32mOrchard dev-server stopped.[0m");
                 return 0;
-
             } catch (Exception e) {
                 System.err.println("Failed to stop dev-server: " + e.getMessage());
                 return 1;
@@ -409,6 +409,14 @@ public class DevServerCommand implements Callable<Integer> {
                 }
 
                 System.out.println("  Logs: " + logFile());
+
+                ServerInfo ui = readUiInfo();
+                if (ui != null && ProcessHandle.of(ui.pid()).map(ProcessHandle::isAlive).orElse(false)) {
+                    System.out.println("  UI PID: " + ui.pid());
+                    System.out.println("  UI URL: http://localhost:" + ui.port());
+                } else if (ui != null) {
+                    Files.deleteIfExists(uiPidFile());
+                }
                 return 0;
 
             } catch (Exception e) {
@@ -420,20 +428,19 @@ public class DevServerCommand implements Callable<Integer> {
 
     record ServerInfo(long pid, int port) {}
 
-    static ServerInfo readServerInfo() {
-        Path pid = pidFile();
-        if (!Files.exists(pid)) {
-            return null;
-        }
+    static ServerInfo readInfo(Path pidFile, int defaultPort) {
+        if (!Files.exists(pidFile)) return null;
         try {
-            List<String> lines = Files.readAllLines(pid);
-            long processId = Long.parseLong(lines.getFirst().trim());
-            int port = lines.size() > 1 ? Integer.parseInt(lines.get(1).trim()) : 7778;
-            return new ServerInfo(processId, port);
-        } catch (Exception e) {
-            return null;
-        }
+            List<String> lines = Files.readAllLines(pidFile);
+            long pid = Long.parseLong(lines.getFirst().trim());
+            int port = lines.size() > 1 ? Integer.parseInt(lines.get(1).trim()) : defaultPort;
+            return new ServerInfo(pid, port);
+        } catch (Exception e) { return null; }
     }
+
+    static ServerInfo readServerInfo() { return readInfo(pidFile(), 7778); }
+
+    static ServerInfo readUiInfo()     { return readInfo(uiPidFile(), 7777); }
 
     private static boolean isServerRunning() {
         ServerInfo info = readServerInfo();
