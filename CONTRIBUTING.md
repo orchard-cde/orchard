@@ -2,39 +2,30 @@
 
 Contributions are welcome. Please open an issue or pull request and follow the conventions below.
 
-## UI Bundle
+## Dev Server (Two-Process Model)
 
-The Canopy web UI is consumed as a pre-built static bundle. Its version is pinned in
-`gradle.properties`:
+`trowel dev-server start` launches two processes:
 
-```properties
-orchardUiBundleVersion=0.1.0
-```
+- **orchard-server** (core, API only) on port **7778**
+- **orchard-ui-backend** (Canopy UI BFF) on port **7777** — serves the Canopy UI and
+  reverse-proxies `/api/**` to core
 
-To consume a newer orchard-ui release, bump that one line and open a PR.
+Open **http://localhost:7777** in your browser. Use `--no-ui` to run core only (`:7778`).
 
 ### Dev Mode UI Authentication
 
 When running `trowel dev-server start` in dev mode (oauth2 disabled), the UI automatically
-authenticates as the cultivator configured in trowel. To test as a different cultivator,
+authenticates as the cultivator configured in trowel. Requests from the BFF are proxied
+through to core, so auto-auth works transparently. To test as a different cultivator,
 set the `X-Cultivator-Id` header via browser localStorage.
 
-### Pre-seeding the bundle (while orchard-ui is a private repo)
+### orchard-ui-backend Binary
 
-The `:trellis` build downloads `orchard-ui-bundle-<version>.tar.gz` anonymously from
-the orchard-ui GitHub Releases page. While the orchard-ui repository is private, the
-anonymous download returns a 403, so the bundle must be pre-seeded locally before
-building.
+The `orchard-ui-backend` BFF binary is downloaded automatically from orchard-ui GitHub
+releases. Until a pre-built binary is published for your platform (macOS builds are not
+yet available), build it locally from the sibling `orchard-ui/` checkout:
 
-Place both files into `trellis/build/ui-bundle/` (this directory is gitignored):
-
+```bash
+./gradlew :backend:nativeCompile
+cp backend/build/native/nativeCompile/orchard-ui-backend ~/.orchard/bin/
 ```
-trellis/build/ui-bundle/
-├── orchard-ui-bundle-0.1.0.tar.gz
-└── checksums-sha256.txt
-```
-
-Download both files from the orchard-ui GitHub Releases page for the matching version (`v<version>`).
-
-Once orchard-ui is public, the build downloads the bundle anonymously with no pre-seed
-required.
