@@ -1,6 +1,15 @@
 package dev.orchard.trowel.devserver;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.time.Duration;
 
 /**
  * Resolves the orchard-ui-backend (BFF) native binary for dev-server.
@@ -41,6 +50,81 @@ public class UiBackendResolver {
 
     public String assetName() {
         return "orchard-ui-backend-" + version + "-" + osArch;
+    }
+
+    public Path resolve() throws UiBackendUnavailableException {
+        if (Files.isExecutable(binary)) {
+            return binary;
+        }
+        try {
+            download();
+            return binary;
+        } catch (Exception e) {
+            throw new UiBackendUnavailableException(guidance(e.getMessage()), e);
+        }
+    }
+
+    private void download() throws IOException, InterruptedException {
+        HttpClient client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+        String base = releaseBase + "/v" + version + "/" + assetName();
+
+        String checksumLine = httpGetString(client, base + ".sha256");
+        String expected = checksumLine.trim().split("\\s+")[0];
+
+        Files.createDirectories(binary.getParent());
+        Path tmp = Files.createTempFile(binary.getParent(), "orchard-ui-backend-", ".download");
+        try {
+            httpGetToFile(client, base, tmp);
+            String actual = sha256(tmp);
+            if (!actual.equalsIgnoreCase(expected)) {
+                throw new IOException("checksum mismatch for " + assetName()
+                    + " (expected=" + expected + " actual=" + actual + ")");
+            }
+            Files.move(tmp, binary, StandardCopyOption.REPLACE_EXISTING);
+            binary.toFile().setExecutable(true, false);
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+    }
+
+    private static String httpGetString(HttpClient client, String url) throws IOException, InterruptedException {
+        HttpResponse<String> resp = client.send(
+            HttpRequest.newBuilder(URI.create(url)).GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() >= 400) {
+            throw new IOException("GET " + url + " -> HTTP " + resp.statusCode());
+        }
+        return resp.body();
+    }
+
+    private static void httpGetToFile(HttpClient client, String url, Path dest) throws IOException, InterruptedException {
+        HttpResponse<Path> resp = client.send(
+            HttpRequest.newBuilder(URI.create(url)).GET().build(),
+            HttpResponse.BodyHandlers.ofFile(dest));
+        if (resp.statusCode() >= 400) {
+            throw new IOException("GET " + url + " -> HTTP " + resp.statusCode());
+        }
+    }
+
+    private static String sha256(Path file) throws IOException {
+        try {
+            byte[] d = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IOException(e);
+        }
+    }
+
+    private String guidance(String cause) {
+        return "Could not obtain the orchard-ui-backend binary (" + assetName() + "): " + cause + "\n"
+            + "No published binary for this platform yet. Build it locally from your orchard-ui checkout:\n"
+            + "  ./gradlew :backend:nativeCompile\n"
+            + "  cp backend/build/native/nativeCompile/orchard-ui-backend " + binary + "\n"
+            + "Then re-run, or start core only with: trowel dev-server start --no-ui";
     }
 
     static String osToken(String osName) {
