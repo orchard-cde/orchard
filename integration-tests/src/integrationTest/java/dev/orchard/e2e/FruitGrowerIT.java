@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -89,6 +90,32 @@ class FruitGrowerIT {
             .isEqualTo(SeedlingState.SAPLING);
         assertThat(seedling.ipAddress()).isNotBlank();
         assertThat(seedling.sshPort()).isPositive();
+
+        waitForCloudInit();
+    }
+
+    private void waitForCloudInit() {
+        SshExecutor ssh = new SshExecutor(seedling);
+        int maxAttempts = 60;
+        for (int i = 0; i < maxAttempts; i++) {
+            try {
+                String status = ssh.execute("cloud-init status 2>/dev/null || echo 'not available'").trim();
+                if (status.contains("done") || status.contains("not available")) {
+                    return;
+                }
+            } catch (IOException | InterruptedException e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
     }
 
     @Test
