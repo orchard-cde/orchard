@@ -1,14 +1,12 @@
 package dev.orchard.trowel;
 
 import dev.orchard.trowel.command.*;
+import dev.orchard.trowel.config.ConfigLoader;
+import dev.orchard.trowel.config.OrchardConfig;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Properties;
 import java.util.concurrent.Callable;
 
 @Command(
@@ -43,6 +41,9 @@ public class Trowel implements Callable<Integer> {
     @Option(names = {"--cultivator"}, description = "Cultivator ID")
     private String cultivatorId;
 
+    @Option(names = {"-t", "--target"}, description = "Named config target to use (overrides active target in config)")
+    private String targetName;
+
     public static void main(String[] args) {
         int exitCode = new CommandLine(new Trowel())
             .setColorScheme(createColorScheme())
@@ -57,43 +58,33 @@ public class Trowel implements Callable<Integer> {
     }
 
     public String getServerUrl() {
-        if (serverUrl != null) {
-            return serverUrl;
-        }
+        if (serverUrl != null) return serverUrl;
         String env = System.getenv("ORCHARD_SERVER_URL");
-        if (env != null) {
-            return env;
-        }
-        String config = loadConfigProperty("server");
-        if (config != null) {
-            return config;
-        }
+        if (env != null) return env;
+        OrchardConfig.Target target = resolveConfigTarget();
+        if (target != null && target.server() != null) return target.server();
         return "http://localhost:7778";
     }
 
     public String getCultivatorId() {
-        if (cultivatorId != null) {
-            return cultivatorId;
-        }
+        if (cultivatorId != null) return cultivatorId;
         String env = System.getenv("ORCHARD_CULTIVATOR_ID");
-        if (env != null) {
-            return env;
-        }
-        return loadConfigProperty("cultivator");
+        if (env != null) return env;
+        OrchardConfig.Target target = resolveConfigTarget();
+        return target != null ? target.cultivator() : null;
     }
 
-    private String loadConfigProperty(String key) {
-        Path configFile = Path.of(System.getProperty("user.home"), ".orchard", "config.properties");
-        if (Files.exists(configFile)) {
-            try (var reader = Files.newBufferedReader(configFile)) {
-                Properties props = new Properties();
-                props.load(reader);
-                return props.getProperty(key);
-            } catch (IOException e) {
-                // ignore unreadable config
-            }
-        }
-        return null;
+    /** Returns the --target flag value or ORCHARD_TARGET env var, or null if neither is set. */
+    public String getTargetName() {
+        if (targetName != null) return targetName;
+        return System.getenv("ORCHARD_TARGET");
+    }
+
+    private OrchardConfig.Target resolveConfigTarget() {
+        OrchardConfig config = ConfigLoader.load();
+        if (config == null || config.targets() == null) return null;
+        String name = getTargetName() != null ? getTargetName() : config.active();
+        return name != null ? config.targets().get(name) : null;
     }
 
     private static CommandLine.Help.ColorScheme createColorScheme() {
