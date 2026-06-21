@@ -21,7 +21,7 @@ dependencies {
     annotationProcessor("info.picocli:picocli-codegen:4.7.7")
 
     implementation("tools.jackson.core:jackson-databind")
-    implementation("tools.jackson.core:jackson-databind")
+    implementation("tools.jackson.dataformat:jackson-dataformat-toml")
 }
 
 application {
