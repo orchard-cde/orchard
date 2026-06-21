@@ -214,9 +214,3 @@ public class ConfigCommand implements Callable<Integer> {
         }
     }
 }
-
-// Temporary stub — replaced in Task 4
-@Command(name = "target", description = "Manage configuration targets")
-class ConfigTargetCommand implements Callable<Integer> {
-    @Override public Integer call() { return 0; }
-}
