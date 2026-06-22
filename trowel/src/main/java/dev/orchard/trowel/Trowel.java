@@ -83,8 +83,15 @@ public class Trowel implements Callable<Integer> {
     private OrchardConfig.Target resolveConfigTarget() {
         OrchardConfig config = ConfigLoader.load();
         if (config == null || config.targets() == null) return null;
-        String name = getTargetName() != null ? getTargetName() : config.active();
-        return name != null ? config.targets().get(name) : null;
+        String explicitName = getTargetName();
+        String name = explicitName != null ? explicitName : config.active();
+        if (name == null) return null;
+        OrchardConfig.Target target = config.targets().get(name);
+        if (target == null && explicitName != null) {
+            System.err.println("Error: target '" + explicitName + "' not found in config. Available: " + config.targets().keySet());
+            System.exit(1);
+        }
+        return target;
     }
 
     private static CommandLine.Help.ColorScheme createColorScheme() {
