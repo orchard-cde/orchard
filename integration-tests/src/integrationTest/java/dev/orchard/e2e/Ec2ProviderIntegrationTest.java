@@ -14,9 +14,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.localstack.LocalStackContainer;
 import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -42,7 +42,7 @@ class Ec2ProviderIntegrationTest {
     @Container
     static LocalStackContainer localstack =
         new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.8.0"))
-            .withServices(LocalStackContainer.Service.EC2);
+            .withServices("ec2");
 
     @TempDir
     static Path tempDir;
@@ -61,7 +61,7 @@ class Ec2ProviderIntegrationTest {
         Files.writeString(Path.of(keyPath + ".pub"), "ssh-ed25519 AAAA testkey orchard@int");
 
         rawClient = Ec2Client.builder()
-            .endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.EC2))
+            .endpointOverride(localstack.getEndpoint())
             .credentialsProvider(StaticCredentialsProvider.create(
                 AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
             .region(Region.of(localstack.getRegion()))
