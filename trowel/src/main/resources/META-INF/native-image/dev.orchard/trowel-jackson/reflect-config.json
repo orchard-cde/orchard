@@ -46,5 +46,21 @@
     "allDeclaredMethods" : true,
     "allPublicMethods" : true,
     "allRecordComponents" : true
+  },
+  {
+    "name" : "dev.orchard.trowel.config.OrchardConfig",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
+    "name" : "dev.orchard.trowel.config.OrchardConfig$Target",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
   }
 ]
