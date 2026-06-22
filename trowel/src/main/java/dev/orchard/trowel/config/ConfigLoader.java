@@ -1,5 +1,6 @@
 package dev.orchard.trowel.config;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.dataformat.toml.TomlMapper;
@@ -12,8 +13,14 @@ import java.util.Properties;
 
 public class ConfigLoader {
 
+    // TOML has no null literal: jackson-dataformat-toml does not fail on a null
+    // property, it writes an empty string, which then reads back as "" (not null)
+    // and silently corrupts a target whose server/cultivator was never set (e.g.
+    // a legacy config.properties missing a key). Omitting null properties keeps a
+    // missing value absent, so it round-trips back to null.
     private static final TomlMapper MAPPER = TomlMapper.builder()
             .enable(SerializationFeature.INDENT_OUTPUT)
+            .changeDefaultPropertyInclusion(incl -> incl.withValueInclusion(JsonInclude.Include.NON_NULL))
             .build();
 
     public static Path configDir() {

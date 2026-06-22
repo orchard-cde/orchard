@@ -102,6 +102,22 @@ class ConfigLoaderTest {
     }
 
     @Test
+    void save_targetWithNullField_omitsItAndRoundTripsToNull() throws IOException {
+        // A legacy config.properties missing a 'cultivator=' line synthesizes a
+        // Target with a null cultivator. TOML cannot represent null, so without
+        // NON_NULL inclusion this serializes to cultivator = "" and reads back as
+        // an empty string, silently corrupting the value. It must stay null.
+        var targets = new LinkedHashMap<String, OrchardConfig.Target>();
+        targets.put("default", new OrchardConfig.Target("http://legacy:7778", null));
+        ConfigLoader.save(new OrchardConfig("default", targets));
+
+        OrchardConfig reloaded = ConfigLoader.load();
+        assertThat(reloaded).isNotNull();
+        assertThat(reloaded.targets().get("default").server()).isEqualTo("http://legacy:7778");
+        assertThat(reloaded.targets().get("default").cultivator()).isNull();
+    }
+
+    @Test
     void withDefault_producesValidSingleTargetConfig() {
         OrchardConfig config = OrchardConfig.withDefault();
 

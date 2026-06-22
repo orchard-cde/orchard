@@ -1,6 +1,7 @@
 package dev.orchard.trowel;
 
 import dev.orchard.trowel.command.*;
+import dev.orchard.trowel.config.ConfigException;
 import dev.orchard.trowel.config.ConfigLoader;
 import dev.orchard.trowel.config.OrchardConfig;
 import picocli.CommandLine;
@@ -45,10 +46,26 @@ public class Trowel implements Callable<Integer> {
     private String targetName;
 
     public static void main(String[] args) {
-        int exitCode = new CommandLine(new Trowel())
-            .setColorScheme(createColorScheme())
-            .execute(args);
+        int exitCode = createCommandLine().execute(args);
         System.exit(exitCode);
+    }
+
+    /**
+     * Builds the configured CommandLine used by both the CLI entry point and
+     * tests. A {@link ConfigException} (e.g. an unknown {@code --target}) is
+     * turned into a stderr message and exit code 1 here, rather than calling
+     * {@code System.exit} from deep inside a value getter.
+     */
+    public static CommandLine createCommandLine() {
+        return new CommandLine(new Trowel())
+            .setColorScheme(createColorScheme())
+            .setExecutionExceptionHandler((ex, cmd, parseResult) -> {
+                if (ex instanceof ConfigException) {
+                    System.err.println(ex.getMessage());
+                    return 1;
+                }
+                throw ex;
+            });
     }
 
     @Override
@@ -88,8 +105,7 @@ public class Trowel implements Callable<Integer> {
         if (name == null) return null;
         OrchardConfig.Target target = config.targets().get(name);
         if (target == null && explicitName != null) {
-            System.err.println("Error: target '" + explicitName + "' not found in config. Available: " + config.targets().keySet());
-            System.exit(1);
+            throw new ConfigException("Error: target '" + explicitName + "' not found in config. Available: " + config.targets().keySet());
         }
         return target;
     }

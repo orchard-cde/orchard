@@ -2,7 +2,6 @@ package dev.orchard.e2e;
 
 import dev.orchard.trowel.Trowel;
 import org.junit.jupiter.api.*;
-import picocli.CommandLine;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -61,7 +60,7 @@ class TrowelConfigIntegrationTest {
     }
 
     private int execute(String... args) {
-        return new CommandLine(new Trowel()).execute(args);
+        return Trowel.createCommandLine().execute(args);
     }
 
     @Test
