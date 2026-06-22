@@ -36,3 +36,16 @@ displayName: Migrate to Spring Boot 4 (INACTIVE - see issue #10)
 recipeList:
   - org.openrewrite.java.spring.boot4.UpgradeSpringBoot_4_0
 ---
+# NOT ACTIVE: One-shot migration used to upgrade the integration tests to the
+# Testcontainers 2.x API (LocalStackContainer package move, Service enum removal,
+# getEndpointOverride -> getEndpoint). Activated transiently to run `rewriteRun`,
+# then removed from activeRecipe(). Kept here for reference / re-runnability.
+# Note: this recipe migrates Java source only — the Gradle dependency coordinate
+# rename (junit-jupiter -> testcontainers-junit-jupiter, localstack ->
+# testcontainers-localstack) is handled directly in integration-tests/build.gradle.kts.
+type: specs.openrewrite.org/v1beta/recipe
+name: dev.orchard.TestcontainersMigration
+displayName: Migrate to Testcontainers 2.x API (INACTIVE - run on demand)
+recipeList:
+  - org.openrewrite.java.testing.testcontainers.Testcontainers2Migration
+---
