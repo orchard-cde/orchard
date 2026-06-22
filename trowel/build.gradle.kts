@@ -47,8 +47,11 @@ tasks.register<Jar>("fatJar") {
 }
 
 tasks.named<ProcessResources>("processResources") {
+    // Capture the version at configuration time; reading project.version inside the
+    // filesMatching action runs at execution time and breaks the configuration cache.
+    val projectVersion = project.version.toString()
     filesMatching("version.properties") {
-        expand("version" to project.version)
+        expand("version" to projectVersion)
     }
 }
 
