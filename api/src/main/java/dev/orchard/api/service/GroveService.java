@@ -9,6 +9,7 @@ import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.SeedlingProvider;
+import dev.orchard.nursery.SeedlingProvisioningException;
 import dev.orchard.nursery.SshExecutor;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
@@ -207,24 +208,68 @@ public class GroveService {
         return grove;
     }
 
+    /** Terminal classification of a {@code cloud-init status} snapshot. */
+    enum CloudInitStatus { IN_PROGRESS, DONE, FAILED }
+
+    /**
+     * Classifies a raw {@code cloud-init status} line (e.g. {@code "status: running"}).
+     *
+     * <p>Only an explicit terminal-and-healthy state is reported as {@link CloudInitStatus#DONE};
+     * an errored cloud-init is reported as {@link CloudInitStatus#FAILED} rather than mistaken for
+     * completion, and an empty/unreadable snapshot stays {@link CloudInitStatus#IN_PROGRESS}. The
+     * previous {@code contains("done") || contains("not available")} check masked failures and an
+     * unanswerable status, surfacing them downstream as a confusing
+     * {@code devcontainer: command not found} (issue #113).
+     *
+     * <p>{@code "degraded done"} (cloud-init finished with recoverable errors) counts as DONE — the
+     * authoritative check is {@link SeedlingProvider#verifyDevcontainerCli}, which directly probes
+     * the CLI rather than trusting cloud-init's self-report.
+     */
+    static CloudInitStatus classifyCloudInitStatus(String raw) {
+        String state = raw == null ? "" : raw.trim();
+        int colon = state.indexOf(':');
+        if (colon >= 0 && state.regionMatches(true, 0, "status", 0, "status".length())) {
+            state = state.substring(colon + 1).trim();
+        }
+        state = state.toLowerCase(java.util.Locale.ROOT);
+
+        if (state.equals("error")) {
+            return CloudInitStatus.FAILED;
+        }
+        if (state.isEmpty() || state.equals("running") || state.equals("not run")) {
+            return CloudInitStatus.IN_PROGRESS;
+        }
+        // "done", "degraded done", "disabled" — cloud-init is no longer working.
+        return CloudInitStatus.DONE;
+    }
+
     private void waitForCloudInit(Seedling seedling) {
         log.info("Waiting for cloud-init to complete on seedling {}", seedling.id());
         SshExecutor ssh = new SshExecutor(seedling);
-        int maxAttempts = 60; // 5 minutes max
+        int maxAttempts = 60; // up to ~5 minutes
         for (int i = 0; i < maxAttempts; i++) {
             try {
-                String status = ssh.execute("cloud-init status 2>/dev/null || echo 'not available'").trim();
-                if (status.contains("done") || status.contains("not available")) {
-                    log.info("Cloud-init finished on seedling {} (status: {})", seedling.id(), status);
+                // `|| true` keeps the snapshot readable even when cloud-init reports a non-zero
+                // (error/degraded) exit, which SshExecutor would otherwise raise — we classify the
+                // state ourselves so a failed cloud-init is never mistaken for completion.
+                String raw = ssh.execute("cloud-init status 2>/dev/null || true").trim();
+                CloudInitStatus status = classifyCloudInitStatus(raw);
+                if (status == CloudInitStatus.FAILED) {
+                    throw new SeedlingProvisioningException(
+                        "cloud-init failed on seedling " + seedling.id()
+                            + " — provisioning cannot continue. Last 40 lines of "
+                            + "/var/log/cloud-init-output.log:\n" + cloudInitLogTail(ssh));
+                }
+                if (status == CloudInitStatus.DONE) {
+                    log.info("Cloud-init finished on seedling {} ({})", seedling.id(), raw);
                     return;
                 }
-                log.debug("Cloud-init status on seedling {}: {}", seedling.id(), status);
-            } catch (IOException | InterruptedException e) {
+                log.debug("Cloud-init still running on seedling {}: {}", seedling.id(), raw);
+            } catch (IOException e) {
                 log.debug("Cloud-init check failed on seedling {}: {}", seedling.id(), e.getMessage());
-                if (e instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
             }
             try {
                 Thread.sleep(5000);
@@ -233,7 +278,19 @@ public class GroveService {
                 return;
             }
         }
-        log.warn("Timeout waiting for cloud-init on seedling {}", seedling.id());
+        log.warn("Timeout waiting for cloud-init on seedling {} after {} attempts", seedling.id(), maxAttempts);
+    }
+
+    /** Best-effort tail of the remote cloud-init log, for diagnosing a failed boot. */
+    private String cloudInitLogTail(SshExecutor ssh) {
+        try {
+            return ssh.execute("sudo tail -n 40 /var/log/cloud-init-output.log 2>/dev/null || true").trim();
+        } catch (IOException e) {
+            return "(unable to read cloud-init log: " + e.getMessage() + ")";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "(interrupted reading cloud-init log)";
+        }
     }
 
     private String cloneRepository(Seedling seedling, String repoUrl, String branch) {
