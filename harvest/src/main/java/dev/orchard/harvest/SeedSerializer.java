@@ -9,6 +9,7 @@ import tools.jackson.databind.annotation.JsonDeserialize;
 import tools.jackson.databind.annotation.JsonPOJOBuilder;
 import tools.jackson.databind.json.JsonMapper;
 import dev.orchard.core.model.DevcontainerSeed;
+import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 
 /**
@@ -51,11 +52,32 @@ public class SeedSerializer {
     @JsonPOJOBuilder(withPrefix = "")
     abstract static class DevcontainerSeedBuilderMixin {}
 
+    /**
+     * Adds a @type discriminator to the sealed LifecycleCommand hierarchy. Without this,
+     * a DevcontainerSeed carrying any lifecycle command (e.g. postCreateCommand) serializes
+     * the record's fields with no discriminator and then fails to deserialize, because the
+     * field's declared type is the abstract LifecycleCommand interface.
+     *
+     * <p>No {@code defaultImpl} is set: a discriminator-less lifecycle command is ambiguous
+     * between Sequential and Parallel (the two shapes differ), so such rows are rejected
+     * rather than silently coerced to the wrong subtype.
+     */
+    @JsonTypeInfo(
+        use = JsonTypeInfo.Id.NAME,
+        include = JsonTypeInfo.As.PROPERTY,
+        property = "@type")
+    @JsonSubTypes({
+        @JsonSubTypes.Type(value = LifecycleCommand.Sequential.class, name = "sequential"),
+        @JsonSubTypes.Type(value = LifecycleCommand.Parallel.class, name = "parallel")
+    })
+    abstract static class LifecycleCommandMixin {}
+
     private static final ObjectMapper objectMapper = JsonMapper.builder()
         .enable(SerializationFeature.INDENT_OUTPUT)
         .addMixIn(Seed.class, SeedMixin.class)
         .addMixIn(DevcontainerSeed.class, DevcontainerSeedMixin.class)
         .addMixIn(DevcontainerSeed.Builder.class, DevcontainerSeedBuilderMixin.class)
+        .addMixIn(LifecycleCommand.class, LifecycleCommandMixin.class)
         .build();
 
     public String serialize(Seed seed) {
