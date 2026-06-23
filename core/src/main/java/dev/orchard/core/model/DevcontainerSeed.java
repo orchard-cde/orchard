@@ -1,6 +1,7 @@
 package dev.orchard.core.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 import java.util.Map;
@@ -30,27 +31,29 @@ public final class DevcontainerSeed extends Seed {
     private final WaitFor waitFor;
     private final VsCodeCustomizations vscodeCustomizations;
 
-    // Jackson deserializes through this constructor (relies on -parameters for property
-    // names), so :harvest needs no builder mixin. Application code still uses builder().
+    // Jackson deserializes through this constructor. Property names are pinned with explicit
+    // @JsonProperty (not implicit -parameters names) so binding does not depend on the
+    // compiler flag and survives native-image compilation. :harvest needs no builder mixin;
+    // application code still uses builder().
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
     private DevcontainerSeed(
-            String name,
-            String image,
-            List<String> forwardPorts,
-            Map<String, String> containerEnv,
-            String dockerfilePath,
-            String dockerComposeFile,
-            String service,
-            Map<String, String> buildArgs,
-            Map<String, Map<String, Object>> features,
-            LifecycleCommand initializeCommand,
-            LifecycleCommand onCreateCommand,
-            LifecycleCommand updateContentCommand,
-            LifecycleCommand postCreateCommand,
-            LifecycleCommand postStartCommand,
-            LifecycleCommand postAttachCommand,
-            WaitFor waitFor,
-            VsCodeCustomizations vscodeCustomizations) {
+            @JsonProperty("name") String name,
+            @JsonProperty("image") String image,
+            @JsonProperty("forwardPorts") List<String> forwardPorts,
+            @JsonProperty("containerEnv") Map<String, String> containerEnv,
+            @JsonProperty("dockerfilePath") String dockerfilePath,
+            @JsonProperty("dockerComposeFile") String dockerComposeFile,
+            @JsonProperty("service") String service,
+            @JsonProperty("buildArgs") Map<String, String> buildArgs,
+            @JsonProperty("features") Map<String, Map<String, Object>> features,
+            @JsonProperty("initializeCommand") LifecycleCommand initializeCommand,
+            @JsonProperty("onCreateCommand") LifecycleCommand onCreateCommand,
+            @JsonProperty("updateContentCommand") LifecycleCommand updateContentCommand,
+            @JsonProperty("postCreateCommand") LifecycleCommand postCreateCommand,
+            @JsonProperty("postStartCommand") LifecycleCommand postStartCommand,
+            @JsonProperty("postAttachCommand") LifecycleCommand postAttachCommand,
+            @JsonProperty("waitFor") WaitFor waitFor,
+            @JsonProperty("vscodeCustomizations") VsCodeCustomizations vscodeCustomizations) {
         super(name, image, forwardPorts, containerEnv);
         this.dockerfilePath = dockerfilePath;
         this.dockerComposeFile = dockerComposeFile;
