@@ -1,5 +1,6 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
@@ -95,7 +96,7 @@ public class FruitGrower {
      * spec-faithful path: features, lifecycle commands and waitFor are all owned by the CLI.
      */
     Fruit growViaCli(Seedling seedling, Fruit fruit) {
-        Seed seed = fruit.seed();
+        DevcontainerSeed seed = devcontainerSeed(fruit);
         try {
             // initializeCommand runs on the host VM before the container starts — the CLI does
             // not own this hook (spec Locked decision #2).
@@ -228,7 +229,7 @@ public class FruitGrower {
     @Deprecated(forRemoval = true, since = "next-release")
     Fruit growViaDocker(Seedling seedling, Fruit fruit) {
         try {
-            Seed seed = fruit.seed();
+            DevcontainerSeed seed = devcontainerSeed(fruit);
 
             if (seed.initializeCommand() != null) {
                 runLifecycleCommand(seed.initializeCommand(), cmd -> executeSsh(seedling, cmd));
@@ -318,7 +319,7 @@ public class FruitGrower {
                     if (containerId != null) {
                         List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
                         if (fruit.seed() != null) {
-                            Seed s = fruit.seed();
+                            DevcontainerSeed s = devcontainerSeed(fruit);
                             String cid = containerId;
                             if (s.onCreateCommand() != null) {
                                 runLifecycleCommand(s.onCreateCommand(), cmd -> inContainer(seedling, cid, cmd));
@@ -391,7 +392,7 @@ public class FruitGrower {
     public CompletableFuture<Fruit> attach(Seedling seedling, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                Seed seed = fruit.seed();
+                DevcontainerSeed seed = devcontainerSeed(fruit);
                 if (seed.postAttachCommand() != null) {
                     if (useDevcontainerCli && devcontainerCli != null) {
                         runLifecycleCommand(seed.postAttachCommand(),
@@ -421,9 +422,14 @@ public class FruitGrower {
 
     // --- Legacy docker helpers (deprecated, kept for one release) -----------------------------
 
+    private static DevcontainerSeed devcontainerSeed(Fruit fruit) {
+        if (fruit.seed() instanceof DevcontainerSeed s) return s;
+        throw new IllegalArgumentException("Fruit " + fruit.id() + " has no DevcontainerSeed");
+    }
+
     @Deprecated(forRemoval = true, since = "next-release")
     private String legacyRunFromImage(Seedling seedling, Fruit fruit) throws IOException, InterruptedException {
-        Seed seed = fruit.seed();
+        DevcontainerSeed seed = devcontainerSeed(fruit);
 
         executeSsh(seedling, "docker pull " + seed.image());
 
@@ -454,7 +460,7 @@ public class FruitGrower {
 
     @Deprecated(forRemoval = true, since = "next-release")
     private String legacyBuildAndRun(Seedling seedling, Fruit fruit) throws IOException, InterruptedException {
-        Seed seed = fruit.seed();
+        DevcontainerSeed seed = devcontainerSeed(fruit);
 
         StringBuilder buildCmd = new StringBuilder("docker build");
         buildCmd.append(" -t orchard-fruit-").append(fruit.id().toString().substring(0, 8));
@@ -470,7 +476,7 @@ public class FruitGrower {
 
         executeSsh(seedling, buildCmd.toString());
 
-        Seed imageOnlySeed = Seed.builder()
+        Seed imageOnlySeed = DevcontainerSeed.builder()
             .name(seed.name())
             .image("orchard-fruit-" + fruit.id().toString().substring(0, 8))
             .containerEnv(seed.containerEnv())

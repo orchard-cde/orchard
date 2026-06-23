@@ -146,7 +146,7 @@ public class GroveService {
             }
 
             // Discover devcontainer.json from the cloned repo on the VM
-            Seed seed = discoverSeed(plantedSeedling);
+            DevcontainerSeed seed = discoverSeed(plantedSeedling);
 
             // Ensure a devcontainer.json exists in the workspace — when the repo has none,
             // we fall back to a default Seed but devcontainer up still needs the file on disk.
@@ -181,7 +181,7 @@ public class GroveService {
      * service containers run on the seedling but are not represented as separate Fruit rows.
      * Sibling enumeration via {@code docker compose ps} is a follow-up PR (spec #11).
      */
-    private Grove provisionPrimaryFruit(Grove grove, Seedling seedling, Seed seed) {
+    private Grove provisionPrimaryFruit(Grove grove, Seedling seedling, DevcontainerSeed seed) {
         // For compose-mode, attach the primary service name so consumers can correlate the
         // Fruit with the compose service. For single-container, serviceName stays null.
         // TODO: serviceName should evolve to fruitName — root compose service name in
@@ -254,7 +254,7 @@ public class GroveService {
         }
     }
 
-    private Seed discoverSeed(Seedling seedling) {
+    private DevcontainerSeed discoverSeed(Seedling seedling) {
         SshExecutor ssh = new SshExecutor(seedling);
 
         // Try standard devcontainer locations
@@ -263,7 +263,7 @@ public class GroveService {
                 "/workspace/.devcontainer.json")) {
             Optional<String> content = ssh.readFile(path);
             if (content.isPresent() && !content.get().isBlank()) {
-                Optional<Seed> parsed = devcontainerParser.parseJson(content.get());
+                Optional<DevcontainerSeed> parsed = devcontainerParser.parseJson(content.get());
                 if (parsed.isPresent()) {
                     log.info("Found and parsed devcontainer.json at {}", path);
                     return parsed.get();
@@ -273,7 +273,7 @@ public class GroveService {
 
         // Fall back to default seed
         log.info("No devcontainer.json found, using default seed");
-        return Seed.builder()
+        return DevcontainerSeed.builder()
             .name("orchard-workspace")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .forwardPorts(List.of("8080", "3000"))
@@ -287,7 +287,7 @@ public class GroveService {
      * devcontainer.json so that {@code devcontainer up --workspace-folder /workspace}
      * does not fail with "Config not found".
      */
-    private void ensureDevcontainerConfig(Seedling seedling, Seed seed) {
+    private void ensureDevcontainerConfig(Seedling seedling, DevcontainerSeed seed) {
         SshExecutor ssh = new SshExecutor(seedling);
         try {
             if (ssh.execute("test -f /workspace/.devcontainer/devcontainer.json && echo yes || echo no")

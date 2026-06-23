@@ -1,6 +1,7 @@
 package dev.orchard.greenhouse;
 
 import dev.orchard.core.model.LifecycleCommand;
+import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Seed;
 import dev.orchard.greenhouse.config.GreenhouseConfig;
 import org.slf4j.Logger;
@@ -38,7 +39,7 @@ public class ImageBuilder {
      * Builds a Docker image for the given repository, branch, and seed specification.
      * Returns the image reference (tag) that can be used to pull/run the image.
      */
-    public String buildImage(String repositoryUrl, String branch, Seed seed, Path repoDir) throws IOException, InterruptedException {
+    public String buildImage(String repositoryUrl, String branch, DevcontainerSeed seed, Path repoDir) throws IOException, InterruptedException {
         String imageName = generateImageName(repositoryUrl, branch);
         String imageRef = config.imageReference(imageName);
 
@@ -52,7 +53,7 @@ public class ImageBuilder {
             buildFromBaseImage(repoDir, seed, imageRef);
         } else {
             // Fall back to a default dev image
-            buildFromBaseImage(repoDir, Seed.builder()
+            buildFromBaseImage(repoDir, DevcontainerSeed.builder()
                 .image("mcr.microsoft.com/devcontainers/base:ubuntu")
                 .build(), imageRef);
         }
@@ -119,7 +120,7 @@ public class ImageBuilder {
         return output != null ? output.trim() : null;
     }
 
-    private void buildFromDockerfile(Path repoDir, Seed seed, String imageRef) throws IOException, InterruptedException {
+    private void buildFromDockerfile(Path repoDir, DevcontainerSeed seed, String imageRef) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add("docker");
         command.add("build");
@@ -150,7 +151,7 @@ public class ImageBuilder {
         }
     }
 
-    private void buildFromBaseImage(Path repoDir, Seed seed, String imageRef) throws IOException, InterruptedException {
+    private void buildFromBaseImage(Path repoDir, DevcontainerSeed seed, String imageRef) throws IOException, InterruptedException {
         // Generate a Dockerfile from the seed's image specification
         Path dockerfilePath = repoDir.resolve(".orchard-prebuild.Dockerfile");
 

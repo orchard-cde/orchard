@@ -2,6 +2,7 @@ package dev.orchard.greenhouse;
 
 import dev.orchard.core.model.Prebuild;
 import dev.orchard.core.model.PrebuildState;
+import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Seed;
 import dev.orchard.greenhouse.config.GreenhouseConfig;
 import dev.orchard.harvest.DevcontainerParser;
@@ -122,7 +123,7 @@ public class PrebuildService {
             prebuild = prebuild.withCommitSha(commitSha);
 
             // Parse devcontainer.json
-            Seed seed = discoverSeed(repoDir);
+            DevcontainerSeed seed = discoverSeed(repoDir);
 
             // Build image
             String imageRef = imageBuilder.buildImage(
@@ -151,9 +152,9 @@ public class PrebuildService {
         }
     }
 
-    private Seed discoverSeed(Path repoDir) {
+    private DevcontainerSeed discoverSeed(Path repoDir) {
         try {
-            Optional<Seed> seed = devcontainerParser.discover(repoDir);
+            Optional<DevcontainerSeed> seed = devcontainerParser.discover(repoDir);
             if (seed.isPresent()) {
                 log.info("Found devcontainer.json in repository");
                 return seed.get();
@@ -164,7 +165,7 @@ public class PrebuildService {
 
         // Fall back to default seed
         log.info("No devcontainer.json found, using default seed for prebuild");
-        return Seed.builder()
+        return DevcontainerSeed.builder()
             .name("orchard-workspace")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .build();

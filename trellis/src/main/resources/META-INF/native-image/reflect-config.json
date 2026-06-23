@@ -1,0 +1,19 @@
+[
+  {
+    "name" : "dev.orchard.core.model.DevcontainerSeed",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allDeclaredFields" : true,
+    "allPublicFields" : true
+  },
+  {
+    "name" : "dev.orchard.core.model.DevcontainerSeed$VsCodeCustomizations",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  }
+]

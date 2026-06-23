@@ -1,7 +1,7 @@
 package dev.orchard.harvest;
 
+import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.LifecycleCommand;
-import dev.orchard.core.model.Seed;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,11 +20,11 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_minimalImage() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu:22.04"}""");
 
         assertThat(result).isPresent();
-        Seed seed = result.get();
+        DevcontainerSeed seed = result.get();
         assertThat(seed.name()).isNull();
         assertThat(seed.image()).isEqualTo("ubuntu:22.04");
         assertThat(seed.dockerfilePath()).isNull();
@@ -40,7 +40,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_imageWithName() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"name": "my-dev", "image": "node:18"}""");
 
         assertThat(result).isPresent();
@@ -50,7 +50,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_withForwardPorts() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "node:18", "forwardPorts": [3000, 8080]}""");
 
         assertThat(result).isPresent();
@@ -59,7 +59,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_withContainerEnv() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "node:18", "containerEnv": {"NODE_ENV": "development"}}""");
 
         assertThat(result).isPresent();
@@ -68,7 +68,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_dockerfileTopLevel() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"dockerFile": "Dockerfile"}""");
 
         assertThat(result).isPresent();
@@ -77,7 +77,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_dockerfileInBuildObject() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"build": {"dockerfile": "Dockerfile"}}""");
 
         assertThat(result).isPresent();
@@ -86,7 +86,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_dockerfileWithBuildArgs() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"build": {"dockerfile": "Dockerfile", "args": {"VARIANT": "3.11"}}}""");
 
         assertThat(result).isPresent();
@@ -96,7 +96,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_dockerComposeFileString() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"dockerComposeFile": "docker-compose.yml", "service": "app"}""");
 
         assertThat(result).isPresent();
@@ -106,7 +106,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_dockerComposeFileArray() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"dockerComposeFile": ["docker-compose.yml", "docker-compose.dev.yml"], "service": "app"}""");
 
         assertThat(result).isPresent();
@@ -115,7 +115,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_features() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu", "features": {"ghcr.io/devcontainers/features/node:1": {}, "ghcr.io/devcontainers/features/python:1": {}}}""");
 
         assertThat(result).isPresent();
@@ -131,7 +131,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_featureOptionsPreserved() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu", "features": {"ghcr.io/devcontainers/features/java:1": {"version": "21"}}}""");
 
         assertThat(result).isPresent();
@@ -141,7 +141,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_featureWithEmptyOptionsIsEmptyNotNull() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu", "features": {"ghcr.io/devcontainers/features/node:1": {}}}""");
 
         assertThat(result).isPresent();
@@ -151,7 +151,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_featureOptionsHeterogeneousValues() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu", "features": {"example/feature:1": {"name": "alice", "enabled": true, "count": 3}}}""");
 
         assertThat(result).isPresent();
@@ -164,7 +164,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_postCreateCommandString() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu", "postCreateCommand": "npm install"}""");
 
         assertThat(result).isPresent();
@@ -174,7 +174,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_postCreateCommandArray() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu", "postCreateCommand": ["npm install", "npm run build"]}""");
 
         assertThat(result).isPresent();
@@ -184,7 +184,7 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_postStartCommand() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu", "postStartCommand": "npm start"}""");
 
         assertThat(result).isPresent();
@@ -194,11 +194,11 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_vscodeCustomizations() {
-        Optional<Seed> result = parser.parseJson("""
+        Optional<DevcontainerSeed> result = parser.parseJson("""
                 {"image": "ubuntu", "customizations": {"vscode": {"extensions": ["ms-python.python"], "settings": {"editor.fontSize": 14}}}}""");
 
         assertThat(result).isPresent();
-        Seed.VsCodeCustomizations customizations = result.get().vscodeCustomizations();
+        DevcontainerSeed.VsCodeCustomizations customizations = result.get().vscodeCustomizations();
         assertThat(customizations).isNotNull();
         assertThat(customizations.extensions()).containsExactly("ms-python.python");
         assertThat(customizations.settings()).containsEntry("editor.fontSize", 14);
@@ -230,10 +230,10 @@ class DevcontainerParserTest {
                 }
                 """;
 
-        Optional<Seed> result = parser.parseJson(json);
+        Optional<DevcontainerSeed> result = parser.parseJson(json);
 
         assertThat(result).isPresent();
-        Seed seed = result.get();
+        DevcontainerSeed seed = result.get();
         assertThat(seed.name()).isEqualTo("Full Dev Environment");
         assertThat(seed.image()).isEqualTo("mcr.microsoft.com/devcontainers/base:ubuntu");
         assertThat(seed.features()).hasSize(2);
@@ -265,10 +265,10 @@ class DevcontainerParserTest {
 
     @Test
     void parseJson_emptyObject() {
-        Optional<Seed> result = parser.parseJson("{}");
+        Optional<DevcontainerSeed> result = parser.parseJson("{}");
 
         assertThat(result).isPresent();
-        Seed seed = result.get();
+        DevcontainerSeed seed = result.get();
         assertThat(seed.name()).isNull();
         assertThat(seed.image()).isNull();
         assertThat(seed.dockerfilePath()).isNull();
@@ -282,7 +282,7 @@ class DevcontainerParserTest {
                 """
                 {"image": "ubuntu:22.04"}""");
 
-        Optional<Seed> result = parser.discover(tempDir);
+        Optional<DevcontainerSeed> result = parser.discover(tempDir);
 
         assertThat(result).isPresent();
         assertThat(result.get().image()).isEqualTo("ubuntu:22.04");
@@ -294,7 +294,7 @@ class DevcontainerParserTest {
                 """
                 {"image": "node:18"}""");
 
-        Optional<Seed> result = parser.discover(tempDir);
+        Optional<DevcontainerSeed> result = parser.discover(tempDir);
 
         assertThat(result).isPresent();
         assertThat(result.get().image()).isEqualTo("node:18");
@@ -311,7 +311,7 @@ class DevcontainerParserTest {
                 """
                 {"image": "node:18"}""");
 
-        Optional<Seed> result = parser.discover(tempDir);
+        Optional<DevcontainerSeed> result = parser.discover(tempDir);
 
         assertThat(result).isPresent();
         assertThat(result.get().image()).isEqualTo("ubuntu:22.04");
