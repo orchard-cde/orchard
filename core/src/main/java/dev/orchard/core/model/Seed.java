@@ -1,12 +1,28 @@
 package dev.orchard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
 import java.util.List;
 import java.util.Map;
 
 /**
  * Abstract base for all devcontainer seed specifications.
  * Contains format-neutral fields common to any workspace type.
+ *
+ * <p>Carries Jackson type-info metadata (annotations only — see {@code core}'s
+ * dependency on {@code jackson-annotations}) so persisted seeds round-trip
+ * polymorphically. {@code defaultImpl} maps pre-discriminator rows (no {@code @type})
+ * to {@link DevcontainerSeed} for backward compatibility.
  */
+@JsonTypeInfo(
+    use = JsonTypeInfo.Id.NAME,
+    include = JsonTypeInfo.As.PROPERTY,
+    property = "@type",
+    defaultImpl = DevcontainerSeed.class)
+@JsonSubTypes({
+    @JsonSubTypes.Type(value = DevcontainerSeed.class, name = "devcontainer")
+})
 public abstract class Seed {
 
     private final String name;

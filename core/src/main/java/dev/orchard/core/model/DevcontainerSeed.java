@@ -1,5 +1,7 @@
 package dev.orchard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +30,9 @@ public final class DevcontainerSeed extends Seed {
     private final WaitFor waitFor;
     private final VsCodeCustomizations vscodeCustomizations;
 
+    // Jackson deserializes through this constructor (relies on -parameters for property
+    // names), so :harvest needs no builder mixin. Application code still uses builder().
+    @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
     private DevcontainerSeed(
             String name,
             String image,
