@@ -5,6 +5,8 @@ import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.Seed;
 import dev.orchard.harvest.SeedSerializer;
 import jakarta.persistence.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.List;
@@ -14,6 +16,7 @@ import java.util.UUID;
 @Table(name = "fruits")
 public class FruitEntity {
 
+    private static final Logger log = LoggerFactory.getLogger(FruitEntity.class);
     private static final SeedSerializer seedSerializer = new SeedSerializer();
 
     @Id
@@ -71,7 +74,7 @@ public class FruitEntity {
             try {
                 seed = seedSerializer.deserialize(seedJson);
             } catch (Exception e) {
-                // Deserialization failure should not prevent model creation
+                log.error("Failed to deserialize seed_json for fruit {}: {}", id, e.getMessage(), e);
             }
         }
 
