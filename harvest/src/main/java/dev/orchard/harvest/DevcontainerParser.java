@@ -6,6 +6,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import dev.orchard.core.model.LifecycleCommand;
+import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.WaitFor;
 import org.slf4j.Logger;
@@ -34,7 +35,7 @@ public class DevcontainerParser {
      * Discovers and parses devcontainer.json from a repository root.
      * Looks in standard locations: .devcontainer/devcontainer.json, .devcontainer.json
      */
-    public Optional<Seed> discover(Path repositoryRoot) throws IOException {
+    public Optional<DevcontainerSeed> discover(Path repositoryRoot) throws IOException {
         Path[] searchPaths = {
             repositoryRoot.resolve(".devcontainer/devcontainer.json"),
             repositoryRoot.resolve(".devcontainer.json")
@@ -83,8 +84,8 @@ public class DevcontainerParser {
      *
      * @throws IOException if any discovered config file cannot be parsed
      */
-    public Map<String, Seed> discoverAll(Path repositoryRoot) throws IOException {
-        Map<String, Seed> result = new LinkedHashMap<>();
+    public Map<String, DevcontainerSeed> discoverAll(Path repositoryRoot) throws IOException {
+        Map<String, DevcontainerSeed> result = new LinkedHashMap<>();
 
         // Root config — higher-priority location wins
         Path[] rootPaths = {
@@ -121,19 +122,19 @@ public class DevcontainerParser {
     }
 
     /**
-     * Parses a devcontainer.json file into a Seed.
+     * Parses a devcontainer.json file into a DevcontainerSeed.
      */
-    public Seed parse(Path devcontainerPath) throws IOException {
+    public DevcontainerSeed parse(Path devcontainerPath) throws IOException {
         String content = Files.readString(devcontainerPath);
         return parseJson(content)
             .orElseThrow(() -> new IOException("Failed to parse devcontainer.json at " + devcontainerPath));
     }
 
     /**
-     * Parses devcontainer.json content from a raw JSON string into a Seed.
+     * Parses devcontainer.json content from a raw JSON string into a DevcontainerSeed.
      * Returns Optional.empty() if the content is null, blank, or fails to parse.
      */
-    public Optional<Seed> parseJson(String jsonContent) {
+    public Optional<DevcontainerSeed> parseJson(String jsonContent) {
         if (jsonContent == null || jsonContent.isBlank()) {
             log.warn("Cannot parse devcontainer.json: content is null or blank");
             return Optional.empty();
@@ -147,9 +148,9 @@ public class DevcontainerParser {
         }
     }
 
-    private Seed doParse(String jsonContent) {
+    private DevcontainerSeed doParse(String jsonContent) {
         JsonNode root = objectMapper.readTree(jsonContent);
-        Seed.Builder builder = Seed.builder();
+        DevcontainerSeed.Builder builder = DevcontainerSeed.builder();
 
         // Name
         if (root.has("name")) {
@@ -252,7 +253,7 @@ public class DevcontainerParser {
             if (vscode.has("settings")) {
                 settings = objectMapper.convertValue(vscode.get("settings"), Map.class);
             }
-            builder.vscodeCustomizations(new Seed.VsCodeCustomizations(extensions, settings));
+            builder.vscodeCustomizations(new DevcontainerSeed.VsCodeCustomizations(extensions, settings));
         }
 
         return builder.build();
