@@ -1,5 +1,6 @@
 plugins {
     `java-library`
+    id("me.champeau.jmh")
 }
 
 dependencies {
@@ -14,4 +15,11 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+}
+
+jmh {
+    jmhVersion.set("1.37")
+    fork.set(1)
+    resultFormat.set("JSON")
+    resultsFile.set(layout.buildDirectory.file("results/jmh/results.json").get().asFile)
 }
