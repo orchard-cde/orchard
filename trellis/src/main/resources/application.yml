@@ -125,7 +125,7 @@ orchard:
     # QemuPlatformDefaults so macOS picks up /opt/homebrew/bin/* and Linux picks
     # up /usr/bin/*. QemuEnvironmentInitializer also falls back to PATH.
     base-image-path: /tmp/orchard/images/base.qcow2
-    vm-storage-path: /tmp/orchard/vms
+    vm-storage-path: ${user.home}/.orchard/data/vms
     cloud-init-template-path: /tmp/orchard/cloud-init
     ssh-port-range-start: 49152
     ssh-port-range-end: 49999
