@@ -1,5 +1,6 @@
 plugins {
     `java-library`
+    id("me.champeau.jmh")
 }
 
 configurations.all {
@@ -34,4 +35,11 @@ dependencies {
     // Cloud provider SDK dependencies will be added when implementations are ready:
     // GCP:   implementation("com.google.cloud:google-cloud-compute:1.44.0")
     // Azure: implementation("com.azure.resourcemanager:azure-resourcemanager-compute:2.39.0") + implementation("com.azure:azure-identity:1.12.0")
+}
+
+jmh {
+    jmhVersion.set("1.37")
+    fork.set(1)
+    resultFormat.set("JSON")
+    resultsFile.set(layout.buildDirectory.file("results/jmh/results.json").get().asFile)
 }
