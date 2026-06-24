@@ -26,6 +26,11 @@ Results are written as JSON to each module's `build/results/jmh/results.json`
 | nursery | `CloudInitTemplateBenchmark` | cloud-init template render |
 | api | `ApiMappingBenchmark` | cloud-init status classify + GroveResponse mapping |
 
+> Note: `CloudInitTemplateBenchmark.render` mirrors production, which re-reads the
+> template from the classpath on every call — so its number includes resource-stream
+> I/O, not just string substitution. Don't compare it like-for-like against the
+> pure-CPU serialize/parse benchmarks.
+
 ## Deferred (tracked separately)
 
 Committed baselines, a `compare-microbench.sh` regression gate, and a CI job are
