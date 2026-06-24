@@ -280,4 +280,47 @@ class GroveServiceTest {
 
         verify(eventPublisher, never()).publishEvent(any());
     }
+
+    // --- cloud-init status classification (issue #113) --------------------------------
+    // The previous waitForCloudInit used `status.contains("done") || contains("not available")`,
+    // which mistook a *failed* or unreadable cloud-init for completion and then surfaced the
+    // missing devcontainer CLI downstream as a confusing `devcontainer: command not found`.
+
+    @Test
+    void classifyCloudInitStatus_treatsErrorAsFailed() {
+        assertThat(GroveService.classifyCloudInitStatus("status: error"))
+            .isEqualTo(GroveService.CloudInitStatus.FAILED);
+    }
+
+    @Test
+    void classifyCloudInitStatus_treatsDoneAsDone() {
+        assertThat(GroveService.classifyCloudInitStatus("status: done"))
+            .isEqualTo(GroveService.CloudInitStatus.DONE);
+    }
+
+    @Test
+    void classifyCloudInitStatus_treatsDegradedDoneAsDone() {
+        // Terminal-but-degraded: cloud-init finished; let verifyDevcontainerCli be the authority.
+        assertThat(GroveService.classifyCloudInitStatus("status: degraded done"))
+            .isEqualTo(GroveService.CloudInitStatus.DONE);
+    }
+
+    @Test
+    void classifyCloudInitStatus_treatsRunningAsInProgress() {
+        assertThat(GroveService.classifyCloudInitStatus("status: running"))
+            .isEqualTo(GroveService.CloudInitStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void classifyCloudInitStatus_treatsNotRunAsInProgress() {
+        assertThat(GroveService.classifyCloudInitStatus("status: not run"))
+            .isEqualTo(GroveService.CloudInitStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void classifyCloudInitStatus_treatsEmptyOrUnreadableSnapshotAsInProgress() {
+        // `cloud-init status` not yet answerable early in boot — must NOT be read as "done".
+        assertThat(GroveService.classifyCloudInitStatus(""))
+            .isEqualTo(GroveService.CloudInitStatus.IN_PROGRESS);
+    }
 }
