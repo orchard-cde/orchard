@@ -1,0 +1,37 @@
+{
+  "name": "large",
+  "image": "mcr.microsoft.com/devcontainers/java:21-bookworm",
+  "forwardPorts": [8080, 8443, 5432, 6379],
+  "containerEnv": {
+    "JAVA_TOOL_OPTIONS": "-XX:MaxRAMPercentage=75",
+    "SPRING_PROFILES_ACTIVE": "dev",
+    "TZ": "UTC"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": { "version": "latest", "moby": true },
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
+  },
+  "initializeCommand": "echo initializing",
+  "onCreateCommand": "sdk install gradle 8.10",
+  "updateContentCommand": "./gradlew dependencies --no-daemon",
+  "postCreateCommand": "./gradlew build -x test",
+  "postStartCommand": "docker info",
+  "postAttachCommand": "echo attached",
+  "waitFor": "updateContentCommand",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "redhat.java",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "java.configuration.updateBuildConfiguration": "automatic",
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}
