@@ -443,11 +443,17 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                     UUID seedlingId = UUID.fromString(vmDir.getFileName().toString());
                     ProcessHandle.of(pid).ifPresentOrElse(
                         handle -> {
-                            if (handle.isAlive()) {
+                            if (!handle.isAlive()) {
+                                log.info("QEMU VM (PID {}) for seedling {} exited — will be reconciled", pid, seedlingId);
+                            } else if (isOurQemuVm(handle, seedlingId)) {
                                 runningVms.put(seedlingId, handle);
                                 log.info("Re-attached to surviving QEMU VM (PID {}) for seedling {}", pid, seedlingId);
                             } else {
-                                log.info("QEMU VM (PID {}) for seedling {} exited — will be reconciled", pid, seedlingId);
+                                // PID reuse: the recorded PID is alive but now belongs to an unrelated
+                                // process. Adopting it would let inspect()/uproot() act on — and
+                                // destroyForcibly() — a process that isn't ours, so we refuse.
+                                log.warn("PID {} for seedling {} is alive but is not its QEMU VM "
+                                    + "(PID reused since {}) — not adopting", pid, seedlingId, pidFile);
                             }
                         },
                         () -> log.info("No process found with PID {} for seedling {} — VM did not survive restart", pid, seedlingId)
@@ -459,6 +465,26 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         } catch (IOException e) {
             log.warn("Failed to scan VM storage path {} for surviving VMs", storageDir, e);
         }
+    }
+
+    /**
+     * Positively identifies {@code handle} as this seedling's QEMU VM before we adopt it on
+     * reattach. PIDs are recycled: a PID recorded in {@code qemu.pid} may, after a reboot or PID
+     * wraparound, belong to a completely unrelated process. Without this check that process would
+     * be tracked in {@link #runningVms}, reported alive by {@link #inspect}, and — most dangerously
+     * — force-killed by {@link #uproot}.
+     *
+     * <p>The VM's disk and cloud-init paths embed the full seedling id, so a readable command line
+     * binds the PID to <em>this</em> seedling unambiguously. When the full argv is unavailable
+     * (e.g. truncated), we fall back to requiring the executable itself to be a QEMU system
+     * emulator, which still prevents adopting (and later killing) a non-QEMU process.
+     */
+    boolean isOurQemuVm(ProcessHandle handle, UUID seedlingId) {
+        ProcessHandle.Info info = handle.info();
+        if (info.commandLine().map(cmd -> cmd.contains(seedlingId.toString())).orElse(false)) {
+            return true;
+        }
+        return info.command().map(cmd -> cmd.contains("qemu-system")).orElse(false);
     }
 
     public void shutdown() {

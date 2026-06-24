@@ -4,6 +4,7 @@ import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.DevcontainerCliConfig;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -11,6 +12,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,6 +24,7 @@ class QemuSeedlingProviderTest {
     Path tempDir;
 
     private QemuSeedlingProvider provider;
+    private final List<Process> spawnedProcesses = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -37,6 +41,26 @@ class QemuSeedlingProviderTest {
 
         DevcontainerCliConfig cliConfig = new DevcontainerCliConfig("0.75.0", 600, 60);
         provider = new QemuSeedlingProvider(config, cliConfig);
+    }
+
+    @AfterEach
+    void tearDown() {
+        for (Process p : spawnedProcesses) {
+            p.descendants().forEach(ProcessHandle::destroyForcibly);
+            p.destroyForcibly();
+        }
+    }
+
+    /**
+     * Spawns a long-lived process whose own command line embeds {@code tag}, standing in for a
+     * QEMU VM that {@link QemuSeedlingProvider#isOurQemuVm} can positively identify. The two
+     * statements keep the shell from exec-replacing itself with {@code sleep}, so {@code tag}
+     * stays visible in the process's argv.
+     */
+    private Process startAliveProcessTaggedWith(String tag) throws IOException {
+        Process p = new ProcessBuilder("sh", "-c", "marker=" + tag + "; sleep 300").start();
+        spawnedProcesses.add(p);
+        return p;
     }
 
     // --- reattachSurvivingVms ---
@@ -59,17 +83,37 @@ class QemuSeedlingProviderTest {
     }
 
     @Test
-    void reattachSurvivingVms_alivePid_seedlingBecomesInspectable() throws IOException {
+    void reattachSurvivingVms_alivePidMatchingVm_seedlingBecomesInspectable() throws IOException {
         // Directory must be named after seedling.id(), matching what plant() writes
         Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
         Path vmDir = tempDir.resolve(seedling.id().toString());
         Files.createDirectories(vmDir);
-        Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(ProcessHandle.current().pid()));
+        // A live process whose command line identifies it as this seedling's VM (as QEMU's would,
+        // via the disk path that embeds the seedling id).
+        Process vm = startAliveProcessTaggedWith(seedling.id().toString());
+        Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(vm.pid()));
 
         provider.reattachSurvivingVms();
 
         Seedling result = provider.inspect(seedling.withProviderDetails(seedling.id().toString(), "127.0.0.1")).join();
         assertThat(result.state()).isEqualTo(SeedlingState.SAPLING);
+    }
+
+    @Test
+    void reattachSurvivingVms_aliveButUnrelatedPid_isNotAdopted() throws IOException {
+        // PID reuse: the recorded PID is alive but now belongs to an unrelated process, not this
+        // seedling's QEMU VM. It must NOT be adopted — otherwise inspect()/uproot() would act on,
+        // and uproot() would destroyForcibly(), a process that isn't ours.
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Path vmDir = tempDir.resolve(seedling.id().toString());
+        Files.createDirectories(vmDir);
+        Process unrelated = startAliveProcessTaggedWith("some-other-unrelated-process");
+        Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(unrelated.pid()));
+
+        provider.reattachSurvivingVms();
+
+        Seedling result = provider.inspect(seedling.withProviderDetails(seedling.id().toString(), "127.0.0.1")).join();
+        assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
     }
 
     @Test
@@ -124,7 +168,8 @@ class QemuSeedlingProviderTest {
         Files.createDirectories(aliveDir);
         Files.createDirectories(deadDir);
 
-        Files.writeString(aliveDir.resolve("qemu.pid"), String.valueOf(ProcessHandle.current().pid()));
+        Process aliveVm = startAliveProcessTaggedWith(aliveSeedling.id().toString());
+        Files.writeString(aliveDir.resolve("qemu.pid"), String.valueOf(aliveVm.pid()));
 
         Process dead = new ProcessBuilder("true").start();
         long deadPid = dead.pid();
