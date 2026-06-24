@@ -176,8 +176,9 @@ public class NurseryConfig {
 
         ProviderRegistry registry = new ProviderRegistry();
 
-        // Always register QEMU
+        // Always register QEMU; reattach any VMs that survived the previous server run
         QemuSeedlingProvider qemuProvider = new QemuSeedlingProvider(qemuConfig, devcontainerCliConfig);
+        qemuProvider.reattachSurvivingVms();
         registry.register(qemuProvider);
         log.info("Registered seedling provider: {}", qemuProvider.getProviderId());
 

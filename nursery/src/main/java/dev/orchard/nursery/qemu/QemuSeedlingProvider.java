@@ -30,7 +30,7 @@ public class QemuSeedlingProvider implements SeedlingProvider {
     private final QemuConfig config;
     private final DevcontainerCliConfig devcontainerCliConfig;
     private final ExecutorService executor;
-    private final ConcurrentHashMap<UUID, Process> runningVms;
+    private final ConcurrentHashMap<UUID, ProcessHandle> runningVms;
 
     public QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig) {
         this.config = config;
@@ -67,7 +67,8 @@ public class QemuSeedlingProvider implements SeedlingProvider {
 
                 // Build and start QEMU process
                 Process vmProcess = startQemuProcess(seedling, diskImage, cloudInitIso, sshPort);
-                runningVms.put(seedling.id(), vmProcess);
+                Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(vmProcess.pid()));
+                runningVms.put(seedling.id(), vmProcess.toHandle());
 
                 // Update seedling with provider details
                 Seedling sprouting = seedling
@@ -114,7 +115,6 @@ public class QemuSeedlingProvider implements SeedlingProvider {
     public CompletableFuture<Seedling> dormant(Seedling seedling) {
         return CompletableFuture.supplyAsync(() -> {
             log.info("Setting seedling {} to dormant", seedling.id());
-            Process process = runningVms.get(seedling.id());
             return seedling.withState(SeedlingState.WILTING);
         }, executor);
     }
@@ -123,12 +123,12 @@ public class QemuSeedlingProvider implements SeedlingProvider {
     public CompletableFuture<Void> uproot(Seedling seedling) {
         return CompletableFuture.runAsync(() -> {
             log.info("Uprooting seedling {}", seedling.id());
-            Process process = runningVms.remove(seedling.id());
-            if (process != null) {
-                process.destroyForcibly();
+            ProcessHandle handle = runningVms.remove(seedling.id());
+            if (handle != null) {
+                handle.destroyForcibly();
             }
 
-            // Clean up VM directory
+            // Clean up VM directory (PID file is inside, deleted with the rest)
             Path vmDir = config.vmStoragePath().resolve(seedling.id().toString());
             try {
                 if (Files.exists(vmDir)) {
@@ -151,8 +151,8 @@ public class QemuSeedlingProvider implements SeedlingProvider {
     @Override
     public CompletableFuture<Seedling> inspect(Seedling seedling) {
         return CompletableFuture.supplyAsync(() -> {
-            Process process = runningVms.get(seedling.id());
-            if (process != null && process.isAlive()) {
+            ProcessHandle handle = runningVms.get(seedling.id());
+            if (handle != null && handle.isAlive()) {
                 return seedling.withState(SeedlingState.SAPLING);
             }
             return seedling.withState(SeedlingState.WITHERED);
@@ -330,8 +330,15 @@ public class QemuSeedlingProvider implements SeedlingProvider {
             }
         }
 
+        // Detach from the JVM's session so the VM survives a server restart or Ctrl+C
+        Path setsid = Path.of("/usr/bin/setsid");
+        if (Files.exists(setsid)) {
+            cmd.add(0, setsid.toString());
+        }
+
         Path qemuLog = vmDir.resolve("qemu.log");
         ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectInput(new java.io.File("/dev/null"));
         pb.redirectOutput(qemuLog.toFile());
         pb.redirectErrorStream(true);
         log.info("Starting QEMU: {}", String.join(" ", pb.command()));
@@ -422,9 +429,66 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         throw new IOException("Timeout waiting for SSH authentication at " + host + ":" + port);
     }
 
+    public void reattachSurvivingVms() {
+        Path storageDir = config.vmStoragePath();
+        if (!Files.exists(storageDir)) {
+            return;
+        }
+        try (var dirs = Files.list(storageDir)) {
+            dirs.filter(Files::isDirectory).forEach(vmDir -> {
+                Path pidFile = vmDir.resolve("qemu.pid");
+                if (!Files.exists(pidFile)) return;
+                try {
+                    long pid = Long.parseLong(Files.readString(pidFile).trim());
+                    UUID seedlingId = UUID.fromString(vmDir.getFileName().toString());
+                    ProcessHandle.of(pid).ifPresentOrElse(
+                        handle -> {
+                            if (!handle.isAlive()) {
+                                log.info("QEMU VM (PID {}) for seedling {} exited — will be reconciled", pid, seedlingId);
+                            } else if (isOurQemuVm(handle, seedlingId)) {
+                                runningVms.put(seedlingId, handle);
+                                log.info("Re-attached to surviving QEMU VM (PID {}) for seedling {}", pid, seedlingId);
+                            } else {
+                                // PID reuse: the recorded PID is alive but now belongs to an unrelated
+                                // process. Adopting it would let inspect()/uproot() act on — and
+                                // destroyForcibly() — a process that isn't ours, so we refuse.
+                                log.warn("PID {} for seedling {} is alive but is not its QEMU VM "
+                                    + "(PID reused since {}) — not adopting", pid, seedlingId, pidFile);
+                            }
+                        },
+                        () -> log.info("No process found with PID {} for seedling {} — VM did not survive restart", pid, seedlingId)
+                    );
+                } catch (IOException | IllegalArgumentException e) {
+                    log.warn("Failed to read PID file {}", pidFile, e);
+                }
+            });
+        } catch (IOException e) {
+            log.warn("Failed to scan VM storage path {} for surviving VMs", storageDir, e);
+        }
+    }
+
+    /**
+     * Positively identifies {@code handle} as this seedling's QEMU VM before we adopt it on
+     * reattach. PIDs are recycled: a PID recorded in {@code qemu.pid} may, after a reboot or PID
+     * wraparound, belong to a completely unrelated process. Without this check that process would
+     * be tracked in {@link #runningVms}, reported alive by {@link #inspect}, and — most dangerously
+     * — force-killed by {@link #uproot}.
+     *
+     * <p>The VM's disk and cloud-init paths embed the full seedling id, so a readable command line
+     * binds the PID to <em>this</em> seedling unambiguously. When the full argv is unavailable
+     * (e.g. truncated), we fall back to requiring the executable itself to be a QEMU system
+     * emulator, which still prevents adopting (and later killing) a non-QEMU process.
+     */
+    boolean isOurQemuVm(ProcessHandle handle, UUID seedlingId) {
+        ProcessHandle.Info info = handle.info();
+        if (info.commandLine().map(cmd -> cmd.contains(seedlingId.toString())).orElse(false)) {
+            return true;
+        }
+        return info.command().map(cmd -> cmd.contains("qemu-system")).orElse(false);
+    }
+
     public void shutdown() {
-        log.info("Shutting down QEMU provider, stopping {} VMs", runningVms.size());
-        runningVms.values().forEach(Process::destroyForcibly);
+        log.info("QEMU provider shutting down — leaving {} VM(s) running for reattachment on next startup", runningVms.size());
         runningVms.clear();
         executor.shutdown();
     }
