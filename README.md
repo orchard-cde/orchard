@@ -11,7 +11,7 @@
 
 </div>
 
-Orchard is a cloud development environment (CDE) platform that provisions ready-to-code workspaces from any Git repository. Think Gitpod, but with an orchard theme and designed for integration with [OpenRewrite](https://openrewrite.org).
+Orchard is a cloud development environment (CDE) platform that provisions ready-to-code workspaces from any Git repository. Think Gitpod, but with an orchard theme.
 
 ## Features
 
@@ -25,7 +25,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 
 ### Prerequisites
 
-- Java 21+
+- Java 25+
 - Docker & Docker Compose
 - QEMU (for local VM provisioning)
 
@@ -145,7 +145,7 @@ sha256sum --check checksums-sha256.txt --ignore-missing
 ├──────────────┬──────────────┬───────────────────────────────┤
 │     API      │   Harvest    │           Nursery             │
 │   Services   │  Devcontainer│      VM Provisioning          │
-│              │   Parsing    │   (QEMU, future: AWS/GCP)     │
+│              │   Parsing    │  (QEMU, AWS; soon GCP/Azure)  │
 ├──────────────┴──────────────┴───────────────────────────────┤
 │                     Roots (Persistence)                     │
 │              JPA Entities, Spring Data Repos                │
@@ -198,7 +198,7 @@ For detailed documentation including architecture deep-dives and usage guides, s
 - **PostgreSQL** - Database with Flyway migrations
 - **Picocli** - CLI framework
 - **QEMU/KVM** - Local VM provisioning
-- **AWS EC2, GCP Compute, Azure VMs** - Cloud VM provisioning
+- **AWS EC2** - Cloud VM provisioning (GCP Compute, Azure VMs planned)
 - **Gradle** - Build system with Kotlin DSL
 
 ## Configuration
