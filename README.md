@@ -7,6 +7,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/orchard-cde/orchard/ci.yml?branch=main&logo=github&label=CI)](https://github.com/orchard-cde/orchard/actions/workflows/ci.yml)
 [![GitHub release](https://img.shields.io/github/v/release/orchard-cde/orchard?logo=github&label=Release)](https://github.com/orchard-cde/orchard/releases)
 [![License](https://img.shields.io/github/license/orchard-cde/orchard?logo=apache&label=License)](LICENSE)
+[![GitLab mirror](https://img.shields.io/badge/mirror-gitlab.com%2Forchard--cde-FC6D26?logo=gitlab)](https://gitlab.com/orchard-cde/orchard)
 
 </div>
 
