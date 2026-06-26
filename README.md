@@ -172,7 +172,7 @@ We use orchard/gardening terminology throughout the codebase:
 | **Nursery** | VM provider management |
 | **Harvest** | Building container images |
 | **Trellis** | The Spring Boot application server |
-| **Greenhouse** | Prebuild service for image caching |
+| **Greenhouse** | Prebuild service for image caching (TBD) |
 
 ## Project Structure
 
