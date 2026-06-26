@@ -54,7 +54,7 @@ trowel dev-server start --no-ui  # core only on :7778 (API only, no UI)
   reverse-proxies `/api/**` to core. Open **http://localhost:7777** in your browser.
 
 In dev mode, the UI auto-authenticates as the cultivator configured in your trowel config
-(`~/.orchard/config.properties`), so no localStorage setup is needed.
+(`~/.orchard/config.toml`), so no localStorage setup is needed.
 
 The BFF binary (`orchard-ui-backend`) is downloaded automatically from orchard-ui GitHub
 releases. Until a pre-built binary is available for your platform (macOS builds are not
@@ -213,17 +213,22 @@ spring:
     password: orchard
 
 orchard:
+  nursery:
+    provider: qemu  # qemu, aws, gcp, azure
   qemu:
-    base-image-path: /var/lib/orchard/images/base.qcow2
-    vm-storage-path: /var/lib/orchard/vms
-    enable-kvm: true
+    base-image-path: /tmp/orchard/images/base.qcow2
+    vm-storage-path: ${user.home}/.orchard/data/vms
+    # enable-kvm/serial-output default per-platform (KVM on Linux, HVF on macOS)
 ```
 
-### CLI (`~/.orchard/config.properties`)
+### CLI (`~/.orchard/config.toml`)
 
-```properties
-server=http://localhost:7778
-cultivator=<your-uuid>
+```toml
+active = "local"
+
+[targets.local]
+server = "http://localhost:7778"
+cultivator = "<your-uuid>"
 ```
 
 ## Roadmap
