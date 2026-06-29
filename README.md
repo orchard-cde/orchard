@@ -57,8 +57,10 @@ In dev mode, the UI auto-authenticates as the cultivator configured in your trow
 (`~/.orchard/config.toml`), so no localStorage setup is needed.
 
 The BFF binary (`orchard-ui-backend`) is downloaded automatically from orchard-ui GitHub
-releases. Until a pre-built binary is available for your platform (macOS builds are not
-yet published), build it locally from the sibling `orchard-ui/` checkout:
+releases (linux-amd64, linux-arm64, macos-arm64) and cached at
+`~/.orchard/bin/orchard-ui-backend`, sha256-verified against the release checksums. Pass
+`--ui-version` to pin a specific orchard-ui release. For an unpublished platform, or when
+working on orchard-ui itself, build it locally from the sibling `orchard-ui/` checkout:
 
 ```bash
 # In the sibling orchard-ui/ repository
