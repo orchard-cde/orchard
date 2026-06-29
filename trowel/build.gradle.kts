@@ -10,11 +10,6 @@ graalvmNative {
             mainClass.set("dev.orchard.trowel.Trowel")
             buildArgs.add("--no-fallback")
             buildArgs.add("-H:IncludeResources=version\\.properties")
-            // Quick-build mode (opt-in via -PquickBuild): keeps the macOS CI leg's total
-            // native-build time/memory down alongside :trellis. See trellis/build.gradle.kts.
-            if (project.hasProperty("quickBuild")) {
-                buildArgs.add("-Ob")
-            }
         }
     }
 }

@@ -15,6 +15,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # macOS arm64 is intentionally omitted: GraalVM native-image of the Spring Boot
+        # orchard-server peaks at ~11 GB RSS, which does not fit GitHub's standard macOS
+        # runner (~7 GB), and larger runners are billed. macOS binaries are produced
+        # out-of-band until a self-hosted/larger Mac runner is available.
         include:
           - label: linux-amd64
             runner: ubuntu-latest
@@ -23,10 +27,6 @@ jobs:
           - label: linux-arm64
             runner: ubuntu-24.04-arm
             os: linux
-            arch: arm64
-          - label: macos-arm64
-            runner: macos-latest
-            os: macos
             arch: arm64
 
     steps:
@@ -48,9 +48,7 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build native images
-        # macOS standard runners (~7 GB) can't fit the full-optimization Spring Boot image
-        # build; -PquickBuild switches that leg to GraalVM quick-build mode (-Ob).
-        run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} ${{ matrix.os == 'macos' && '-PquickBuild' || '' }} :trellis:nativeCompile :trowel:nativeCompile
+        run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} :trellis:nativeCompile :trowel:nativeCompile
 
       - name: Smoke test trowel
         run: |
@@ -113,8 +111,6 @@ jobs:
           files: |
             orchard-server-linux-amd64.tar.gz
             orchard-server-linux-arm64.tar.gz
-            orchard-server-macos-arm64.tar.gz
             trowel-linux-amd64.tar.gz
             trowel-linux-arm64.tar.gz
-            trowel-macos-arm64.tar.gz
             checksums-sha256.txt

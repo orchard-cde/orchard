@@ -16,13 +16,6 @@ graalvmNative {
             imageName.set("orchard-server")
             mainClass.set("dev.orchard.trellis.OrchardApplication")
             buildArgs.add("--no-fallback")
-            // Quick-build mode (opt-in via -PquickBuild): the GraalVM image builder's
-            // analysis of this Spring Boot app peaks above the ~7 GB on GitHub's standard
-            // macOS runners, where the deadlock watchdog aborts it. -Ob roughly halves the
-            // builder's memory and time so it fits, at the cost of a less-optimized binary.
-            if (project.hasProperty("quickBuild")) {
-                buildArgs.add("-Ob")
-            }
         }
     }
 }
