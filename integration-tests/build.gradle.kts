@@ -30,7 +30,7 @@ dependencies {
     "integrationTestImplementation"(platform("software.amazon.awssdk:bom:2.46.15"))
     "integrationTestImplementation"("software.amazon.awssdk:ec2")
     "integrationTestImplementation"("software.amazon.awssdk:url-connection-client")
-    "integrationTestImplementation"(platform("org.junit:junit-bom:6.1.0"))
+    "integrationTestImplementation"(platform("org.junit:junit-bom:6.1.1"))
     "integrationTestImplementation"("org.junit.jupiter:junit-jupiter")
     "integrationTestImplementation"("org.assertj:assertj-core:3.27.7")
     "integrationTestRuntimeOnly"("com.h2database:h2")
