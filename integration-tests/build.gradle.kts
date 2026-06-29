@@ -27,7 +27,7 @@ dependencies {
     "integrationTestImplementation"("org.testcontainers:testcontainers:2.0.5")
     "integrationTestImplementation"("org.testcontainers:testcontainers-junit-jupiter:2.0.5")
     "integrationTestImplementation"("org.testcontainers:testcontainers-localstack:2.0.5")
-    "integrationTestImplementation"(platform("software.amazon.awssdk:bom:2.46.15"))
+    "integrationTestImplementation"(platform("software.amazon.awssdk:bom:2.46.17"))
     "integrationTestImplementation"("software.amazon.awssdk:ec2")
     "integrationTestImplementation"("software.amazon.awssdk:url-connection-client")
     "integrationTestImplementation"(platform("org.junit:junit-bom:6.1.0"))
