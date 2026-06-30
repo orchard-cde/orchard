@@ -34,16 +34,21 @@ Initialize your CLI configuration:
 trowel config init
 ```
 
-This creates `~/.orchard/config.properties`. Set your server URL and cultivator ID:
+This creates `~/.orchard/config.toml` with a single target. Set your server URL and cultivator ID on the active target:
 
-```properties
-server=https://your-orchard-instance.example.com
-cultivator=<your-uuid>
+```toml
+active = "local"
+
+[targets.local]
+server = "https://your-orchard-instance.example.com"
+cultivator = "<your-uuid>"
 ```
 
+The TOML format supports multiple named targets (e.g. `local`, `production`); switch between them with `trowel config target set <name>` or per-command with `--target`. A legacy `~/.orchard/config.properties` file is migrated automatically on first `trowel config init`.
+
 Configuration can also be set via:
-- CLI flags: `--server`, `--cultivator`
-- Environment variables: `ORCHARD_SERVER_URL`, `ORCHARD_CULTIVATOR_ID`
+- CLI flags: `--server`, `--cultivator`, `--target`
+- Environment variables: `ORCHARD_SERVER_URL`, `ORCHARD_CULTIVATOR_ID`, `ORCHARD_TARGET`
 
 ## Checking Server Status
 
