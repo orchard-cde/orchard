@@ -26,6 +26,24 @@ recipeList:
   - org.openrewrite.java.RemoveUnusedImports
   - org.openrewrite.java.format.EmptyNewlineAtEndOfFile
 ---
+type: specs.openrewrite.org/v1beta/style
+name: dev.orchard.Style
+displayName: Orchard code style — never fold imports into wildcards
+styleConfigs:
+  # JUnit Jupiter 6 ships org.junit.jupiter.api.MediaType. When OrderImports folds
+  # explicit imports into a wildcard (e.g. org.springframework.http.*), it collides
+  # with that class and breaks compilation. Force explicit imports everywhere.
+  - org.openrewrite.java.style.ImportLayoutStyle:
+      classCountToUseStarImport: 2147483647
+      nameCountToUseStarImport: 2147483647
+      layout:
+        - import all other imports
+        - <blank line>
+        - import javax.*
+        - import java.*
+        - <blank line>
+        - import static all other imports
+---
 # NOT ACTIVE: This recipe is intentionally excluded from the activeRecipe() list in build.gradle.kts.
 # It is a placeholder for the Spring Boot 4 migration effort tracked in issue #10.
 # To activate: add "dev.orchard.SpringBootMigration" to the rewrite {} block and thoroughly
