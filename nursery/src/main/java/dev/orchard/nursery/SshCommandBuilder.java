@@ -26,7 +26,7 @@ public final class SshCommandBuilder {
     static final String DEFAULT_USER = "cultivator";
     static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 10;
 
-    private String user = DEFAULT_USER;
+    private final String user = DEFAULT_USER;
     private String host;
     private int port;
     private Path identityKey;

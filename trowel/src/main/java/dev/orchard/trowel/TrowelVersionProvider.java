@@ -1,6 +1,7 @@
 package dev.orchard.trowel;
 
 import picocli.CommandLine.IVersionProvider;
+
 import java.util.Properties;
 
 public class TrowelVersionProvider implements IVersionProvider {

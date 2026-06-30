@@ -24,7 +24,11 @@ public record DevcontainerCliConfig(
     long execTimeoutSeconds
 ) {
     public DevcontainerCliConfig {
-        if (upTimeoutSeconds <= 0) upTimeoutSeconds = 600;
-        if (execTimeoutSeconds <= 0) execTimeoutSeconds = 60;
+        if (upTimeoutSeconds <= 0) {
+            upTimeoutSeconds = 600;
+        }
+        if (execTimeoutSeconds <= 0) {
+            execTimeoutSeconds = 60;
+        }
     }
 }

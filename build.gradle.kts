@@ -32,11 +32,11 @@ rewrite {
 }
 
 dependencies {
-    rewrite(platform("org.openrewrite.recipe:rewrite-recipe-bom:latest.release"))
     rewrite("org.openrewrite.recipe:rewrite-java-dependencies")
-    rewrite("org.openrewrite.recipe:rewrite-testing-frameworks")
-    rewrite("org.openrewrite.recipe:rewrite-static-analysis")
+    rewrite(platform("org.openrewrite.recipe:rewrite-recipe-bom:latest.release"))
     rewrite("org.openrewrite.recipe:rewrite-spring")
+    rewrite("org.openrewrite.recipe:rewrite-static-analysis")
+    rewrite("org.openrewrite.recipe:rewrite-testing-frameworks")
 }
 
 allprojects {
@@ -65,9 +65,9 @@ subprojects {
     }
 
     dependencies {
+        testImplementation("org.assertj:assertj-core:3.27.7")
         testImplementation(platform("org.junit:junit-bom:6.1.1"))
         testImplementation("org.junit.jupiter:junit-jupiter")
-        testImplementation("org.assertj:assertj-core:3.27.7")
         testImplementation("org.mockito:mockito-core:5.23.0")
         testImplementation("org.mockito:mockito-junit-jupiter:5.23.0")
         testRuntimeOnly("org.junit.platform:junit-platform-launcher")

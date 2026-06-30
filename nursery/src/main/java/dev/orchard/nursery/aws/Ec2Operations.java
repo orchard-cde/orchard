@@ -96,7 +96,9 @@ public interface Ec2Operations {
          * instance waiter to poll forever on a state that will never resolve.
          */
         public static AwsInstanceState fromSdkName(String name) {
-            if (name == null) return UNKNOWN;
+            if (name == null) {
+                return UNKNOWN;
+            }
             return switch (name) {
                 case "pending" -> PENDING;
                 case "running" -> RUNNING;

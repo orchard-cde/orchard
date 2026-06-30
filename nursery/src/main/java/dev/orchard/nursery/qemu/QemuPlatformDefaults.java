@@ -25,7 +25,7 @@ public final class QemuPlatformDefaults {
      */
     public static boolean isAarch64() {
         String arch = System.getProperty("os.arch", "");
-        return arch.equals("aarch64") || arch.equals("arm64");
+        return "aarch64".equals(arch) || "arm64".equals(arch);
     }
 
     /**
