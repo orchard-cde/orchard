@@ -9,7 +9,9 @@ public record OrchardConfig(String active, Map<String, Target> targets) {
     public record Target(String server, String cultivator) {}
 
     public Target activeTarget() {
-        if (targets == null || active == null) return null;
+        if (targets == null || active == null) {
+            return null;
+        }
         return targets.get(active);
     }
 

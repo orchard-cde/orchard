@@ -14,20 +14,17 @@ configurations.all {
 dependencies {
     api(project(":core"))
 
-    implementation("org.slf4j:slf4j-api")
-
-    // DevcontainerCli parses @devcontainers/cli JSON outcome lines off SSH stdout.
-    implementation("tools.jackson.core:jackson-databind")
-
     // DevcontainerCliConfig is a Spring @ConfigurationProperties record with @ImportRuntimeHints.
     // spring-context provides the annotation; spring-boot provides @ConfigurationProperties.
     // Versions resolved via the Spring Boot BOM applied in the root build.
-    implementation("org.springframework:spring-context")
     implementation("org.springframework.boot:spring-boot")
 
     implementation(platform("software.amazon.awssdk:bom:2.46.17"))
     implementation("software.amazon.awssdk:ec2")
     implementation("software.amazon.awssdk:url-connection-client")
+
+    // DevcontainerCli parses @devcontainers/cli JSON outcome lines off SSH stdout.
+    implementation("tools.jackson.core:jackson-databind")
     runtimeOnly("software.amazon.awssdk:sts") // for default credential chain (web-identity tokens)
 
     testRuntimeOnly("org.slf4j:slf4j-simple")

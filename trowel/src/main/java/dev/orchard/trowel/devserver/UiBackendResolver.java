@@ -157,7 +157,9 @@ public class UiBackendResolver {
         int off = 0;
         while (off < buf.length) {
             int n = in.read(buf, off, buf.length - off);
-            if (n < 0) break;
+            if (n < 0) {
+                break;
+            }
             off += n;
         }
         return off;
@@ -168,20 +170,28 @@ public class UiBackendResolver {
         long remaining = count;
         while (remaining > 0) {
             int n = in.read(buf, 0, (int) Math.min(buf.length, remaining));
-            if (n < 0) throw new IOException("unexpected end of archive entry");
+            if (n < 0) {
+                throw new IOException("unexpected end of archive entry");
+            }
             out.write(buf, 0, n);
             remaining -= n;
         }
     }
 
     private static boolean isAllZero(byte[] b) {
-        for (byte x : b) if (x != 0) return false;
+        for (byte x : b) {
+            if (x != 0) {
+                return false;
+            }
+        }
         return true;
     }
 
     private static String cString(byte[] b, int off, int len) {
         int end = off;
-        while (end < off + len && b[end] != 0) end++;
+        while (end < off + len && b[end] != 0) {
+            end++;
+        }
         return new String(b, off, end - off, StandardCharsets.US_ASCII);
     }
 
@@ -246,15 +256,23 @@ public class UiBackendResolver {
 
     static String osToken(String osName) {
         String n = osName.toLowerCase();
-        if (n.contains("mac") || n.contains("darwin")) return "macos";
-        if (n.contains("linux")) return "linux";
+        if (n.contains("mac") || n.contains("darwin")) {
+            return "macos";
+        }
+        if (n.contains("linux")) {
+            return "linux";
+        }
         throw new IllegalStateException("Unsupported OS for orchard-ui-backend: " + osName);
     }
 
     static String archToken(String osArch) {
         String a = osArch.toLowerCase();
-        if (a.equals("x86_64") || a.equals("amd64")) return "amd64";
-        if (a.equals("aarch64") || a.equals("arm64")) return "arm64";
+        if ("x86_64".equals(a) || "amd64".equals(a)) {
+            return "amd64";
+        }
+        if ("aarch64".equals(a) || "arm64".equals(a)) {
+            return "arm64";
+        }
         throw new IllegalStateException("Unsupported architecture for orchard-ui-backend: " + osArch);
     }
 }

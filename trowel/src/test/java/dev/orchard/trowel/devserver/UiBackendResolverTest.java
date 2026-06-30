@@ -3,6 +3,7 @@ package dev.orchard.trowel.devserver;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -11,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.zip.GZIPOutputStream;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -81,7 +83,9 @@ class UiBackendResolverTest {
     private static String sha256Hex(byte[] bytes) throws Exception {
         byte[] d = MessageDigest.getInstance("SHA-256").digest(bytes);
         StringBuilder sb = new StringBuilder();
-        for (byte b : d) sb.append(String.format("%02x", b));
+        for (byte b : d) {
+            sb.append(String.format("%02x", b));
+        }
         return sb.toString();
     }
 
@@ -100,7 +104,7 @@ class UiBackendResolverTest {
             byte[] header = new byte[512];
             byte[] name = entryName.getBytes(StandardCharsets.US_ASCII);
             System.arraycopy(name, 0, header, 0, name.length);
-            putOctal(header, 100, 8, 0755);   // mode
+            putOctal(header, 100, 8, 493);   // mode
             putOctal(header, 108, 8, 0);       // uid
             putOctal(header, 116, 8, 0);       // gid
             if (base256Size) {
@@ -112,9 +116,13 @@ class UiBackendResolverTest {
             }
             putOctal(header, 136, 12, 0);      // mtime
             header[156] = (byte) typeflag;
-            for (int i = 148; i < 156; i++) header[i] = ' ';
+            for (int i = 148; i < 156; i++) {
+                header[i] = ' ';
+            }
             int chk = 0;
-            for (byte b : header) chk += (b & 0xff);
+            for (byte b : header) {
+                chk += b & 0xff;
+            }
             byte[] c = String.format("%06o", chk).getBytes(StandardCharsets.US_ASCII);
             System.arraycopy(c, 0, header, 148, 6);
             header[154] = 0;
@@ -122,7 +130,9 @@ class UiBackendResolverTest {
             gz.write(header);
             gz.write(content);
             int pad = (512 - (content.length % 512)) % 512;
-            if (pad > 0) gz.write(new byte[pad]);
+            if (pad > 0) {
+                gz.write(new byte[pad]);
+            }
             gz.write(new byte[1024]); // two zero blocks: end of archive
         }
         return bos.toByteArray();

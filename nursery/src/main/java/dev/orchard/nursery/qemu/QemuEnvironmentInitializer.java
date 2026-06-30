@@ -282,7 +282,7 @@ public class QemuEnvironmentInitializer {
         }
 
         if (process.exitValue() != 0) {
-            throw new IOException(String.format("Command failed with exit code %d: %s\nOutput: %s",
+            throw new IOException(String.format("Command failed with exit code %d: %s%nOutput: %s",
                     process.exitValue(), String.join(" ", args), output));
         }
     }

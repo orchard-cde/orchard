@@ -9,10 +9,10 @@ dependencies {
     api(project(":harvest"))
     api(project(":nursery"))
     api(project(":greenhouse"))
-
-    implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }

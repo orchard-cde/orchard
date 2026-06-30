@@ -37,7 +37,9 @@ class DevcontainerCliTest {
         @Override
         public void executeStreaming(String c, Consumer<String> consumer, long timeoutSeconds) throws IOException {
             lines.forEach(consumer);
-            if (exitCode != 0) throw new IOException("canned exit " + exitCode);
+            if (exitCode != 0) {
+                throw new IOException("canned exit " + exitCode);
+            }
         }
     }
 

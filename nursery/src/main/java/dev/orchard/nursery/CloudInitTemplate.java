@@ -22,7 +22,9 @@ public final class CloudInitTemplate {
     public static String render(String resourcePath, Map<String, String> vars) {
         String tpl;
         try (var in = CloudInitTemplate.class.getResourceAsStream(resourcePath)) {
-            if (in == null) throw new IllegalArgumentException("Cloud-init template not found: " + resourcePath);
+            if (in == null) {
+                throw new IllegalArgumentException("Cloud-init template not found: " + resourcePath);
+            }
             tpl = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);

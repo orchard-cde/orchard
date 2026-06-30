@@ -433,7 +433,9 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         try (var dirs = Files.list(storageDir)) {
             dirs.filter(Files::isDirectory).forEach(vmDir -> {
                 Path pidFile = vmDir.resolve("qemu.pid");
-                if (!Files.exists(pidFile)) return;
+                if (!Files.exists(pidFile)) {
+                    return;
+                }
                 try {
                     long pid = Long.parseLong(Files.readString(pidFile).trim());
                     UUID seedlingId = UUID.fromString(vmDir.getFileName().toString());

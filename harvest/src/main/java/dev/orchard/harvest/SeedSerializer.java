@@ -1,10 +1,10 @@
 package dev.orchard.harvest;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import dev.orchard.core.model.Seed;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
-import dev.orchard.core.model.Seed;
 
 /**
  * Serializes and deserializes Seed objects to/from JSON for storage.
