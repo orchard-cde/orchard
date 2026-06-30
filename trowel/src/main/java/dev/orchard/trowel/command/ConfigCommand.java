@@ -135,8 +135,12 @@ public class ConfigCommand implements Callable<Integer> {
                 return 1;
             }
 
-            if (server != null) System.out.println("Set server = " + server + " on target '" + name + "'");
-            if (cultivatorId != null) System.out.println("Set cultivator = " + cultivatorId + " on target '" + name + "'");
+            if (server != null) {
+                System.out.println("Set server = " + server + " on target '" + name + "'");
+            }
+            if (cultivatorId != null) {
+                System.out.println("Set cultivator = " + cultivatorId + " on target '" + name + "'");
+            }
             return 0;
         }
     }

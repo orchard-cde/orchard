@@ -111,7 +111,9 @@ public class DevcontainerCli {
     }
 
     private static String shellEscape(String s) {
-        if (s == null) return "''";
+        if (s == null) {
+            return "''";
+        }
         return "'" + s.replace("'", "'\\''") + "'";
     }
 

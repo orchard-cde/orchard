@@ -1,23 +1,9 @@
 package dev.orchard.e2e;
 
-import dev.orchard.core.model.Fruit;
-import dev.orchard.core.model.FruitState;
-import dev.orchard.core.model.Seed;
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
-import dev.orchard.nursery.DevcontainerCliConfig;
-import dev.orchard.nursery.FruitGrower;
-import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.SeedlingProvider;
-import dev.orchard.nursery.SshExecutor;
+import dev.orchard.core.model.*;
+import dev.orchard.nursery.*;
 import dev.orchard.trellis.OrchardApplication;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.api.TestMethodOrder;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

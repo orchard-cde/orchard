@@ -80,7 +80,7 @@ public class DevServerCommand implements Callable<Integer> {
             if (cultivatorIdOverride != null) {
                 return cultivatorIdOverride;
             }
-            return (parent != null && parent.parent != null) ? parent.parent.getCultivatorId() : null;
+            return parent != null && parent.parent != null ? parent.parent.getCultivatorId() : null;
         }
 
         @Option(names = {"--foreground", "-f"}, description = "Run in foreground (default: background)")
@@ -135,7 +135,7 @@ public class DevServerCommand implements Callable<Integer> {
                 Path uiBinary = null;
                 if (!noUi && !foreground) {
                     try {
-                        String v = (uiVersion != null && !uiVersion.isBlank()) ? uiVersion
+                        String v = uiVersion != null && !uiVersion.isBlank() ? uiVersion
                                  : dev.orchard.trowel.devserver.UiBackendResolver.DEFAULT_UI_VERSION;
                         uiBinary = new dev.orchard.trowel.devserver.UiBackendResolver(uiBackendBinary(), v).resolve();
                     } catch (dev.orchard.trowel.devserver.UiBackendUnavailableException e) {
@@ -245,7 +245,9 @@ public class DevServerCommand implements Callable<Integer> {
             System.out.println(" ready!");
             if (uiBinary != null) {   // i.e. !noUi && !foreground
                 int r = startUiBackend(uiBinary, process);
-                if (r != 0) return r;
+                if (r != 0) {
+                    return r;
+                }
                 printConnectionInfo(port);   // BFF URL is what to open
             } else {
                 printCoreOnlyInfo(corePort);
@@ -319,7 +321,7 @@ public class DevServerCommand implements Callable<Integer> {
             if (open) {
                 String url = "http://localhost:" + port;
                 String os = System.getProperty("os.name").toLowerCase();
-                String opener = (os.contains("mac") || os.contains("darwin")) ? "open" : "xdg-open";
+                String opener = os.contains("mac") || os.contains("darwin") ? "open" : "xdg-open";
                 try { new ProcessBuilder(opener, url).start(); }
                 catch (IOException ex) { System.out.println("  (could not auto-open browser: " + ex.getMessage() + ")"); }
             }
@@ -445,7 +447,9 @@ public class DevServerCommand implements Callable<Integer> {
     record ServerInfo(long pid, int port) {}
 
     static ServerInfo readInfo(Path pidFile, int defaultPort) {
-        if (!Files.exists(pidFile)) return null;
+        if (!Files.exists(pidFile)) {
+            return null;
+        }
         try {
             List<String> lines = Files.readAllLines(pidFile);
             long pid = Long.parseLong(lines.getFirst().trim());

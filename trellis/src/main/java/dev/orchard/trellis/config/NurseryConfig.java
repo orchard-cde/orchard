@@ -4,14 +4,7 @@ import dev.orchard.nursery.DevcontainerCli;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.aws.DefaultEc2Operations;
-import dev.orchard.nursery.aws.Ec2Config;
-import dev.orchard.nursery.aws.Ec2InstanceWaiter;
-import dev.orchard.nursery.aws.Ec2Operations;
-import dev.orchard.nursery.aws.Ec2SeedlingProvider;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.ec2.Ec2Client;
+import dev.orchard.nursery.aws.*;
 import dev.orchard.nursery.azure.AzureConfig;
 import dev.orchard.nursery.azure.AzureVmSeedlingProvider;
 import dev.orchard.nursery.gcp.ComputeConfig;
@@ -26,6 +19,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.ec2.Ec2Client;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -233,7 +229,7 @@ public class NurseryConfig {
         if (raw == null || raw.isBlank()) {
             return null;
         }
-        String expanded = raw.startsWith("~/") || raw.equals("~")
+        String expanded = raw.startsWith("~/") || "~".equals(raw)
             ? System.getProperty("user.home") + raw.substring(1)
             : raw;
         return java.nio.file.Path.of(expanded);

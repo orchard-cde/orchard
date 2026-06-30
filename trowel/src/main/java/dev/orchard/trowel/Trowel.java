@@ -75,34 +75,50 @@ public class Trowel implements Callable<Integer> {
     }
 
     public String getServerUrl() {
-        if (serverUrl != null) return serverUrl;
+        if (serverUrl != null) {
+            return serverUrl;
+        }
         String env = System.getenv("ORCHARD_SERVER_URL");
-        if (env != null) return env;
+        if (env != null) {
+            return env;
+        }
         OrchardConfig.Target target = resolveConfigTarget();
-        if (target != null && target.server() != null) return target.server();
+        if (target != null && target.server() != null) {
+            return target.server();
+        }
         return "http://localhost:7778";
     }
 
     public String getCultivatorId() {
-        if (cultivatorId != null) return cultivatorId;
+        if (cultivatorId != null) {
+            return cultivatorId;
+        }
         String env = System.getenv("ORCHARD_CULTIVATOR_ID");
-        if (env != null) return env;
+        if (env != null) {
+            return env;
+        }
         OrchardConfig.Target target = resolveConfigTarget();
         return target != null ? target.cultivator() : null;
     }
 
     /** Returns the --target flag value or ORCHARD_TARGET env var, or null if neither is set. */
     public String getTargetName() {
-        if (targetName != null) return targetName;
+        if (targetName != null) {
+            return targetName;
+        }
         return System.getenv("ORCHARD_TARGET");
     }
 
     private OrchardConfig.Target resolveConfigTarget() {
         OrchardConfig config = ConfigLoader.load();
-        if (config == null || config.targets() == null) return null;
+        if (config == null || config.targets() == null) {
+            return null;
+        }
         String explicitName = getTargetName();
         String name = explicitName != null ? explicitName : config.active();
-        if (name == null) return null;
+        if (name == null) {
+            return null;
+        }
         OrchardConfig.Target target = config.targets().get(name);
         if (target == null && explicitName != null) {
             throw new ConfigException("Error: target '" + explicitName + "' not found in config. Available: " + config.targets().keySet());

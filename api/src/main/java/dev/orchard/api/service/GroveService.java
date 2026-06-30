@@ -5,12 +5,7 @@ import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
 import dev.orchard.harvest.DevcontainerParser;
 import dev.orchard.harvest.SeedSerializer;
-import dev.orchard.nursery.DevcontainerCliConfig;
-import dev.orchard.nursery.FruitGrower;
-import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.SeedlingProvider;
-import dev.orchard.nursery.SeedlingProvisioningException;
-import dev.orchard.nursery.SshExecutor;
+import dev.orchard.nursery.*;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.FruitRepository;
@@ -22,12 +17,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -233,10 +227,10 @@ public class GroveService {
         }
         state = state.toLowerCase(java.util.Locale.ROOT);
 
-        if (state.equals("error")) {
+        if ("error".equals(state)) {
             return CloudInitStatus.FAILED;
         }
-        if (state.isEmpty() || state.equals("running") || state.equals("not run")) {
+        if (state.isEmpty() || "running".equals(state) || "not run".equals(state)) {
             return CloudInitStatus.IN_PROGRESS;
         }
         // "done", "degraded done", "disabled" — cloud-init is no longer working.
