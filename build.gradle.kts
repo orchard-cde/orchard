@@ -14,6 +14,15 @@ rewrite {
         // remove versionless dependency declarations that are still needed.
         "dev.orchard.BestPractices",
     )
+    // TEMPORARY: CommonStaticAnalysis' MinimumSwitchCases recipe throws
+    // IndexOutOfBoundsException on pattern-matching switches (case Type x ->), which aborts the
+    // whole run. These two files are the only ones using that idiom. The bug is already fixed
+    // upstream in rewrite-static-analysis; once a release with the fix lands (picked up
+    // automatically via latest.release), drop this exclusion block.
+    exclusion(
+        "**/ImageBuilder.java",
+        "**/FruitGrower.java",
+    )
     setExportDatatables(true)
 }
 
