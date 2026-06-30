@@ -239,8 +239,8 @@ cultivator = "<your-uuid>"
 - [x] AWS EC2 cloud provider
 - [ ] GCP Compute and Azure VM providers
 - [ ] Workspace prebuilds and image caching
-- [ ] Real-time status updates via WebSocket
-- [ ] VS Code extension for direct integration
+- [x] Real-time status updates (Server-Sent Events)
+- [x] VS Code extension for direct integration — [orchard-vscode-extension](https://github.com/orchard-cde/orchard-vscode-extension)
 - [ ] Multi-container workspace support
 
 ## License
