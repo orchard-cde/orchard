@@ -14,6 +14,10 @@ rewrite {
         // remove versionless dependency declarations that are still needed.
         "dev.orchard.BestPractices",
     )
+    // Force explicit imports (no wildcard folding) — see dev.orchard.Style in rewrite.yml.
+    // Without this, OrderImports folds into star imports and collides with JUnit 6's
+    // org.junit.jupiter.api.MediaType, breaking compilation of the E2E tests.
+    activeStyle("dev.orchard.Style")
     // TEMPORARY (tracked by #152): CommonStaticAnalysis' MinimumSwitchCases recipe throws
     // IndexOutOfBoundsException on pattern-matching switches (case Type x ->), which aborts the
     // whole run. These two files are the only ones using that idiom. The bug is already fixed
