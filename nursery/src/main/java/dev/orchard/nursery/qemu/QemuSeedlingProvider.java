@@ -395,18 +395,14 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         int maxAuthAttempts = 30;
         for (int i = 0; i < maxAuthAttempts; i++) {
             try {
-                var cmd = new java.util.ArrayList<String>();
-                cmd.add("ssh");
-                cmd.add("-o"); cmd.add("StrictHostKeyChecking=no");
-                cmd.add("-o"); cmd.add("UserKnownHostsFile=/dev/null");
-                cmd.add("-o"); cmd.add("ConnectTimeout=5");
-                cmd.add("-o"); cmd.add("BatchMode=yes");
-                if (Files.exists(orchardKey)) {
-                    cmd.add("-i"); cmd.add(orchardKey.toString());
-                }
-                cmd.add("-p"); cmd.add(String.valueOf(port));
-                cmd.add("cultivator@" + host);
-                cmd.add("echo ready");
+                var cmd = new dev.orchard.nursery.SshCommandBuilder()
+                    .host(host)
+                    .port(port)
+                    .identityKey(orchardKey)
+                    .connectTimeoutSeconds(5)
+                    .batchMode(true)
+                    .remoteCommand("echo ready")
+                    .build();
 
                 ProcessBuilder pb = new ProcessBuilder(cmd);
                 pb.redirectErrorStream(true);

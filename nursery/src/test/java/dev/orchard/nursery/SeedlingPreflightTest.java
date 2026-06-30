@@ -1,13 +1,10 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -59,17 +56,7 @@ class SeedlingPreflightTest {
     }
 
     private static Seedling stubSeedling() {
-        return new Seedling(
-            UUID.randomUUID(),
-            UUID.randomUUID(),
-            "i-fake",
-            "10.0.0.1",
-            22,
-            SeedlingState.SAPLING,
-            Seedling.SeedlingSpec.small(),
-            Instant.now(),
-            Instant.now()
-        );
+        return TestSeedlings.fake();
     }
 
     @Test

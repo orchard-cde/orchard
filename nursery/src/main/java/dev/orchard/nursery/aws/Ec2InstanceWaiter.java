@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -125,18 +124,14 @@ public class Ec2InstanceWaiter {
     public static SshProbe shellSshProbe(Path privateKeyPath) {
         return (host, port) -> {
             try {
-                List<String> cmd = new ArrayList<>();
-                cmd.add("ssh");
-                cmd.add("-o"); cmd.add("StrictHostKeyChecking=no");
-                cmd.add("-o"); cmd.add("UserKnownHostsFile=/dev/null");
-                cmd.add("-o"); cmd.add("ConnectTimeout=5");
-                cmd.add("-o"); cmd.add("BatchMode=yes");
-                if (privateKeyPath != null && Files.exists(privateKeyPath)) {
-                    cmd.add("-i"); cmd.add(privateKeyPath.toString());
-                }
-                cmd.add("-p"); cmd.add(String.valueOf(port));
-                cmd.add("cultivator@" + host);
-                cmd.add("echo ready");
+                List<String> cmd = new dev.orchard.nursery.SshCommandBuilder()
+                    .host(host)
+                    .port(port)
+                    .identityKey(privateKeyPath)
+                    .connectTimeoutSeconds(5)
+                    .batchMode(true)
+                    .remoteCommand("echo ready")
+                    .build();
 
                 ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
                 Process p = pb.start();

@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -46,39 +45,53 @@ public class SshExecutor implements CommandRunner {
 
     @Override
     public String execute(String command, long timeoutSeconds) throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(buildSshCommand(command));
-
         log.debug("Executing SSH command on seedling {}: {}", seedling.id(), command);
-        Process process = pb.start();
+        Process process = new ProcessBuilder(buildSshCommand(command)).start();
+
+        // Drain stdout AND stderr on parallel virtual threads while the process runs. Reading only
+        // after waitFor() returns deadlocks any command that emits more than the OS pipe buffer
+        // (~64KB) — the ssh child blocks writing, we block in waitFor(), nothing drains. readFile()
+        // (cat of an arbitrary remote file) can easily exceed that, so the drain must be concurrent.
+        StringBuilder stdout = new StringBuilder();
+        Thread stdoutReader = Thread.ofVirtual().name("ssh-exec-stdout")
+            .start(() -> drain(process.getInputStream(), stdout, Integer.MAX_VALUE));
+        StringBuilder stderr = new StringBuilder();
+        Thread stderrReader = Thread.ofVirtual().name("ssh-exec-stderr")
+            .start(() -> drain(process.getErrorStream(), stderr, STDERR_CAPTURE_CAP_BYTES));
 
         boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         if (!finished) {
             process.destroyForcibly();
+            stdoutReader.join(STDOUT_DRAIN_GRACE_MS);
+            stderrReader.join(STDOUT_DRAIN_GRACE_MS);
             throw new IOException("SSH command timed out after " + timeoutSeconds + "s: " + command);
         }
+        // join() before reading the StringBuilders establishes happens-before on their contents.
+        stdoutReader.join();
+        stderrReader.join();
 
         int exitCode = process.exitValue();
-        StringBuilder stdout = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                stdout.append(line).append("\n");
-            }
-        }
-
         if (exitCode != 0) {
-            StringBuilder stderr = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    stderr.append(line).append("\n");
-                }
-            }
             log.error("SSH command failed (exit {}): {} — stderr: {}", exitCode, command, stderr.toString().trim());
             throw new IOException("SSH command failed with exit code " + exitCode + ": " + command);
         }
 
         return stdout.toString();
+    }
+
+    /** Reads {@code in} line-by-line into {@code sink}, retaining at most {@code capBytes} characters. */
+    private void drain(java.io.InputStream in, StringBuilder sink, int capBytes) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (sink.length() < capBytes) {
+                    sink.append(line).append("\n");
+                }
+                // Past the cap, keep reading to keep the pipe drained but discard the overflow.
+            }
+        } catch (IOException e) {
+            log.warn("SSH reader hit IO error on seedling {}: {}", seedling.id(), e.getMessage());
+        }
     }
 
     @Override
@@ -150,24 +163,20 @@ public class SshExecutor implements CommandRunner {
     }
 
     /**
-     * Builds the {@code ssh} argv used by both blocking and streaming execution paths. The two
-     * call sites previously duplicated this list verbatim; centralising it ensures any future
-     * option additions stay in sync.
+     * Builds the {@code ssh} argv used by both blocking and streaming execution paths via the
+     * shared {@link SshCommandBuilder} (the single source of truth for connection and liveness
+     * options — see that class for the {@code ServerAlive*} liveness semantics).
+     *
+     * <p>Package-private rather than private so {@code SshExecutorCommandTest} can assert the
+     * argv without spinning up a real ssh process.
      */
-    private List<String> buildSshCommand(String remoteCommand) {
-        var cmd = new ArrayList<String>();
-        cmd.add("ssh");
-        cmd.add("-o"); cmd.add("StrictHostKeyChecking=no");
-        cmd.add("-o"); cmd.add("UserKnownHostsFile=/dev/null");
-        cmd.add("-o"); cmd.add("ConnectTimeout=10");
-        java.nio.file.Path orchardKey = resolveSshKeyPath();
-        if (java.nio.file.Files.exists(orchardKey)) {
-            cmd.add("-i"); cmd.add(orchardKey.toString());
-        }
-        cmd.add("-p"); cmd.add(String.valueOf(seedling.sshPort()));
-        cmd.add("cultivator@" + seedling.ipAddress());
-        cmd.add(remoteCommand);
-        return cmd;
+    List<String> buildSshCommand(String remoteCommand) {
+        return new SshCommandBuilder()
+            .host(seedling.ipAddress())
+            .port(seedling.sshPort())
+            .identityKey(resolveSshKeyPath())
+            .remoteCommand(remoteCommand)
+            .build();
     }
 
     static java.nio.file.Path resolveSshKeyPath() {
