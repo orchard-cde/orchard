@@ -1,11 +1,9 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -44,17 +42,7 @@ class DevcontainerCliTest {
     }
 
     private static Seedling fakeSeedling() {
-        return new Seedling(
-            UUID.randomUUID(),
-            UUID.randomUUID(),
-            "i-fake",
-            "10.0.0.1",
-            22,
-            SeedlingState.SAPLING,
-            Seedling.SeedlingSpec.small(),
-            Instant.now(),
-            Instant.now()
-        );
+        return TestSeedlings.fake();
     }
 
     private static DevcontainerCli cliFor(CannedRunner runner) {
