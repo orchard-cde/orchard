@@ -579,7 +579,7 @@ public class FruitGrower {
 
         // extra docker run args (issue #29)
         for (String arg : seed.runArgs()) {
-            cmd.append(" ").append(arg);
+            cmd.append(" ").append(shellQuote(arg));
         }
 
         // workspace mount / folder (issue #29)
