@@ -153,7 +153,7 @@ class FruitGrowerIT {
         Map<String, Map<String, Object>> features = new LinkedHashMap<>();
         features.put(FEATURE_ID, Map.of("username", FEATURE_USERNAME));
 
-        Seed seed = Seed.builder()
+        Seed seed = Seed.devcontainer()
             .name("orchard-fruit-it")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .features(features)

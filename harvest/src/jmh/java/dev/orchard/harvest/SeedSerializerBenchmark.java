@@ -32,7 +32,7 @@ public class SeedSerializerBenchmark {
     @Setup
     public void setUp() {
         serializer = new SeedSerializer();
-        seed = DevcontainerSeed.builder()
+        seed = DevcontainerSeed.devcontainer()
             .name("bench")
             .image("mcr.microsoft.com/devcontainers/java:21")
             .forwardPorts(List.of("8080", "5432"))

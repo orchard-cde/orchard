@@ -103,7 +103,7 @@ class GroveTest {
     void withFruit_replacesExistingFruitById() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
         Fruit fruit = Fruit.bud(grove.id(), UUID.randomUUID(),
-                Seed.builder().name("test").image("ubuntu").build());
+                Seed.devcontainer().name("test").image("ubuntu").build());
         grove = grove.withFruit(fruit);
 
         Fruit ripeFruit = fruit.withState(FruitState.RIPE);
@@ -222,7 +222,7 @@ class GroveTest {
         Seedling seedling = createReadySeedling(grove.id());
         Fruit ripeFruit = createRipeFruit(grove.id(), seedling.id());
         Fruit buddingFruit = Fruit.bud(grove.id(), seedling.id(),
-                Seed.builder().name("unripe").image("ubuntu").build());
+                Seed.devcontainer().name("unripe").image("ubuntu").build());
 
         grove = grove.withState(GroveState.FLOURISHING)
                 .withSeedling(seedling)
@@ -269,6 +269,6 @@ class GroveTest {
 
     private Fruit createRipeFruit(UUID groveId, UUID seedlingId) {
         return Fruit.bud(groveId, seedlingId,
-                Seed.builder().name("test").image("ubuntu").build()).withState(FruitState.RIPE);
+                Seed.devcontainer().name("test").image("ubuntu").build()).withState(FruitState.RIPE);
     }
 }

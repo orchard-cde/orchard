@@ -21,14 +21,14 @@ class FruitTest {
 
     @Test
     void bud_usesSeedNameAsContainerName() {
-        Seed seed = Seed.builder().name("my-container").image("ubuntu").build();
+        Seed seed = Seed.devcontainer().name("my-container").image("ubuntu").build();
         Fruit fruit = Fruit.bud(groveId, seedlingId, seed);
         assertThat(fruit.containerName()).isEqualTo("my-container");
     }
 
     @Test
     void bud_usesDefaultNameWhenSeedNameNull() {
-        Seed seed = Seed.builder().image("ubuntu").build();
+        Seed seed = Seed.devcontainer().image("ubuntu").build();
         Fruit fruit = Fruit.bud(groveId, seedlingId, seed);
         assertThat(fruit.containerName()).isEqualTo("orchard-fruit");
     }
@@ -106,6 +106,6 @@ class FruitTest {
     }
 
     private Seed testSeed() {
-        return Seed.builder().name("test").image("ubuntu").build();
+        return Seed.devcontainer().name("test").image("ubuntu").build();
     }
 }

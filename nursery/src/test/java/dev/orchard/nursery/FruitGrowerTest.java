@@ -144,7 +144,7 @@ class FruitGrowerTest {
     void growViaCli_postAttachWaitFor_staysBuddedUntilAttach() throws Exception {
         DevcontainerCli cli = mock(DevcontainerCli.class);
         Seedling seedling = seedling();
-        Seed seed = Seed.builder()
+        Seed seed = Seed.devcontainer()
             .name("post-attach-seed")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .waitFor(WaitFor.POST_ATTACH_COMMAND)
@@ -258,7 +258,7 @@ class FruitGrowerTest {
     // --- helpers -----------------------------------------------------------------------------
 
     private static Seed defaultSeed() {
-        return Seed.builder()
+        return Seed.devcontainer()
             .name("orchard-fruit")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .build();

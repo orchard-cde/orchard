@@ -16,7 +16,7 @@ class SeedSerializerTest {
 
     @Test
     void roundTrip_writesAtTypeAndDeserializesToDevcontainerSeed() {
-        DevcontainerSeed original = DevcontainerSeed.builder()
+        DevcontainerSeed original = DevcontainerSeed.devcontainer()
             .name("test")
             .image("ubuntu:22.04")
             .build();
@@ -53,7 +53,7 @@ class SeedSerializerTest {
 
     @Test
     void roundTrip_preservesSequentialLifecycleCommand() {
-        DevcontainerSeed original = DevcontainerSeed.builder()
+        DevcontainerSeed original = DevcontainerSeed.devcontainer()
             .name("ws")
             .image("ubuntu:22.04")
             .postCreateCommand(new LifecycleCommand.Sequential(List.of("npm install")))
@@ -67,7 +67,7 @@ class SeedSerializerTest {
 
     @Test
     void roundTrip_preservesParallelLifecycleCommand() {
-        DevcontainerSeed original = DevcontainerSeed.builder()
+        DevcontainerSeed original = DevcontainerSeed.devcontainer()
             .name("ws")
             .image("ubuntu:22.04")
             .postStartCommand(new LifecycleCommand.Parallel(

@@ -11,7 +11,7 @@ class DevcontainerSeedTest {
 
     @Test
     void builder_defaultsCollectionsToEmpty() {
-        DevcontainerSeed seed = DevcontainerSeed.builder().build();
+        DevcontainerSeed seed = DevcontainerSeed.devcontainer().build();
 
         assertThat(seed.buildArgs()).isEmpty();
         assertThat(seed.features()).isEmpty();
@@ -31,7 +31,7 @@ class DevcontainerSeedTest {
         DevcontainerSeed.VsCodeCustomizations vscode = new DevcontainerSeed.VsCodeCustomizations(
                 List.of("ms-java.vscode-java-pack"), Map.of("java.home", "/usr/lib/jvm/java-21"));
 
-        DevcontainerSeed seed = DevcontainerSeed.builder()
+        DevcontainerSeed seed = DevcontainerSeed.devcontainer()
                 .name("java-dev")
                 .image("mcr.microsoft.com/devcontainers/java:21")
                 .dockerfilePath("Dockerfile")
@@ -58,7 +58,7 @@ class DevcontainerSeedTest {
 
     @Test
     void builder_minimalImageSeed() {
-        DevcontainerSeed seed = DevcontainerSeed.builder().name("minimal").image("ubuntu:22.04").build();
+        DevcontainerSeed seed = DevcontainerSeed.devcontainer().name("minimal").image("ubuntu:22.04").build();
 
         assertThat(seed.name()).isEqualTo("minimal");
         assertThat(seed.image()).isEqualTo("ubuntu:22.04");
@@ -70,7 +70,7 @@ class DevcontainerSeedTest {
 
     @Test
     void effectiveWaitFor_returnsWaitForIfNotNull() {
-        DevcontainerSeed seed = DevcontainerSeed.builder()
+        DevcontainerSeed seed = DevcontainerSeed.devcontainer()
                 .initializeCommand(new LifecycleCommand.Sequential(List.of("init")))
                 .waitFor(WaitFor.INITIALIZE_COMMAND)
                 .build();
@@ -80,7 +80,7 @@ class DevcontainerSeedTest {
 
     @Test
     void effectiveWaitFor_returnsDefaultIfNull() {
-        DevcontainerSeed seed = DevcontainerSeed.builder()
+        DevcontainerSeed seed = DevcontainerSeed.devcontainer()
                 .initializeCommand(new LifecycleCommand.Parallel(Map.of("step1", List.of("cmd1"))))
                 .build();
 

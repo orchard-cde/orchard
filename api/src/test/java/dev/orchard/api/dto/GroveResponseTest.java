@@ -23,7 +23,7 @@ class GroveResponseTest {
             SeedlingState.SAPLING, SeedlingSpec.small(), Instant.now(), Instant.now()
         );
 
-        Seed seed = Seed.builder().name("test").image("ubuntu").build();
+        Seed seed = Seed.devcontainer().name("test").image("ubuntu").build();
         Fruit fruit = Fruit.bud(groveId, seedlingId, seed).withState(FruitState.RIPE)
             .withContainerDetails("abc123", List.of(new Fruit.PortMapping(8080, 8080, "tcp")));
 

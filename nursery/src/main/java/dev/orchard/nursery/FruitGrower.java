@@ -1,6 +1,7 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.DevcontainerSeed;
+import dev.orchard.core.model.DevfileSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
@@ -74,18 +75,34 @@ public class FruitGrower {
 
 
     /**
-     * Grows a fruit (starts a devcontainer) on the given seedling. Routes to the CLI path
-     * when the feature flag is on and a CLI wrapper is wired; otherwise falls back to the
-     * legacy docker path.
+     * Grows a fruit (starts a devcontainer) on the given seedling. Routes based on both
+     * the feature flag and the concrete seed type:
+     *
+     * <ul>
+     *   <li>{@link DevcontainerSeed} + CLI flag on → devcontainer CLI path</li>
+     *   <li>{@link DevcontainerSeed} + CLI flag off → legacy docker path</li>
+     *   <li>{@link DevfileSeed} → docker-direct path (devcontainer CLI is not applicable)</li>
+     * </ul>
      */
     public CompletableFuture<Fruit> grow(Seedling seedling, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
-            log.info("Growing fruit {} on seedling {} (path={})", fruit.id(), seedling.id(),
-                useDevcontainerCli && devcontainerCli != null ? "devcontainer-cli" : "legacy-docker");
-            if (useDevcontainerCli && devcontainerCli != null) {
-                return growViaCli(seedling, fruit);
-            }
-            return growViaDocker(seedling, fruit);
+            return switch (fruit.seed()) {
+                case DevfileSeed ignored -> {
+                    log.info("Growing fruit {} on seedling {} (path=devfile-docker)", fruit.id(), seedling.id());
+                    yield growDevfileViaDocker(seedling, fruit);
+                }
+                case DevcontainerSeed ignored -> {
+                    boolean useCli = useDevcontainerCli && devcontainerCli != null;
+                    log.info("Growing fruit {} on seedling {} (path={})", fruit.id(), seedling.id(),
+                        useCli ? "devcontainer-cli" : "legacy-docker");
+                    yield useCli ? growViaCli(seedling, fruit) : growViaDocker(seedling, fruit);
+                }
+                default -> {
+                    log.warn("Unknown seed type {} for fruit {}, falling back to legacy docker",
+                        fruit.seed().getClass().getSimpleName(), fruit.id());
+                    yield growViaDocker(seedling, fruit);
+                }
+            };
         }, executor);
     }
 
@@ -276,6 +293,68 @@ public class FruitGrower {
         }
     }
 
+    // --- Devfile docker path -----------------------------------------------------------------
+
+    /**
+     * Grows a fruit from a {@link DevfileSeed} by running the container image directly via
+     * docker. The devcontainer CLI is not involved — devfile workspaces use the image declared
+     * in the {@code container} component and are started with the workspace mounted at
+     * {@code /projects} (devfile convention).
+     *
+     * <p>Env vars and forwarded ports from the devfile are applied. Resource limits
+     * ({@code memoryLimit} / {@code cpuLimit}) are passed as docker {@code --memory} /
+     * {@code --cpus} constraints when present.
+     */
+    Fruit growDevfileViaDocker(Seedling seedling, Fruit fruit) {
+        DevfileSeed seed = devfileSeed(fruit);
+        try {
+            if (seed.image() == null || seed.image().isBlank()) {
+                throw new IllegalArgumentException(
+                    "DevfileSeed for fruit " + fruit.id() + " has no image — cannot start container");
+            }
+
+            executeSsh(seedling, "docker pull " + shellQuote(seed.image()));
+
+            StringBuilder cmd = new StringBuilder("docker run -d");
+            cmd.append(" --name ").append(shellQuote(fruit.containerName()));
+
+            if (!seed.containerEnv().isEmpty()) {
+                for (var entry : seed.containerEnv().entrySet()) {
+                    cmd.append(" -e ").append(shellQuote(entry.getKey() + "=" + entry.getValue()));
+                }
+            }
+            if (!seed.forwardPorts().isEmpty()) {
+                for (String port : seed.forwardPorts()) {
+                    cmd.append(" -p ").append(port).append(":").append(port);
+                }
+            }
+            if (seed.memoryLimit() != null) {
+                cmd.append(" --memory ").append(shellQuote(seed.memoryLimit()));
+            }
+            if (seed.cpuLimit() != null) {
+                cmd.append(" --cpus ").append(shellQuote(seed.cpuLimit()));
+            }
+
+            // Mount workspace at /projects — devfile convention
+            cmd.append(" -v /workspace:/projects");
+            cmd.append(" -w /projects");
+            cmd.append(" ").append(shellQuote(seed.image()));
+            cmd.append(" sleep infinity");
+
+            String containerId = executeSsh(seedling, cmd.toString()).trim();
+            List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
+
+            return fruit.withContainerDetails(containerId, ports).withState(FruitState.RIPE);
+
+        } catch (Exception e) {
+            log.error("Failed to grow fruit {} via devfile docker path", fruit.id(), e);
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return fruit.withState(FruitState.ROTTED);
+        }
+    }
+
     /**
      * Grows multiple fruits via Docker Compose on the given seedling. Legacy path; the CLI path
      * subsumes compose in a future lane (spec Locked decision #3 / #11).
@@ -427,6 +506,15 @@ public class FruitGrower {
         throw new IllegalArgumentException("Fruit " + fruit.id() + " has no DevcontainerSeed");
     }
 
+    private static String shellQuote(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
+    }
+
+    private static DevfileSeed devfileSeed(Fruit fruit) {
+        if (fruit.seed() instanceof DevfileSeed s) return s;
+        throw new IllegalArgumentException("Fruit " + fruit.id() + " has no DevfileSeed");
+    }
+
     @Deprecated(forRemoval = true, since = "next-release")
     private String legacyRunFromImage(Seedling seedling, Fruit fruit) throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
@@ -476,7 +564,7 @@ public class FruitGrower {
 
         executeSsh(seedling, buildCmd.toString());
 
-        Seed imageOnlySeed = DevcontainerSeed.builder()
+        Seed imageOnlySeed = DevcontainerSeed.devcontainer()
             .name(seed.name())
             .image("orchard-fruit-" + fruit.id().toString().substring(0, 8))
             .containerEnv(seed.containerEnv())
