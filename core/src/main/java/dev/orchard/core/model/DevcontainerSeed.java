@@ -1,6 +1,5 @@
 package dev.orchard.core.model;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -90,7 +89,7 @@ public final class DevcontainerSeed extends Seed {
             @JsonProperty("buildCacheFrom") List<String> buildCacheFrom,
             @JsonProperty("buildOptions") List<String> buildOptions,
             @JsonProperty("buildArgs") Map<String, String> buildArgs,
-            @JsonProperty("dockerComposeFiles") @JsonAlias("dockerComposeFile") List<String> dockerComposeFiles,
+            @JsonProperty("dockerComposeFiles") List<String> dockerComposeFiles,
             @JsonProperty("service") String service,
             @JsonProperty("runServices") List<String> runServices,
             @JsonProperty("features") Map<String, Map<String, Object>> features,

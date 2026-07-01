@@ -79,24 +79,4 @@ class SeedSerializerTest {
             .isEqualTo(new LifecycleCommand.Parallel(
                 Map.of("server", List.of("npm", "run", "dev"))));
     }
-
-    @Test
-    void deserialize_dockerComposeFile_legacyKey_migratesGracefully() {
-        // Seeds persisted before the dockerComposeFile→dockerComposeFiles rename use
-        // the singular key. @JsonAlias must make them deserialize without data loss.
-        String legacyJson = """
-                {
-                  "@type": "devcontainer",
-                  "dockerComposeFile": "docker-compose.yml",
-                  "service": "app"
-                }""";
-
-        Seed seed = serializer.deserialize(legacyJson);
-
-        assertThat(seed).isInstanceOf(DevcontainerSeed.class);
-        DevcontainerSeed dc = (DevcontainerSeed) seed;
-        assertThat(dc.dockerComposeFiles()).containsExactly("docker-compose.yml");
-        assertThat(dc.dockerComposeFile()).isEqualTo("docker-compose.yml");
-        assertThat(dc.service()).isEqualTo("app");
-    }
 }
