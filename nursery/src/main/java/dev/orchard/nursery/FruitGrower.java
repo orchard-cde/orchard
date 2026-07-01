@@ -361,44 +361,68 @@ public class FruitGrower {
      */
     @Deprecated(forRemoval = true, since = "next-release")
     public CompletableFuture<List<Fruit>> growCompose(Seedling seedling, List<Fruit> fruits, String composeFile) {
+        return growCompose(seedling, fruits, List.of(composeFile));
+    }
+
+    /**
+     * Grows multiple fruits via Docker Compose on the given seedling.
+     * Accepts all compose files in override order (issue #32 — {@code dockerComposeFiles}).
+     * Legacy path; the CLI path subsumes compose in a future lane.
+     */
+    @Deprecated(forRemoval = true, since = "next-release")
+    public CompletableFuture<List<Fruit>> growCompose(Seedling seedling, List<Fruit> fruits, List<String> composeFiles) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Growing {} fruits via Docker Compose on seedling {}", fruits.size(), seedling.id());
 
-                String composePath = composeFile.startsWith("/") ? composeFile : "/workspace/" + composeFile;
-                executeSsh(seedling, "docker compose -f " + composePath + " up -d");
+                // Build "-f file1 -f file2 ..." from all compose files (issue #32)
+                StringBuilder fileArgs = new StringBuilder();
+                for (String cf : composeFiles) {
+                    String path = cf.startsWith("/") ? cf : "/workspace/" + cf;
+                    fileArgs.append(" -f ").append(shellQuote(path));
+                }
+
+                // Determine services to start: runServices union primary service names
+                List<String> serviceNames = fruits.stream()
+                    .map(f -> f.serviceName() != null ? f.serviceName() : f.containerName())
+                    .distinct()
+                    .toList();
+
+                // If the seed has runServices, pass them explicitly alongside primary services
+                String upServicesArg = "";
+                if (!fruits.isEmpty() && fruits.get(0).seed() instanceof DevcontainerSeed dcs
+                        && !dcs.runServices().isEmpty()) {
+                    java.util.LinkedHashSet<String> allServices = new java.util.LinkedHashSet<>(serviceNames);
+                    allServices.addAll(dcs.runServices());
+                    upServicesArg = " " + allServices.stream()
+                        .map(FruitGrower::shellQuote)
+                        .collect(java.util.stream.Collectors.joining(" "));
+                }
+
+                executeSsh(seedling, "docker compose" + fileArgs + " up -d" + upServicesArg);
 
                 String psOutput = executeSsh(seedling,
-                    "docker compose -f " + composePath + " ps --format '{{.ID}}|{{.Service}}|{{.Name}}'");
+                    "docker compose" + fileArgs + " ps --format '{{.ID}}|{{.Service}}|{{.Name}}'");
 
                 List<Fruit> grownFruits = new ArrayList<>();
                 for (Fruit fruit : fruits) {
-                    String serviceName = fruit.serviceName();
-                    if (serviceName == null) {
-                        serviceName = fruit.containerName();
-                    }
+                    String serviceName = fruit.serviceName() != null
+                        ? fruit.serviceName() : fruit.containerName();
 
                     String containerId = null;
                     for (String line : psOutput.split("\n")) {
                         String trimmed = line.trim();
-                        if (trimmed.isEmpty()) {
-                            continue;
-                        }
+                        if (trimmed.isEmpty()) continue;
                         String[] parts = trimmed.split("\\|");
-                        if (parts.length >= 2) {
-                            String lineContainerId = parts[0].trim();
-                            String lineService = parts[1].trim();
-                            if (lineService.equals(serviceName)) {
-                                containerId = lineContainerId;
-                                break;
-                            }
+                        if (parts.length >= 2 && parts[1].trim().equals(serviceName)) {
+                            containerId = parts[0].trim();
+                            break;
                         }
                     }
 
                     if (containerId != null) {
                         List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
-                        if (fruit.seed() != null) {
-                            DevcontainerSeed s = devcontainerSeed(fruit);
+                        if (fruit.seed() instanceof DevcontainerSeed s) {
                             String cid = containerId;
                             if (s.onCreateCommand() != null) {
                                 runLifecycleCommand(s.onCreateCommand(), cmd -> inContainer(seedling, cid, cmd));
@@ -519,56 +543,109 @@ public class FruitGrower {
     private String legacyRunFromImage(Seedling seedling, Fruit fruit) throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
 
-        executeSsh(seedling, "docker pull " + seed.image());
+        executeSsh(seedling, "docker pull " + shellQuote(seed.image()));
 
         StringBuilder cmd = new StringBuilder("docker run -d");
-        cmd.append(" --name ").append(fruit.containerName());
+        cmd.append(" --name ").append(shellQuote(fruit.containerName()));
 
-        if (seed.containerEnv() != null) {
-            for (var entry : seed.containerEnv().entrySet()) {
-                cmd.append(" -e ").append(entry.getKey()).append("=").append(entry.getValue());
-            }
+        // Runtime flags from spec (issue #29)
+        if (Boolean.TRUE.equals(seed.privileged())) {
+            cmd.append(" --privileged");
+        }
+        if (Boolean.TRUE.equals(seed.init())) {
+            cmd.append(" --init");
+        }
+        for (String cap : seed.capAdd()) {
+            cmd.append(" --cap-add ").append(shellQuote(cap));
+        }
+        for (String opt : seed.securityOpt()) {
+            cmd.append(" --security-opt ").append(shellQuote(opt));
         }
 
-        if (seed.forwardPorts() != null) {
-            for (String port : seed.forwardPorts()) {
-                cmd.append(" -p ").append(port).append(":").append(port);
-            }
+        // containerEnv
+        for (var entry : seed.containerEnv().entrySet()) {
+            cmd.append(" -e ").append(shellQuote(entry.getKey() + "=" + entry.getValue()));
         }
 
-        cmd.append(" -v /workspace:/workspace");
-        cmd.append(" -w /workspace");
+        // forwardPorts
+        for (String port : seed.forwardPorts()) {
+            cmd.append(" -p ").append(port).append(":").append(port);
+        }
 
-        cmd.append(" ").append(seed.image());
+        // extra mounts (issue #29)
+        for (String mount : seed.mounts()) {
+            cmd.append(" --mount ").append(shellQuote(mount));
+        }
+
+        // extra docker run args (issue #29)
+        for (String arg : seed.runArgs()) {
+            cmd.append(" ").append(arg);
+        }
+
+        // workspace mount / folder (issue #29)
+        if (seed.workspaceMount() != null) {
+            cmd.append(" --mount ").append(shellQuote(seed.workspaceMount()));
+        } else {
+            cmd.append(" -v /workspace:/workspace");
+        }
+        String workdir = seed.workspaceFolder() != null ? seed.workspaceFolder() : "/workspace";
+        cmd.append(" -w ").append(shellQuote(workdir));
+
+        cmd.append(" ").append(shellQuote(seed.image()));
         cmd.append(" sleep infinity");
 
-        String output = executeSsh(seedling, cmd.toString());
-        return output.trim();
+        return executeSsh(seedling, cmd.toString()).trim();
     }
 
     @Deprecated(forRemoval = true, since = "next-release")
     private String legacyBuildAndRun(Seedling seedling, Fruit fruit) throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
 
+        String imageTag = "orchard-fruit-" + fruit.id().toString().substring(0, 8);
         StringBuilder buildCmd = new StringBuilder("docker build");
-        buildCmd.append(" -t orchard-fruit-").append(fruit.id().toString().substring(0, 8));
+        buildCmd.append(" -t ").append(shellQuote(imageTag));
 
-        if (seed.buildArgs() != null) {
-            for (var entry : seed.buildArgs().entrySet()) {
-                buildCmd.append(" --build-arg ").append(entry.getKey()).append("=").append(entry.getValue());
-            }
+        // build.args
+        for (var entry : seed.buildArgs().entrySet()) {
+            buildCmd.append(" --build-arg ")
+                .append(shellQuote(entry.getKey() + "=" + entry.getValue()));
+        }
+        // build.target (issue #31)
+        if (seed.buildTarget() != null) {
+            buildCmd.append(" --target ").append(shellQuote(seed.buildTarget()));
+        }
+        // build.cacheFrom (issue #31)
+        for (String cache : seed.buildCacheFrom()) {
+            buildCmd.append(" --cache-from ").append(shellQuote(cache));
+        }
+        // build.options — verbatim flags (issue #31)
+        for (String opt : seed.buildOptions()) {
+            buildCmd.append(" ").append(opt);
         }
 
-        buildCmd.append(" -f /workspace/").append(seed.dockerfilePath());
-        buildCmd.append(" /workspace");
+        buildCmd.append(" -f ").append(shellQuote("/workspace/" + seed.dockerfilePath()));
+
+        // build.context (issue #31) — relative to /workspace
+        String context = seed.buildContext() != null
+            ? "/workspace/" + seed.buildContext()
+            : "/workspace";
+        buildCmd.append(" ").append(shellQuote(context));
 
         executeSsh(seedling, buildCmd.toString());
 
         Seed imageOnlySeed = DevcontainerSeed.devcontainer()
             .name(seed.name())
-            .image("orchard-fruit-" + fruit.id().toString().substring(0, 8))
+            .image(imageTag)
             .containerEnv(seed.containerEnv())
             .forwardPorts(seed.forwardPorts())
+            .mounts(seed.mounts())
+            .runArgs(seed.runArgs())
+            .workspaceFolder(seed.workspaceFolder())
+            .workspaceMount(seed.workspaceMount())
+            .privileged(seed.privileged())
+            .init(seed.init())
+            .capAdd(seed.capAdd())
+            .securityOpt(seed.securityOpt())
             .build();
 
         Fruit imageFruit = new Fruit(

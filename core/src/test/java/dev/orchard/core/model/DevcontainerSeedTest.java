@@ -35,7 +35,7 @@ class DevcontainerSeedTest {
                 .name("java-dev")
                 .image("mcr.microsoft.com/devcontainers/java:21")
                 .dockerfilePath("Dockerfile")
-                .dockerComposeFile("docker-compose.yml")
+                .dockerComposeFiles(List.of("docker-compose.yml"))
                 .service("app")
                 .buildArgs(Map.of("VARIANT", "21"))
                 .features(Map.of("ghcr.io/devcontainers/features/java:1", Map.of()))
@@ -50,6 +50,7 @@ class DevcontainerSeedTest {
         assertThat(seed.image()).isEqualTo("mcr.microsoft.com/devcontainers/java:21");
         assertThat(seed.dockerfilePath()).isEqualTo("Dockerfile");
         assertThat(seed.dockerComposeFile()).isEqualTo("docker-compose.yml");
+        assertThat(seed.dockerComposeFiles()).containsExactly("docker-compose.yml");
         assertThat(seed.service()).isEqualTo("app");
         assertThat(seed.buildArgs()).containsEntry("VARIANT", "21");
         assertThat(seed.features()).containsOnlyKeys("ghcr.io/devcontainers/features/java:1");
