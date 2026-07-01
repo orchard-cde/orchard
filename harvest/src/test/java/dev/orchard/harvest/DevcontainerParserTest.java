@@ -321,4 +321,380 @@ class DevcontainerParserTest {
     void discover_returnsEmptyWhenNotFound(@TempDir Path tempDir) throws IOException {
         assertThat(parser.discover(tempDir)).isEmpty();
     }
+
+    // =========================================================================================
+    // Issue #31 — build.* fields
+    // =========================================================================================
+
+    @Test
+    void parseJson_buildContextTargetCacheFromOptions() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "build": {
+                    "dockerfile": "Dockerfile",
+                    "context": ".",
+                    "target": "development",
+                    "cacheFrom": ["ghcr.io/org/cache:latest", "ghcr.io/org/cache:main"],
+                    "options": ["--add-host=host.docker.internal:host-gateway"],
+                    "args": {"VARIANT": "21"}
+                  }
+                }""");
+
+        assertThat(result).isPresent();
+        DevcontainerSeed seed = result.get();
+        assertThat(seed.dockerfilePath()).isEqualTo("Dockerfile");
+        assertThat(seed.buildContext()).isEqualTo(".");
+        assertThat(seed.buildTarget()).isEqualTo("development");
+        assertThat(seed.buildCacheFrom())
+            .containsExactly("ghcr.io/org/cache:latest", "ghcr.io/org/cache:main");
+        assertThat(seed.buildOptions())
+            .containsExactly("--add-host=host.docker.internal:host-gateway");
+        assertThat(seed.buildArgs()).containsEntry("VARIANT", "21");
+    }
+
+    @Test
+    void parseJson_buildCacheFromString() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "build": {
+                    "dockerfile": "Dockerfile",
+                    "cacheFrom": "ghcr.io/org/cache:latest"
+                  }
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().buildCacheFrom()).containsExactly("ghcr.io/org/cache:latest");
+    }
+
+    // =========================================================================================
+    // Issue #32 — dockerComposeFiles + runServices
+    // =========================================================================================
+
+    @Test
+    void parseJson_dockerComposeFileArray_storesAll() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "dockerComposeFile": ["docker-compose.yml", "docker-compose.dev.yml"],
+                  "service": "app"
+                }""");
+
+        assertThat(result).isPresent();
+        DevcontainerSeed seed = result.get();
+        assertThat(seed.dockerComposeFiles())
+            .containsExactly("docker-compose.yml", "docker-compose.dev.yml");
+        // convenience accessor still returns first entry
+        assertThat(seed.dockerComposeFile()).isEqualTo("docker-compose.yml");
+    }
+
+    @Test
+    void parseJson_dockerComposeFileString_storesSingle() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {"dockerComposeFile": "docker-compose.yml", "service": "app"}""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().dockerComposeFiles()).containsExactly("docker-compose.yml");
+    }
+
+    @Test
+    void parseJson_runServices() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "dockerComposeFile": "docker-compose.yml",
+                  "service": "app",
+                  "runServices": ["db", "redis"]
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().runServices()).containsExactly("db", "redis");
+    }
+
+    // =========================================================================================
+    // Issue #29 — container runtime fields
+    // =========================================================================================
+
+    @Test
+    void parseJson_remoteEnv() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "node:20",
+                  "remoteEnv": {"PATH": "/usr/local/bin:${containerEnv:PATH}", "NODE_ENV": "development"}
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().remoteEnv())
+            .containsEntry("NODE_ENV", "development")
+            .containsKey("PATH");
+    }
+
+    @Test
+    void parseJson_remoteUserAndContainerUser() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "remoteUser": "vscode",
+                  "containerUser": "root"
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().remoteUser()).isEqualTo("vscode");
+        assertThat(result.get().containerUser()).isEqualTo("root");
+    }
+
+    @Test
+    void parseJson_mountsStringForm() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "mounts": ["type=bind,source=/tmp,target=/tmp"]
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().mounts()).containsExactly("type=bind,source=/tmp,target=/tmp");
+    }
+
+    @Test
+    void parseJson_mountsObjectForm() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "mounts": [{"source": "dind-var-lib-docker", "target": "/var/lib/docker", "type": "volume"}]
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().mounts()).hasSize(1);
+        assertThat(result.get().mounts().get(0)).contains("target=/var/lib/docker");
+    }
+
+    @Test
+    void parseJson_runArgs() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"]
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().runArgs())
+            .containsExactly("--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined");
+    }
+
+    @Test
+    void parseJson_workspaceFolderAndMount() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "workspaceFolder": "/home/vscode/project",
+                  "workspaceMount": "source=${localWorkspaceFolder},target=/home/vscode/project,type=bind"
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().workspaceFolder()).isEqualTo("/home/vscode/project");
+        assertThat(result.get().workspaceMount()).contains("target=/home/vscode/project");
+    }
+
+    @Test
+    void parseJson_booleanRuntimeFlags() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "privileged": true,
+                  "init": true,
+                  "overrideCommand": false,
+                  "updateRemoteUserUID": false
+                }""");
+
+        assertThat(result).isPresent();
+        DevcontainerSeed seed = result.get();
+        assertThat(seed.privileged()).isTrue();
+        assertThat(seed.init()).isTrue();
+        assertThat(seed.overrideCommand()).isFalse();
+        assertThat(seed.updateRemoteUserUID()).isFalse();
+    }
+
+    @Test
+    void parseJson_capAddAndSecurityOpt() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "capAdd": ["SYS_PTRACE"],
+                  "securityOpt": ["seccomp=unconfined"]
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().capAdd()).containsExactly("SYS_PTRACE");
+        assertThat(result.get().securityOpt()).containsExactly("seccomp=unconfined");
+    }
+
+    @Test
+    void parseJson_shutdownAction() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {"image": "ubuntu:22.04", "shutdownAction": "stopContainer"}""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().shutdownAction()).isEqualTo("stopContainer");
+    }
+
+    // =========================================================================================
+    // Issue #101 — portsAttributes / otherPortsAttributes
+    // =========================================================================================
+
+    @Test
+    void parseJson_portsAttributes() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "node:20",
+                  "forwardPorts": [3000, 5432],
+                  "portsAttributes": {
+                    "3000": {
+                      "label": "Application",
+                      "protocol": "http",
+                      "onAutoForward": "openBrowser",
+                      "requireLocalPort": true,
+                      "elevateIfNeeded": false
+                    },
+                    "5432": {
+                      "label": "Database",
+                      "onAutoForward": "silent"
+                    }
+                  },
+                  "otherPortsAttributes": {
+                    "onAutoForward": "ignore"
+                  }
+                }""");
+
+        assertThat(result).isPresent();
+        DevcontainerSeed seed = result.get();
+        assertThat(seed.portsAttributes()).containsKey("3000");
+        DevcontainerSeed.PortAttributes app = seed.portsAttributes().get("3000");
+        assertThat(app.label()).isEqualTo("Application");
+        assertThat(app.protocol()).isEqualTo("http");
+        assertThat(app.onAutoForward()).isEqualTo("openBrowser");
+        assertThat(app.requireLocalPort()).isTrue();
+        assertThat(app.elevateIfNeeded()).isFalse();
+
+        assertThat(seed.portsAttributes().get("5432").onAutoForward()).isEqualTo("silent");
+        assertThat(seed.otherPortsAttributes().onAutoForward()).isEqualTo("ignore");
+    }
+
+    // =========================================================================================
+    // Issue #102 — userEnvProbe
+    // =========================================================================================
+
+    @Test
+    void parseJson_userEnvProbe_allValues() {
+        assertParsesUserEnvProbe("loginInteractiveShell",
+            DevcontainerSeed.UserEnvProbe.LOGIN_INTERACTIVE_SHELL);
+        assertParsesUserEnvProbe("loginShell",
+            DevcontainerSeed.UserEnvProbe.LOGIN_SHELL);
+        assertParsesUserEnvProbe("interactiveShell",
+            DevcontainerSeed.UserEnvProbe.INTERACTIVE_SHELL);
+        assertParsesUserEnvProbe("none",
+            DevcontainerSeed.UserEnvProbe.NONE);
+    }
+
+    private void assertParsesUserEnvProbe(String specValue, DevcontainerSeed.UserEnvProbe expected) {
+        Optional<DevcontainerSeed> result = parser.parseJson(
+            "{\"image\": \"ubuntu:22.04\", \"userEnvProbe\": \"" + specValue + "\"}");
+        assertThat(result).isPresent();
+        assertThat(result.get().userEnvProbe()).isEqualTo(expected);
+    }
+
+    @Test
+    void parseJson_userEnvProbe_unknown_isIgnored() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {"image": "ubuntu:22.04", "userEnvProbe": "unknownValue"}""");
+        assertThat(result).isPresent();
+        assertThat(result.get().userEnvProbe()).isNull();
+    }
+
+    // =========================================================================================
+    // Issue #103 — hostRequirements
+    // =========================================================================================
+
+    @Test
+    void parseJson_hostRequirements_simple() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "hostRequirements": {
+                    "cpus": 4,
+                    "memory": "8gb",
+                    "storage": "32gb"
+                  }
+                }""");
+
+        assertThat(result).isPresent();
+        DevcontainerSeed.HostRequirements hr = result.get().hostRequirements();
+        assertThat(hr).isNotNull();
+        assertThat(hr.cpus()).isEqualTo(4);
+        assertThat(hr.memory()).isEqualTo("8gb");
+        assertThat(hr.storage()).isEqualTo("32gb");
+        assertThat(hr.gpu()).isNull();
+    }
+
+    @Test
+    void parseJson_hostRequirements_gpuBoolean() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {"image": "ubuntu:22.04", "hostRequirements": {"gpu": true}}""");
+        assertThat(result).isPresent();
+        assertThat(result.get().hostRequirements().gpu()).isEqualTo(true);
+    }
+
+    @Test
+    void parseJson_hostRequirements_gpuOptionalString() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {"image": "ubuntu:22.04", "hostRequirements": {"gpu": "optional"}}""");
+        assertThat(result).isPresent();
+        assertThat(result.get().hostRequirements().gpu()).isEqualTo("optional");
+    }
+
+    // =========================================================================================
+    // Issue #104 — secrets
+    // =========================================================================================
+
+    @Test
+    void parseJson_secrets() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "secrets": {
+                    "GITHUB_TOKEN": {
+                      "description": "GitHub personal access token",
+                      "documentationUrl": "https://docs.github.com/en/authentication"
+                    },
+                    "NPM_TOKEN": {}
+                  }
+                }""");
+
+        assertThat(result).isPresent();
+        DevcontainerSeed seed = result.get();
+        assertThat(seed.secrets()).containsKeys("GITHUB_TOKEN", "NPM_TOKEN");
+        DevcontainerSeed.SecretDeclaration gh = seed.secrets().get("GITHUB_TOKEN");
+        assertThat(gh.description()).isEqualTo("GitHub personal access token");
+        assertThat(gh.documentationUrl()).isEqualTo("https://docs.github.com/en/authentication");
+        // empty object — nulls for optional fields
+        assertThat(seed.secrets().get("NPM_TOKEN").description()).isNull();
+    }
+
+    // =========================================================================================
+    // Issue #105 — overrideFeatureInstallOrder
+    // =========================================================================================
+
+    @Test
+    void parseJson_overrideFeatureInstallOrder() {
+        Optional<DevcontainerSeed> result = parser.parseJson("""
+                {
+                  "image": "ubuntu:22.04",
+                  "overrideFeatureInstallOrder": [
+                    "ghcr.io/devcontainers/features/common-utils",
+                    "ghcr.io/devcontainers/features/java"
+                  ]
+                }""");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().overrideFeatureInstallOrder())
+            .containsExactly(
+                "ghcr.io/devcontainers/features/common-utils",
+                "ghcr.io/devcontainers/features/java");
+    }
 }

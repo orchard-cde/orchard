@@ -162,37 +162,55 @@ public class DevcontainerParser {
             builder.image(root.get("image").asText());
         }
 
-        // Dockerfile
+        // build.* fields — spec allows top-level dockerFile or a build object (issue #31)
         if (root.has("dockerFile") || root.has("build")) {
             JsonNode build = root.has("build") ? root.get("build") : root;
+
+            // dockerfile path — spec spells it "dockerfile" inside build, "dockerFile" at root
             if (build.has("dockerfile")) {
                 builder.dockerfilePath(build.get("dockerfile").asText());
             } else if (build.has("dockerFile")) {
                 builder.dockerfilePath(build.get("dockerFile").asText());
             }
-
-            // Build args
+            if (build.has("context")) {
+                builder.buildContext(build.get("context").asText());
+            }
+            if (build.has("target")) {
+                builder.buildTarget(build.get("target").asText());
+            }
+            // cacheFrom: string or array
+            if (build.has("cacheFrom")) {
+                builder.buildCacheFrom(parseStringList(build.get("cacheFrom")));
+            }
+            // options: array of strings
+            if (build.has("options")) {
+                List<String> opts = new ArrayList<>();
+                build.get("options").forEach(n -> opts.add(n.asText()));
+                builder.buildOptions(opts);
+            }
             if (build.has("args")) {
                 builder.buildArgs(parseStringMap(build.get("args")));
             }
         }
 
-        // Docker Compose
+        // dockerComposeFile: string or array — store all files (issue #32)
         if (root.has("dockerComposeFile")) {
-            JsonNode dcf = root.get("dockerComposeFile");
-            if (dcf.isArray() && !dcf.isEmpty()) {
-                builder.dockerComposeFile(dcf.get(0).asText());
-            } else if (dcf.isTextual()) {
-                builder.dockerComposeFile(dcf.asText());
-            }
+            builder.dockerComposeFiles(parseStringList(root.get("dockerComposeFile")));
         }
 
-        // Service (which compose service is the primary dev container)
+        // service (compose primary service)
         if (root.has("service")) {
             builder.service(root.get("service").asText());
         }
 
-        // Features — preserve each feature's options map (empty options become Map.of(), never null)
+        // runServices (issue #32)
+        if (root.has("runServices")) {
+            List<String> svc = new ArrayList<>();
+            root.get("runServices").forEach(n -> svc.add(n.asText()));
+            builder.runServices(svc);
+        }
+
+        // features
         if (root.has("features")) {
             Map<String, Map<String, Object>> features = new LinkedHashMap<>();
             root.get("features").properties().forEach(entry -> {
@@ -203,18 +221,141 @@ public class DevcontainerParser {
             builder.features(features);
         }
 
-        // Forward ports
+        // overrideFeatureInstallOrder (issue #105)
+        if (root.has("overrideFeatureInstallOrder")) {
+            List<String> order = new ArrayList<>();
+            root.get("overrideFeatureInstallOrder").forEach(n -> order.add(n.asText()));
+            builder.overrideFeatureInstallOrder(order);
+        }
+
+        // forwardPorts
         if (root.has("forwardPorts")) {
             List<String> ports = new ArrayList<>();
             root.get("forwardPorts").forEach(node -> ports.add(node.asText()));
             builder.forwardPorts(ports);
         }
 
-        // Container env
+        // containerEnv
         if (root.has("containerEnv")) {
             builder.containerEnv(parseStringMap(root.get("containerEnv")));
         }
 
+        // remoteEnv (issue #29)
+        if (root.has("remoteEnv")) {
+            builder.remoteEnv(parseStringMap(root.get("remoteEnv")));
+        }
+
+        // remoteUser / containerUser (issue #29)
+        if (root.has("remoteUser")) {
+            builder.remoteUser(root.get("remoteUser").asText());
+        }
+        if (root.has("containerUser")) {
+            builder.containerUser(root.get("containerUser").asText());
+        }
+
+        // mounts — string or object; store as rendered strings (issue #29)
+        if (root.has("mounts")) {
+            List<String> mountList = new ArrayList<>();
+            root.get("mounts").forEach(m -> {
+                if (m.isTextual()) {
+                    mountList.add(m.asText());
+                } else {
+                    // object form: render back to "key=value,..." string matching docker --mount syntax
+                    StringBuilder sb = new StringBuilder();
+                    m.properties().forEach(e -> {
+                        if (!sb.isEmpty()) sb.append(",");
+                        sb.append(e.getKey()).append("=").append(e.getValue().asText());
+                    });
+                    mountList.add(sb.toString());
+                }
+            });
+            builder.mounts(mountList);
+        }
+
+        // runArgs (issue #29)
+        if (root.has("runArgs")) {
+            List<String> args = new ArrayList<>();
+            root.get("runArgs").forEach(n -> args.add(n.asText()));
+            builder.runArgs(args);
+        }
+
+        // workspaceFolder / workspaceMount (issue #29)
+        if (root.has("workspaceFolder")) {
+            builder.workspaceFolder(root.get("workspaceFolder").asText());
+        }
+        if (root.has("workspaceMount")) {
+            builder.workspaceMount(root.get("workspaceMount").asText());
+        }
+
+        // privileged / init / overrideCommand / updateRemoteUserUID (issue #29)
+        if (root.has("privileged")) {
+            builder.privileged(root.get("privileged").asBoolean());
+        }
+        if (root.has("init")) {
+            builder.init(root.get("init").asBoolean());
+        }
+        if (root.has("overrideCommand")) {
+            builder.overrideCommand(root.get("overrideCommand").asBoolean());
+        }
+        if (root.has("updateRemoteUserUID")) {
+            builder.updateRemoteUserUID(root.get("updateRemoteUserUID").asBoolean());
+        }
+
+        // capAdd / securityOpt (issue #29)
+        if (root.has("capAdd")) {
+            List<String> caps = new ArrayList<>();
+            root.get("capAdd").forEach(n -> caps.add(n.asText()));
+            builder.capAdd(caps);
+        }
+        if (root.has("securityOpt")) {
+            List<String> opts = new ArrayList<>();
+            root.get("securityOpt").forEach(n -> opts.add(n.asText()));
+            builder.securityOpt(opts);
+        }
+
+        // shutdownAction (issues #29/#32)
+        if (root.has("shutdownAction")) {
+            builder.shutdownAction(root.get("shutdownAction").asText());
+        }
+
+        // portsAttributes / otherPortsAttributes (issue #101)
+        if (root.has("portsAttributes")) {
+            Map<String, DevcontainerSeed.PortAttributes> map = new LinkedHashMap<>();
+            root.get("portsAttributes").properties()
+                .forEach(e -> map.put(e.getKey(), parsePortAttributes(e.getValue())));
+            builder.portsAttributes(map);
+        }
+        if (root.has("otherPortsAttributes")) {
+            builder.otherPortsAttributes(parsePortAttributes(root.get("otherPortsAttributes")));
+        }
+
+        // userEnvProbe (issue #102)
+        if (root.has("userEnvProbe")) {
+            DevcontainerSeed.UserEnvProbe probe =
+                DevcontainerSeed.UserEnvProbe.fromSpec(root.get("userEnvProbe").asText());
+            if (probe != null) {
+                builder.userEnvProbe(probe);
+            } else {
+                log.warn("Unknown userEnvProbe value '{}', ignoring", root.get("userEnvProbe").asText());
+            }
+        }
+
+        // hostRequirements (issue #103)
+        if (root.has("hostRequirements")) {
+            builder.hostRequirements(parseHostRequirements(root.get("hostRequirements")));
+        }
+
+        // secrets (issue #104) — names only, no values
+        if (root.has("secrets")) {
+            Map<String, DevcontainerSeed.SecretDeclaration> secretMap = new LinkedHashMap<>();
+            root.get("secrets").properties().forEach(e -> {
+                JsonNode v = e.getValue();
+                String desc = v.has("description") ? v.get("description").asText() : null;
+                String docUrl = v.has("documentationUrl") ? v.get("documentationUrl").asText() : null;
+                secretMap.put(e.getKey(), new DevcontainerSeed.SecretDeclaration(desc, docUrl));
+            });
+            builder.secrets(secretMap);
+        }
 
         // Lifecycle commands
         if (root.has("initializeCommand")) {
@@ -236,7 +377,7 @@ public class DevcontainerParser {
             builder.postAttachCommand(parseLifecycleCommand(root.get("postAttachCommand")));
         }
 
-        // WaitFor
+        // waitFor
         if (root.has("waitFor")) {
             builder.waitFor(parseWaitFor(root.get("waitFor").asText()));
         }
@@ -257,6 +398,47 @@ public class DevcontainerParser {
         }
 
         return builder.build();
+    }
+
+    /**
+     * Parses a spec value that may be a plain string or an array of strings into a
+     * {@code List<String>}. Used for {@code cacheFrom} and {@code dockerComposeFile}.
+     */
+    private List<String> parseStringList(JsonNode node) {
+        List<String> result = new ArrayList<>();
+        if (node.isTextual()) {
+            result.add(node.asText());
+        } else if (node.isArray()) {
+            node.forEach(n -> result.add(n.asText()));
+        }
+        return result;
+    }
+
+    private DevcontainerSeed.PortAttributes parsePortAttributes(JsonNode node) {
+        String label = node.has("label") ? node.get("label").asText() : null;
+        String protocol = node.has("protocol") ? node.get("protocol").asText() : null;
+        String onAutoForward = node.has("onAutoForward") ? node.get("onAutoForward").asText() : null;
+        Boolean requireLocalPort = node.has("requireLocalPort") ? node.get("requireLocalPort").asBoolean() : null;
+        Boolean elevateIfNeeded = node.has("elevateIfNeeded") ? node.get("elevateIfNeeded").asBoolean() : null;
+        return new DevcontainerSeed.PortAttributes(label, protocol, onAutoForward, requireLocalPort, elevateIfNeeded);
+    }
+
+    private DevcontainerSeed.HostRequirements parseHostRequirements(JsonNode node) {
+        Integer cpus = node.has("cpus") ? node.get("cpus").asInt() : null;
+        String memory = node.has("memory") ? node.get("memory").asText() : null;
+        String storage = node.has("storage") ? node.get("storage").asText() : null;
+        Object gpu = null;
+        if (node.has("gpu")) {
+            JsonNode gpuNode = node.get("gpu");
+            if (gpuNode.isBoolean()) {
+                gpu = gpuNode.asBoolean();
+            } else if (gpuNode.isTextual()) {
+                gpu = gpuNode.asText();
+            } else if (gpuNode.isObject()) {
+                gpu = objectMapper.convertValue(gpuNode, Map.class);
+            }
+        }
+        return new DevcontainerSeed.HostRequirements(cpus, memory, storage, gpu);
     }
 
     private Map<String, String> parseStringMap(JsonNode node) {
