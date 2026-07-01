@@ -1,6 +1,7 @@
 package dev.orchard.trellis.config;
 
 import dev.orchard.core.model.DevcontainerSeed;
+import dev.orchard.core.model.DevfileSeed;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.WaitFor;
@@ -28,6 +29,7 @@ import org.springframework.context.annotation.Configuration;
     Seed.class,
     DevcontainerSeed.class,
     DevcontainerSeed.VsCodeCustomizations.class,
+    DevfileSeed.class,
     LifecycleCommand.class,
     LifecycleCommand.Sequential.class,
     LifecycleCommand.Parallel.class,

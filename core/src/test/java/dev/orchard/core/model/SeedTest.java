@@ -11,7 +11,7 @@ class SeedTest {
 
     @Test
     void builder_defaultsCollectionsToEmpty() {
-        DevcontainerSeed seed = DevcontainerSeed.builder().build();
+        DevcontainerSeed seed = DevcontainerSeed.devcontainer().build();
 
         assertThat(seed.forwardPorts()).isEmpty();
         assertThat(seed.containerEnv()).isEmpty();
@@ -19,7 +19,7 @@ class SeedTest {
 
     @Test
     void builder_setsBaseFields() {
-        DevcontainerSeed seed = DevcontainerSeed.builder()
+        DevcontainerSeed seed = DevcontainerSeed.devcontainer()
                 .name("java-dev")
                 .image("mcr.microsoft.com/devcontainers/java:21")
                 .forwardPorts(List.of("8080"))
@@ -34,8 +34,8 @@ class SeedTest {
 
     @Test
     void seedBuilder_returnsDevcontainerSeed() {
-        // Seed.builder() is a convenience alias for DevcontainerSeed.builder()
-        DevcontainerSeed seed = Seed.builder().name("test").image("ubuntu").build();
+        // Seed.devcontainer() is a convenience alias for DevcontainerSeed.devcontainer()
+        DevcontainerSeed seed = Seed.devcontainer().name("test").image("ubuntu").build();
 
         assertThat(seed).isInstanceOf(DevcontainerSeed.class);
         assertThat(seed.name()).isEqualTo("test");

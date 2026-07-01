@@ -8,6 +8,8 @@ dependencies {
     implementation("org.slf4j:slf4j-api")
 
     implementation("tools.jackson.core:jackson-databind")
+    implementation("tools.jackson.dataformat:jackson-dataformat-yaml")
+    implementation("org.yaml:snakeyaml")
 
     testRuntimeOnly("org.slf4j:slf4j-simple:2.0.18")
 }

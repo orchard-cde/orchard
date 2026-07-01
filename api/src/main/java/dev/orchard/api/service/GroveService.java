@@ -4,6 +4,7 @@ import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
 import dev.orchard.harvest.DevcontainerParser;
+import dev.orchard.harvest.DevfileParser;
 import dev.orchard.harvest.SeedSerializer;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
@@ -51,6 +52,7 @@ public class GroveService {
     private final FruitGrower fruitGrower;
     private final CultivatorService cultivatorService;
     private final DevcontainerParser devcontainerParser;
+    private final DevfileParser devfileParser;
     private final SeedSerializer seedSerializer;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -69,6 +71,7 @@ public class GroveService {
         this.fruitGrower = fruitGrower;
         this.cultivatorService = cultivatorService;
         this.devcontainerParser = new DevcontainerParser();
+        this.devfileParser = new DevfileParser();
         this.seedSerializer = new SeedSerializer();
         this.eventPublisher = eventPublisher;
     }
@@ -145,22 +148,14 @@ public class GroveService {
                 updateGroveState(grove);
             }
 
-            // Discover devcontainer.json from the cloned repo on the VM
-            DevcontainerSeed seed = discoverSeed(plantedSeedling);
+            // Discover seed from the cloned repo on the VM (devcontainer.json or devfile.yaml)
+            Seed seed = discoverSeed(plantedSeedling);
 
-            // Ensure a devcontainer.json exists in the workspace — when the repo has none,
-            // we fall back to a default Seed but devcontainer up still needs the file on disk.
-            ensureDevcontainerConfig(plantedSeedling, seed);
+            // Ensure a devcontainer.json exists in the workspace when using the devcontainer
+            // path — when the repo has none, we fall back to a default Seed but devcontainer
+            // up still needs the file on disk. No-op for devfile-based seeds.
+            ensureWorkspaceConfig(plantedSeedling, seed);
 
-            // Single grow path for both single-container and compose-mode devcontainers.
-            // For compose-mode (seed.dockerComposeFile() != null), the devcontainer CLI brings
-            // up the entire compose stack as a side effect of `devcontainer up`. Only the
-            // primary service (seed.service()) is tracked as a Fruit; sibling containers run
-            // but are not represented as separate Fruit records yet — see follow-up below.
-            //
-            // Spec Locked decision #11: sibling-service enumeration via `docker compose ps`
-            // is deferred so this PR can stop routing compose through the deprecated
-            // FruitGrower#growCompose path. File-tracking siblings is a future PR.
             grove = provisionPrimaryFruit(grove, plantedSeedling, seed);
 
             log.info("Grove {} is now {}", grove.id(), grove.state());
@@ -173,21 +168,22 @@ public class GroveService {
     }
 
     /**
-     * Provisions the primary fruit for a grove. Works for both single-container devcontainers
-     * and compose-mode devcontainers — in the latter case the devcontainer CLI brings up the
-     * entire compose stack as a side effect of {@code devcontainer up} on the primary service.
+     * Provisions the primary fruit for a grove. Dispatches on the concrete {@link Seed} type:
      *
-     * <p>For compose-mode, only the primary service is tracked as a {@link Fruit}; sibling
-     * service containers run on the seedling but are not represented as separate Fruit rows.
-     * Sibling enumeration via {@code docker compose ps} is a follow-up PR (spec #11).
+     * <ul>
+     *   <li>{@link DevcontainerSeed} — uses the devcontainer CLI path (or legacy docker path
+     *       when the feature flag is off). Compose-mode is handled transparently by the CLI.</li>
+     *   <li>{@link DevfileSeed} — runs the container directly from the image declared in the
+     *       devfile {@code container} component. The devcontainer CLI is not involved.</li>
+     * </ul>
      */
-    private Grove provisionPrimaryFruit(Grove grove, Seedling seedling, DevcontainerSeed seed) {
-        // For compose-mode, attach the primary service name so consumers can correlate the
-        // Fruit with the compose service. For single-container, serviceName stays null.
-        // TODO: serviceName should evolve to fruitName — root compose service name in
-        // compose mode, repo-name-with-uniqueness applied otherwise. Tracked for follow-up
-        // per reviewer feedback on PR #110.
-        String serviceName = seed.dockerComposeFile() != null ? seed.service() : null;
+    private Grove provisionPrimaryFruit(Grove grove, Seedling seedling, Seed seed) {
+        String serviceName = switch (seed) {
+            case DevcontainerSeed dc -> dc.dockerComposeFile() != null ? dc.service() : null;
+            case DevfileSeed ignored -> null;
+            default -> null;
+        };
+
         Fruit fruit = Fruit.bud(grove.id(), seedling.id(), seed, serviceName);
         grove = grove.withFruit(fruit);
         saveFruits(grove.fruits());
@@ -310,10 +306,10 @@ public class GroveService {
         }
     }
 
-    private DevcontainerSeed discoverSeed(Seedling seedling) {
+    private Seed discoverSeed(Seedling seedling) {
         SshExecutor ssh = new SshExecutor(seedling);
 
-        // Try standard devcontainer locations
+        // Try standard devcontainer locations first
         for (String path : List.of(
                 "/workspace/.devcontainer/devcontainer.json",
                 "/workspace/.devcontainer.json")) {
@@ -327,13 +323,49 @@ public class GroveService {
             }
         }
 
-        // Fall back to default seed
-        log.info("No devcontainer.json found, using default seed");
-        return DevcontainerSeed.builder()
+        // Try devfile locations
+        for (String path : List.of(
+                "/workspace/devfile.yaml",
+                "/workspace/devfile.yml",
+                "/workspace/.devfile.yaml",
+                "/workspace/.devfile.yml")) {
+            Optional<String> content = ssh.readFile(path);
+            if (content.isPresent() && !content.get().isBlank()) {
+                Optional<DevfileSeed> parsed = devfileParser.parseYaml(content.get());
+                if (parsed.isPresent()) {
+                    log.info("Found and parsed devfile at {}", path);
+                    return parsed.get();
+                }
+            }
+        }
+
+        // Fall back to default devcontainer seed
+        log.info("No devcontainer.json or devfile found, using default seed");
+        return Seed.devcontainer()
             .name("orchard-workspace")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .forwardPorts(List.of("8080", "3000"))
             .build();
+    }
+
+    /**
+     * Ensures the workspace on the seedling has the configuration file it needs to start.
+     *
+     * <ul>
+     *   <li>{@link DevcontainerSeed} — writes {@code /workspace/.devcontainer/devcontainer.json}
+     *       if not already present, so that {@code devcontainer up} doesn't fail with
+     *       "Config not found".</li>
+     *   <li>{@link DevfileSeed} — no-op; the devfile is already on disk (we discovered it from
+     *       the cloned repo), and the docker-direct grow path doesn't need a config file.</li>
+     * </ul>
+     */
+    private void ensureWorkspaceConfig(Seedling seedling, Seed seed) {
+        switch (seed) {
+            case DevcontainerSeed dc -> ensureDevcontainerConfig(seedling, dc);
+            case DevfileSeed ignored -> log.debug(
+                "Devfile-based seed — skipping devcontainer.json write on seedling {}", seedling.id());
+            default -> log.warn("Unknown seed type {} — skipping workspace config write", seed.getClass().getSimpleName());
+        }
     }
 
     /**

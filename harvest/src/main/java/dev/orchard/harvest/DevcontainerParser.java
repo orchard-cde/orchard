@@ -150,7 +150,7 @@ public class DevcontainerParser {
 
     private DevcontainerSeed doParse(String jsonContent) {
         JsonNode root = objectMapper.readTree(jsonContent);
-        DevcontainerSeed.Builder builder = DevcontainerSeed.builder();
+        DevcontainerSeed.Builder builder = DevcontainerSeed.devcontainer();
 
         // Name
         if (root.has("name")) {

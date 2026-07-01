@@ -21,7 +21,8 @@ import java.util.Map;
     property = "@type",
     defaultImpl = DevcontainerSeed.class)
 @JsonSubTypes({
-    @JsonSubTypes.Type(value = DevcontainerSeed.class, name = "devcontainer")
+    @JsonSubTypes.Type(value = DevcontainerSeed.class, name = "devcontainer"),
+    @JsonSubTypes.Type(value = DevfileSeed.class, name = "devfile")
 })
 public abstract class Seed {
 
@@ -43,7 +44,12 @@ public abstract class Seed {
     public Map<String, String> containerEnv() { return containerEnv; }
 
     /** Convenience factory that creates a {@link DevcontainerSeed.Builder}. */
-    public static DevcontainerSeed.Builder builder() {
+    public static DevcontainerSeed.Builder devcontainer() {
         return new DevcontainerSeed.Builder();
+    }
+
+    /** Convenience factory that creates a {@link DevfileSeed.Builder}. */
+    public static DevfileSeed.Builder devfile() {
+        return new DevfileSeed.Builder();
     }
 }

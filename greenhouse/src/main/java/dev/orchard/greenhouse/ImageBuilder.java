@@ -53,7 +53,7 @@ public class ImageBuilder {
             buildFromBaseImage(repoDir, seed, imageRef);
         } else {
             // Fall back to a default dev image
-            buildFromBaseImage(repoDir, DevcontainerSeed.builder()
+            buildFromBaseImage(repoDir, DevcontainerSeed.devcontainer()
                 .image("mcr.microsoft.com/devcontainers/base:ubuntu")
                 .build(), imageRef);
         }

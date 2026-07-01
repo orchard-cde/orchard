@@ -165,7 +165,7 @@ public class PrebuildService {
 
         // Fall back to default seed
         log.info("No devcontainer.json found, using default seed for prebuild");
-        return DevcontainerSeed.builder()
+        return DevcontainerSeed.devcontainer()
             .name("orchard-workspace")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .build();
