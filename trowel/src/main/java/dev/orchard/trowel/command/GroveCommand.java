@@ -11,7 +11,6 @@ import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
@@ -65,9 +64,9 @@ public class GroveCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 // Validate against the single source of truth in :core; reject bad values early.
-                final String specValue;
+                // The server re-parses case-insensitively, so the raw flag can go over the wire as-is.
                 try {
-                    specValue = SeedSpec.fromFlag(spec).name().toLowerCase(Locale.ROOT);
+                    SeedSpec.fromFlag(spec);
                 } catch (IllegalArgumentException e) {
                     System.err.println(e.getMessage());
                     return 1;
@@ -77,7 +76,7 @@ public class GroveCommand implements Callable<Integer> {
                 System.out.println("  Repository: " + repositoryUrl);
                 System.out.println("  Branch: " + branch);
                 System.out.println("  Machine: " + machineSize);
-                System.out.println("  Spec: " + specValue);
+                System.out.println("  Spec: " + spec);
                 System.out.println();
 
                 OrchardClient client = new OrchardClient(
@@ -85,7 +84,7 @@ public class GroveCommand implements Callable<Integer> {
                     parent.parent.getCultivatorId()
                 );
 
-                GroveResponse grove = client.plantGrove(repositoryUrl, branch, name, machineSize, specValue);
+                GroveResponse grove = client.plantGrove(repositoryUrl, branch, name, machineSize, spec);
                 printGrove(grove);
 
                 System.out.println();

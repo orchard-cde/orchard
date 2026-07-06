@@ -383,6 +383,9 @@ public class GroveService {
                     log.info("Found and parsed workspace config at {}", path);
                     return parsed;
                 }
+                // Present but unparseable — warn so a broken config isn't indistinguishable
+                // from an absent one when we fall through to a default seed.
+                log.warn("Found workspace config at {} but could not parse it; skipping", path);
             }
         }
         return Optional.empty();

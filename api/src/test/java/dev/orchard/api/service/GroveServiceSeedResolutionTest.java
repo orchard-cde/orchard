@@ -81,6 +81,15 @@ class GroveServiceSeedResolutionTest {
     }
 
     @Test
+    void unparseableConfigFallsThroughToDefault() {
+        // A present-but-malformed config parses to empty and is skipped (with a WARN log),
+        // falling through to a default seed rather than aborting.
+        Seed seed = resolve(SeedSpec.DEVCONTAINER, Map.of(DEVCONTAINER_PATH, "{ not valid json"));
+        assertThat(seed).isInstanceOf(DevcontainerSeed.class);
+        assertThat(seed.image()).isEqualTo(DEFAULT_IMAGE);
+    }
+
+    @Test
     void devfile_usesDevfileWhenPresent() {
         Seed seed = resolve(SeedSpec.DEVFILE, Map.of(
             DEVCONTAINER_PATH, DEVCONTAINER_JSON,
