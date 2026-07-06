@@ -35,9 +35,9 @@ public class OrchardClient {
             .build();
     }
 
-    public GroveResponse plantGrove(String repositoryUrl, String branch, String name, String machineSize)
+    public GroveResponse plantGrove(String repositoryUrl, String branch, String name, String machineSize, String spec)
             throws IOException, InterruptedException {
-        var request = new PlantGroveRequest(repositoryUrl, branch, name, machineSize);
+        var request = new PlantGroveRequest(repositoryUrl, branch, name, machineSize, spec);
         String body = objectMapper.writeValueAsString(request);
 
         HttpRequest httpRequest = HttpRequest.newBuilder()
@@ -105,7 +105,7 @@ public class OrchardClient {
     }
 
     // Request/Response records
-    public record PlantGroveRequest(String repositoryUrl, String branch, String name, String machineSize) {}
+    public record PlantGroveRequest(String repositoryUrl, String branch, String name, String machineSize, String spec) {}
 
     public record GroveResponse(
         UUID id,

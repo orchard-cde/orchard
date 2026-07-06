@@ -12,8 +12,19 @@ public record CreateGroveRequest(
 
     String machineSize,
 
-    String serialOutput
+    String serialOutput,
+
+    String spec
 ) {
+    /**
+     * Backward-compatible constructor for callers that predate the {@code spec} field.
+     * Defaults {@code spec} to {@code null}, which resolves to
+     * {@link dev.orchard.api.service.SeedSpec#AUTO}.
+     */
+    public CreateGroveRequest(String repositoryUrl, String branch, String name, String machineSize, String serialOutput) {
+        this(repositoryUrl, branch, name, machineSize, serialOutput, null);
+    }
+
     public String branch() {
         return branch != null ? branch : "main";
     }

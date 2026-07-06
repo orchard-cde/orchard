@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 @Service
 public class GroveService {
@@ -80,6 +81,10 @@ public class GroveService {
     public Grove plantGrove(UUID cultivatorId, CreateGroveRequest request) {
         log.info("Planting grove for cultivator {} with repo {}", cultivatorId, request.repositoryUrl());
 
+        // Resolve the requested workspace-config precedence up front, so an invalid
+        // --spec value fails before any grove/seedling rows are created.
+        final SeedSpec seedSpec = SeedSpec.fromFlag(request.spec());
+
         // Ensure cultivator exists (auto-creates for local-dev)
         cultivatorService.ensureCultivator(cultivatorId);
 
@@ -111,14 +116,14 @@ public class GroveService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                CompletableFuture.runAsync(() -> provisionGrove(groveToProvision));
+                CompletableFuture.runAsync(() -> provisionGrove(groveToProvision, seedSpec));
             }
         });
 
         return grove;
     }
 
-    private void provisionGrove(Grove grove) {
+    private void provisionGrove(Grove grove, SeedSpec seedSpec) {
         try {
             log.info("Starting provisioning for grove {}", grove.id());
 
@@ -148,8 +153,9 @@ public class GroveService {
                 updateGroveState(grove);
             }
 
-            // Discover seed from the cloned repo on the VM (devcontainer.json or devfile.yaml)
-            Seed seed = discoverSeed(plantedSeedling);
+            // Discover seed from the cloned repo on the VM (devcontainer.json or devfile.yaml),
+            // honoring the requested --spec precedence.
+            Seed seed = discoverSeed(plantedSeedling, seedSpec);
 
             // Ensure a devcontainer.json exists in the workspace when using the devcontainer
             // path — when the repo has none, we fall back to a default Seed but devcontainer
@@ -306,43 +312,97 @@ public class GroveService {
         }
     }
 
-    private Seed discoverSeed(Seedling seedling) {
+    /** Standard on-VM locations for a devcontainer config, in precedence order. */
+    private static final List<String> DEVCONTAINER_PATHS = List.of(
+        "/workspace/.devcontainer/devcontainer.json",
+        "/workspace/.devcontainer.json");
+
+    /** Standard on-VM locations for a devfile, in precedence order. */
+    private static final List<String> DEVFILE_PATHS = List.of(
+        "/workspace/devfile.yaml",
+        "/workspace/devfile.yml",
+        "/workspace/.devfile.yaml",
+        "/workspace/.devfile.yml");
+
+    private Seed discoverSeed(Seedling seedling, SeedSpec spec) {
         SshExecutor ssh = new SshExecutor(seedling);
+        return resolveSeed(spec, ssh::readFile, devcontainerParser, devfileParser);
+    }
 
-        // Try standard devcontainer locations first
-        for (String path : List.of(
-                "/workspace/.devcontainer/devcontainer.json",
-                "/workspace/.devcontainer.json")) {
-            Optional<String> content = ssh.readFile(path);
-            if (content.isPresent() && !content.get().isBlank()) {
-                Optional<DevcontainerSeed> parsed = devcontainerParser.parseJson(content.get());
-                if (parsed.isPresent()) {
-                    log.info("Found and parsed devcontainer.json at {}", path);
-                    return parsed.get();
-                }
+    /**
+     * Resolves the {@link Seed} for a cloned workspace according to the requested {@link SeedSpec},
+     * defining the precedence rule when a repo ships <em>both</em> a {@code devcontainer.json}
+     * and a {@code devfile.yaml}:
+     *
+     * <ul>
+     *   <li>{@link SeedSpec#AUTO} (default) — {@code devcontainer.json} wins; {@code devfile.yaml}
+     *       is the fallback; a synthesized default devcontainer seed is the last resort.</li>
+     *   <li>{@link SeedSpec#DEVCONTAINER} — only {@code devcontainer.json} is consulted; any
+     *       {@code devfile.yaml} is ignored. A default devcontainer seed is synthesized when absent.</li>
+     *   <li>{@link SeedSpec#DEVFILE} — only {@code devfile.yaml} is consulted; any
+     *       {@code devcontainer.json} is ignored. A default devfile seed is synthesized when absent.</li>
+     * </ul>
+     *
+     * <p>Package-private and reader-injected so the precedence rules are unit-testable without a live VM.
+     *
+     * @param reader reads a workspace file's contents by absolute path (empty when absent)
+     */
+    static Seed resolveSeed(SeedSpec spec,
+                            Function<String, Optional<String>> reader,
+                            DevcontainerParser devcontainerParser,
+                            DevfileParser devfileParser) {
+        if (spec != SeedSpec.DEVFILE) {
+            Optional<DevcontainerSeed> parsed = readFirst(DEVCONTAINER_PATHS, reader, devcontainerParser::parseJson);
+            if (parsed.isPresent()) {
+                return parsed.get();
+            }
+        }
+        if (spec != SeedSpec.DEVCONTAINER) {
+            Optional<DevfileSeed> parsed = readFirst(DEVFILE_PATHS, reader, devfileParser::parseYaml);
+            if (parsed.isPresent()) {
+                return parsed.get();
             }
         }
 
-        // Try devfile locations
-        for (String path : List.of(
-                "/workspace/devfile.yaml",
-                "/workspace/devfile.yml",
-                "/workspace/.devfile.yaml",
-                "/workspace/.devfile.yml")) {
-            Optional<String> content = ssh.readFile(path);
+        // Nothing discovered — synthesize a default seed of the requested kind.
+        if (spec == SeedSpec.DEVFILE) {
+            log.info("No devfile found (spec=devfile); using default devfile seed");
+            return defaultDevfileSeed();
+        }
+        log.info("No devcontainer.json or devfile found; using default devcontainer seed");
+        return defaultDevcontainerSeed();
+    }
+
+    /** Reads the first present, non-blank, parseable file from {@code paths}. */
+    private static <T extends Seed> Optional<T> readFirst(
+            List<String> paths,
+            Function<String, Optional<String>> reader,
+            Function<String, Optional<T>> parser) {
+        for (String path : paths) {
+            Optional<String> content = reader.apply(path);
             if (content.isPresent() && !content.get().isBlank()) {
-                Optional<DevfileSeed> parsed = devfileParser.parseYaml(content.get());
+                Optional<T> parsed = parser.apply(content.get());
                 if (parsed.isPresent()) {
-                    log.info("Found and parsed devfile at {}", path);
-                    return parsed.get();
+                    log.info("Found and parsed workspace config at {}", path);
+                    return parsed;
                 }
             }
         }
+        return Optional.empty();
+    }
 
-        // Fall back to default devcontainer seed
-        log.info("No devcontainer.json or devfile found, using default seed");
+    private static DevcontainerSeed defaultDevcontainerSeed() {
         return Seed.devcontainer()
             .name("orchard-workspace")
+            .image("mcr.microsoft.com/devcontainers/base:ubuntu")
+            .forwardPorts(List.of("8080", "3000"))
+            .build();
+    }
+
+    private static DevfileSeed defaultDevfileSeed() {
+        return Seed.devfile()
+            .name("orchard-workspace")
+            .componentName("orchard-workspace")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
             .forwardPorts(List.of("8080", "3000"))
             .build();

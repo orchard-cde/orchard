@@ -53,13 +53,28 @@ public class GroveCommand implements Callable<Integer> {
         @Option(names = {"-m", "--machine"}, description = "Machine size: small, medium, large", defaultValue = "small")
         String machineSize;
 
+        @Option(names = {"-s", "--spec"},
+            description = "Workspace config to use when a repo ships both formats: "
+                + "auto (default; devcontainer.json wins), devcontainer, or devfile",
+            defaultValue = "auto")
+        String spec;
+
+        private static final List<String> VALID_SPECS = List.of("auto", "devcontainer", "devfile");
+
         @Override
         public Integer call() {
             try {
+                String normalizedSpec = spec == null ? "auto" : spec.trim().toLowerCase();
+                if (!VALID_SPECS.contains(normalizedSpec)) {
+                    System.err.println("Invalid --spec value '" + spec + "'. Valid values: auto, devcontainer, devfile");
+                    return 1;
+                }
+
                 System.out.println("\u001B[1;32mPlanting grove...\u001B[0m");
                 System.out.println("  Repository: " + repositoryUrl);
                 System.out.println("  Branch: " + branch);
                 System.out.println("  Machine: " + machineSize);
+                System.out.println("  Spec: " + normalizedSpec);
                 System.out.println();
 
                 OrchardClient client = new OrchardClient(
@@ -67,7 +82,7 @@ public class GroveCommand implements Callable<Integer> {
                     parent.parent.getCultivatorId()
                 );
 
-                GroveResponse grove = client.plantGrove(repositoryUrl, branch, name, machineSize);
+                GroveResponse grove = client.plantGrove(repositoryUrl, branch, name, machineSize, normalizedSpec);
                 printGrove(grove);
 
                 System.out.println();
