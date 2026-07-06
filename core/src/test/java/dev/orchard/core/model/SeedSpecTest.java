@@ -1,4 +1,4 @@
-package dev.orchard.api.service;
+package dev.orchard.core.model;
 
 import org.junit.jupiter.api.Test;
 

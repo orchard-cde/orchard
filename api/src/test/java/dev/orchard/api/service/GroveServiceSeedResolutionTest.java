@@ -3,6 +3,7 @@ package dev.orchard.api.service;
 import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.DevfileSeed;
 import dev.orchard.core.model.Seed;
+import dev.orchard.core.model.SeedSpec;
 import dev.orchard.harvest.DevcontainerParser;
 import dev.orchard.harvest.DevfileParser;
 import org.junit.jupiter.api.Test;

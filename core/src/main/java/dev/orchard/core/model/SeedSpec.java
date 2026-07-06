@@ -1,13 +1,15 @@
-package dev.orchard.api.service;
+package dev.orchard.core.model;
+
+import java.util.Locale;
 
 /**
- * Selects which workspace-config format Orchard uses when discovering a
- * {@link dev.orchard.core.model.Seed} from a freshly cloned repo, and therefore the
- * precedence rule applied when a repo ships <em>both</em> a {@code devcontainer.json}
- * and a {@code devfile.yaml}.
+ * Selects which workspace-config format Orchard uses when discovering a {@link Seed} from a
+ * freshly cloned repo, and therefore the precedence rule applied when a repo ships <em>both</em>
+ * a {@code devcontainer.json} and a {@code devfile.yaml}.
  *
  * <p>Maps the {@code trowel plant --spec} CLI flag. The default ({@link #AUTO}) preserves
- * Orchard's historical behavior of preferring {@code devcontainer.json}.
+ * Orchard's historical behavior of preferring {@code devcontainer.json}. Lives in {@code :core}
+ * so both the trowel CLI and the api server validate against a single source of truth.
  */
 public enum SeedSpec {
 
@@ -28,7 +30,7 @@ public enum SeedSpec {
         if (value == null || value.isBlank()) {
             return AUTO;
         }
-        return switch (value.trim().toLowerCase()) {
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
             case "auto" -> AUTO;
             case "devcontainer" -> DEVCONTAINER;
             case "devfile" -> DEVFILE;

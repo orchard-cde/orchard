@@ -322,6 +322,11 @@ public class GroveService {
         "/workspace/.devfile.yaml",
         "/workspace/.devfile.yml");
 
+    /** Shared defaults for a synthesized seed when a repo ships no workspace config. */
+    private static final String DEFAULT_SEED_NAME = "orchard-workspace";
+    private static final String DEFAULT_SEED_IMAGE = "mcr.microsoft.com/devcontainers/base:ubuntu";
+    private static final List<String> DEFAULT_SEED_PORTS = List.of("8080", "3000");
+
     private Seed discoverSeed(Seedling seedling, SeedSpec spec) {
         SshExecutor ssh = new SshExecutor(seedling);
         return resolveSeed(spec, ssh::readFile, devcontainerParser, devfileParser);
@@ -385,18 +390,18 @@ public class GroveService {
 
     private static DevcontainerSeed defaultDevcontainerSeed() {
         return Seed.devcontainer()
-            .name("orchard-workspace")
-            .image("mcr.microsoft.com/devcontainers/base:ubuntu")
-            .forwardPorts(List.of("8080", "3000"))
+            .name(DEFAULT_SEED_NAME)
+            .image(DEFAULT_SEED_IMAGE)
+            .forwardPorts(DEFAULT_SEED_PORTS)
             .build();
     }
 
     private static DevfileSeed defaultDevfileSeed() {
         return Seed.devfile()
-            .name("orchard-workspace")
-            .componentName("orchard-workspace")
-            .image("mcr.microsoft.com/devcontainers/base:ubuntu")
-            .forwardPorts(List.of("8080", "3000"))
+            .name(DEFAULT_SEED_NAME)
+            .componentName(DEFAULT_SEED_NAME)
+            .image(DEFAULT_SEED_IMAGE)
+            .forwardPorts(DEFAULT_SEED_PORTS)
             .build();
     }
 
