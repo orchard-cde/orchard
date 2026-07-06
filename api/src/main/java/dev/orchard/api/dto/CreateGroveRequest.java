@@ -16,11 +16,7 @@ public record CreateGroveRequest(
 
     String spec
 ) {
-    /**
-     * Backward-compatible constructor for callers that predate the {@code spec} field.
-     * Defaults {@code spec} to {@code null}, which resolves to
-     * {@link dev.orchard.api.service.SeedSpec#AUTO}.
-     */
+    /** Backward-compatible constructor for callers that predate {@code spec} (defaults it to {@code null} → AUTO). */
     public CreateGroveRequest(String repositoryUrl, String branch, String name, String machineSize, String serialOutput) {
         this(repositoryUrl, branch, name, machineSize, serialOutput, null);
     }

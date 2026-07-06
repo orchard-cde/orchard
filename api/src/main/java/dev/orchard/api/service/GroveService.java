@@ -81,8 +81,7 @@ public class GroveService {
     public Grove plantGrove(UUID cultivatorId, CreateGroveRequest request) {
         log.info("Planting grove for cultivator {} with repo {}", cultivatorId, request.repositoryUrl());
 
-        // Resolve the requested workspace-config precedence up front, so an invalid
-        // --spec value fails before any grove/seedling rows are created.
+        // Parse --spec up front so an invalid value fails before any rows are created.
         final SeedSpec seedSpec = SeedSpec.fromFlag(request.spec());
 
         // Ensure cultivator exists (auto-creates for local-dev)
@@ -153,8 +152,7 @@ public class GroveService {
                 updateGroveState(grove);
             }
 
-            // Discover seed from the cloned repo on the VM (devcontainer.json or devfile.yaml),
-            // honoring the requested --spec precedence.
+            // Discover seed from the cloned repo, honoring the requested --spec precedence.
             Seed seed = discoverSeed(plantedSeedling, seedSpec);
 
             // Ensure a devcontainer.json exists in the workspace when using the devcontainer
@@ -330,22 +328,16 @@ public class GroveService {
     }
 
     /**
-     * Resolves the {@link Seed} for a cloned workspace according to the requested {@link SeedSpec},
-     * defining the precedence rule when a repo ships <em>both</em> a {@code devcontainer.json}
-     * and a {@code devfile.yaml}:
+     * Resolves the {@link Seed} for a cloned workspace — the precedence rule when a repo ships
+     * both a {@code devcontainer.json} and a {@code devfile.yaml}:
      *
      * <ul>
-     *   <li>{@link SeedSpec#AUTO} (default) — {@code devcontainer.json} wins; {@code devfile.yaml}
-     *       is the fallback; a synthesized default devcontainer seed is the last resort.</li>
-     *   <li>{@link SeedSpec#DEVCONTAINER} — only {@code devcontainer.json} is consulted; any
-     *       {@code devfile.yaml} is ignored. A default devcontainer seed is synthesized when absent.</li>
-     *   <li>{@link SeedSpec#DEVFILE} — only {@code devfile.yaml} is consulted; any
-     *       {@code devcontainer.json} is ignored. A default devfile seed is synthesized when absent.</li>
+     *   <li>{@link SeedSpec#AUTO} — devcontainer.json wins; devfile.yaml is the fallback; then a default seed.</li>
+     *   <li>{@link SeedSpec#DEVCONTAINER} — devcontainer.json only; a default devcontainer seed when absent.</li>
+     *   <li>{@link SeedSpec#DEVFILE} — devfile.yaml only; a default devfile seed when absent.</li>
      * </ul>
      *
-     * <p>Package-private and reader-injected so the precedence rules are unit-testable without a live VM.
-     *
-     * @param reader reads a workspace file's contents by absolute path (empty when absent)
+     * <p>Reader-injected so the rules are unit-testable without a live VM.
      */
     static Seed resolveSeed(SeedSpec spec,
                             Function<String, Optional<String>> reader,

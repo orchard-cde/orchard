@@ -13,11 +13,7 @@ import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Verifies the {@code devcontainer.json} vs {@code devfile.yaml} precedence rules in
- * {@link GroveService#resolveSeed} for each {@link SeedSpec}, using an in-memory file reader
- * so no live VM is required. Covers issue #129.
- */
+/** Precedence rules in {@link GroveService#resolveSeed} for each {@link SeedSpec} (issue #129). */
 class GroveServiceSeedResolutionTest {
 
     private static final DevcontainerParser DEVCONTAINER_PARSER = new DevcontainerParser();
@@ -44,8 +40,6 @@ class GroveServiceSeedResolutionTest {
         return GroveService.resolveSeed(spec, reader, DEVCONTAINER_PARSER, DEVFILE_PARSER);
     }
 
-    // --- AUTO (default) -----------------------------------------------------------------------
-
     @Test
     void auto_prefersDevcontainerWhenBothPresent() {
         Seed seed = resolve(SeedSpec.AUTO, Map.of(
@@ -69,8 +63,6 @@ class GroveServiceSeedResolutionTest {
         assertThat(seed.image()).isEqualTo(DEFAULT_IMAGE);
     }
 
-    // --- DEVCONTAINER (forced) ----------------------------------------------------------------
-
     @Test
     void devcontainer_usesDevcontainerWhenPresent() {
         Seed seed = resolve(SeedSpec.DEVCONTAINER, Map.of(
@@ -86,8 +78,6 @@ class GroveServiceSeedResolutionTest {
         assertThat(seed).isInstanceOf(DevcontainerSeed.class);
         assertThat(seed.image()).isEqualTo(DEFAULT_IMAGE);
     }
-
-    // --- DEVFILE (forced) ---------------------------------------------------------------------
 
     @Test
     void devfile_usesDevfileWhenPresent() {

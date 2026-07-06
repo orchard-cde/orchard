@@ -11,30 +11,18 @@ package dev.orchard.api.service;
  */
 public enum SeedSpec {
 
-    /**
-     * Default. Prefer {@code devcontainer.json}; fall back to {@code devfile.yaml} when
-     * no devcontainer is present; fall back to a synthesized default devcontainer seed
-     * when neither exists.
-     */
+    /** Prefer {@code devcontainer.json}, else {@code devfile.yaml}, else a default seed. */
     AUTO,
 
-    /**
-     * Use {@code devcontainer.json} only. Any {@code devfile.yaml} in the repo is ignored.
-     * When no {@code devcontainer.json} is present, a default devcontainer seed is synthesized.
-     */
+    /** Use {@code devcontainer.json} only, ignoring any {@code devfile.yaml}. */
     DEVCONTAINER,
 
-    /**
-     * Use {@code devfile.yaml} only. Any {@code devcontainer.json} in the repo is ignored.
-     * When no {@code devfile.yaml} is present, a default devfile seed is synthesized.
-     */
+    /** Use {@code devfile.yaml} only, ignoring any {@code devcontainer.json}. */
     DEVFILE;
 
     /**
-     * Parses a {@code --spec} flag value case-insensitively. A {@code null} or blank value
-     * (the flag was omitted) maps to {@link #AUTO}.
-     *
-     * @throws IllegalArgumentException if the value is non-blank but unrecognized.
+     * Parses a {@code --spec} flag value case-insensitively; {@code null} or blank maps to
+     * {@link #AUTO}. Throws {@link IllegalArgumentException} on an unrecognized value.
      */
     public static SeedSpec fromFlag(String value) {
         if (value == null || value.isBlank()) {
