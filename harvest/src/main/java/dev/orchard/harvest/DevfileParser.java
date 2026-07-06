@@ -1,12 +1,12 @@
 package dev.orchard.harvest;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.dataformat.yaml.YAMLMapper;
 import dev.orchard.core.model.DevfileSeed;
 import dev.orchard.core.model.Seed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.dataformat.yaml.YAMLMapper;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -198,7 +198,7 @@ public class DevfileParser {
 
     private static Optional<String> nullableText(JsonNode node, String field) {
         String value = node.path(field).asText(null);
-        return (value != null && !value.isBlank()) ? Optional.of(value) : Optional.empty();
+        return value != null && !value.isBlank() ? Optional.of(value) : Optional.empty();
     }
 
     /**
