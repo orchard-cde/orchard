@@ -1,5 +1,6 @@
 package dev.orchard.trowel.command;
 
+import dev.orchard.core.model.SeedSpec;
 import dev.orchard.trowel.Trowel;
 import dev.orchard.trowel.client.OrchardClient;
 import dev.orchard.trowel.client.OrchardClient.GroveResponse;
@@ -53,13 +54,29 @@ public class GroveCommand implements Callable<Integer> {
         @Option(names = {"-m", "--machine"}, description = "Machine size: small, medium, large", defaultValue = "small")
         String machineSize;
 
+        @Option(names = {"-s", "--spec"},
+            description = "Workspace config to use when a repo ships both formats: "
+                + "auto (default; devcontainer.json wins), devcontainer, or devfile",
+            defaultValue = "auto")
+        String spec;
+
         @Override
         public Integer call() {
             try {
+                // Validate against the single source of truth in :core; reject bad values early.
+                // The server re-parses case-insensitively, so the raw flag can go over the wire as-is.
+                try {
+                    SeedSpec.fromFlag(spec);
+                } catch (IllegalArgumentException e) {
+                    System.err.println(e.getMessage());
+                    return 1;
+                }
+
                 System.out.println("\u001B[1;32mPlanting grove...\u001B[0m");
                 System.out.println("  Repository: " + repositoryUrl);
                 System.out.println("  Branch: " + branch);
                 System.out.println("  Machine: " + machineSize);
+                System.out.println("  Spec: " + spec);
                 System.out.println();
 
                 OrchardClient client = new OrchardClient(
@@ -67,7 +84,7 @@ public class GroveCommand implements Callable<Integer> {
                     parent.parent.getCultivatorId()
                 );
 
-                GroveResponse grove = client.plantGrove(repositoryUrl, branch, name, machineSize);
+                GroveResponse grove = client.plantGrove(repositoryUrl, branch, name, machineSize, spec);
                 printGrove(grove);
 
                 System.out.println();

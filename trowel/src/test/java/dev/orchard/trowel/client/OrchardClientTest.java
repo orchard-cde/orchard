@@ -65,7 +65,7 @@ class OrchardClientTest {
             respond(exchange, 201, GROVE_JSON);
         });
 
-        GroveResponse grove = client.plantGrove("https://github.com/test/repo", "main", "my-grove", "small");
+        GroveResponse grove = client.plantGrove("https://github.com/test/repo", "main", "my-grove", "small", "auto");
 
         assertThat(grove.id()).isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
         assertThat(grove.name()).isEqualTo("my-grove");
@@ -78,7 +78,7 @@ class OrchardClientTest {
     void plantGrove_deserializesSeedlingAndFruits() throws Exception {
         server.createContext("/api/groves", exchange -> respond(exchange, 201, GROVE_JSON));
 
-        GroveResponse grove = client.plantGrove("https://github.com/test/repo", "main", "my-grove", "small");
+        GroveResponse grove = client.plantGrove("https://github.com/test/repo", "main", "my-grove", "small", "auto");
 
         assertThat(grove.seedling()).isNotNull();
         assertThat(grove.seedling().ipAddress()).isEqualTo("192.168.1.100");
@@ -95,7 +95,7 @@ class OrchardClientTest {
     void plantGrove_throwsOnServerError() {
         server.createContext("/api/groves", exchange -> respond(exchange, 500, "{\"error\":\"internal\"}"));
 
-        assertThatThrownBy(() -> client.plantGrove("https://github.com/test/repo", "main", "n", "small"))
+        assertThatThrownBy(() -> client.plantGrove("https://github.com/test/repo", "main", "n", "small", "auto"))
             .isInstanceOf(IOException.class)
             .hasMessageContaining("500");
     }
@@ -104,7 +104,7 @@ class OrchardClientTest {
     void plantGrove_throwsOnValidationError() {
         server.createContext("/api/groves", exchange -> respond(exchange, 400, "{\"error\":\"bad request\"}"));
 
-        assertThatThrownBy(() -> client.plantGrove("", "main", null, "small"))
+        assertThatThrownBy(() -> client.plantGrove("", "main", null, "small", "auto"))
             .isInstanceOf(IOException.class)
             .hasMessageContaining("400");
     }

@@ -12,8 +12,15 @@ public record CreateGroveRequest(
 
     String machineSize,
 
-    String serialOutput
+    String serialOutput,
+
+    String spec
 ) {
+    /** Backward-compatible constructor for callers that predate {@code spec} (defaults it to {@code null} → AUTO). */
+    public CreateGroveRequest(String repositoryUrl, String branch, String name, String machineSize, String serialOutput) {
+        this(repositoryUrl, branch, name, machineSize, serialOutput, null);
+    }
+
     public String branch() {
         return branch != null ? branch : "main";
     }
