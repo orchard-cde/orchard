@@ -249,7 +249,9 @@ public final class DevcontainerSeed extends Seed {
 
         /** Case-insensitive parse matching the camelCase spec values. */
         public static UserEnvProbe fromSpec(String value) {
-            if (value == null) return null;
+            if (value == null) {
+                return null;
+            }
             return switch (value.toLowerCase()) {
                 case "none"                   -> NONE;
                 case "loginshell"             -> LOGIN_SHELL;

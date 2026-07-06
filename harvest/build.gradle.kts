@@ -6,10 +6,8 @@ plugins {
 dependencies {
     api(project(":core"))
     implementation("org.slf4j:slf4j-api")
-
-    implementation("tools.jackson.core:jackson-databind")
-    implementation("tools.jackson.dataformat:jackson-dataformat-yaml")
     implementation("org.yaml:snakeyaml")
+    implementation("tools.jackson.dataformat:jackson-dataformat-yaml")
 
     testRuntimeOnly("org.slf4j:slf4j-simple:2.0.18")
 }

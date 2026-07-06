@@ -263,7 +263,9 @@ public class DevcontainerParser {
                     // object form: render back to "key=value,..." string matching docker --mount syntax
                     StringBuilder sb = new StringBuilder();
                     m.properties().forEach(e -> {
-                        if (!sb.isEmpty()) sb.append(",");
+                        if (!sb.isEmpty()) {
+                            sb.append(",");
+                        }
                         sb.append(e.getKey()).append("=").append(e.getValue().asText());
                     });
                     mountList.add(sb.toString());
