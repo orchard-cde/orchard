@@ -1,6 +1,7 @@
 package dev.orchard.harvest;
 
 import dev.orchard.core.model.DevfileSeed;
+import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,6 +107,14 @@ public class DevfileParser {
         // Workspace name from metadata
         String workspaceName = root.path("metadata").path("name").asText(null);
 
+        // Top-level commands/events → preStart/postStart LifecycleCommands (shared across
+        // whichever container component is picked below; devfile events are workspace-wide,
+        // not per-component).
+        Map<String, String> commandLineById = parseExecCommands(root);
+        JsonNode eventsNode = root.path("events");
+        LifecycleCommand preStartCommand = resolveEventCommand(eventsNode, "preStart", commandLineById);
+        LifecycleCommand postStartCommand = resolveEventCommand(eventsNode, "postStart", commandLineById);
+
         // Find the first container component
         JsonNode components = root.path("components");
         if (!components.isArray() || components.isEmpty()) {
@@ -119,11 +128,68 @@ public class DevfileParser {
                 continue; // skip kubernetes/openshift/image/volume components
             }
             String componentName = component.path("name").asText(null);
-            return Optional.of(mapContainerComponent(workspaceName, componentName, container));
+            return Optional.of(mapContainerComponent(
+                workspaceName, componentName, container, preStartCommand, postStartCommand));
         }
 
         log.debug("Devfile has no container components");
         return Optional.empty();
+    }
+
+    /**
+     * Maps the top-level {@code commands} array to a {@code commandId -> commandLine} lookup.
+     * Only {@code exec} commands are resolved; {@code apply}/{@code composite} commands are
+     * skipped (out of scope for this slice — see {@link DevfileSeed} class Javadoc).
+     */
+    private Map<String, String> parseExecCommands(JsonNode root) {
+        Map<String, String> commandLineById = new LinkedHashMap<>();
+        JsonNode commands = root.path("commands");
+        if (!commands.isArray()) {
+            return commandLineById;
+        }
+        for (JsonNode command : commands) {
+            String id = command.path("id").asText(null);
+            JsonNode exec = command.path("exec");
+            if (id == null || id.isBlank() || exec.isMissingNode()) {
+                continue;
+            }
+            String commandLine = exec.path("commandLine").asText(null);
+            if (commandLine != null && !commandLine.isBlank()) {
+                commandLineById.put(id, commandLine);
+            }
+        }
+        return commandLineById;
+    }
+
+    /**
+     * Resolves an {@code events.<eventName>} command-id list against {@code commandLineById}
+     * into a single {@link LifecycleCommand.Sequential}. Multiple command IDs are composed with
+     * {@code &&} into one shell line — matching {@link LifecycleCommand.Sequential}'s existing
+     * single-shell-line convention (see {@code DevcontainerParser#parseLifecycleCommand}'s
+     * textual-form handling). IDs with no matching {@code exec} command are skipped and logged.
+     * Returns {@code null} if the event is absent or resolves to no commands.
+     */
+    private LifecycleCommand resolveEventCommand(
+            JsonNode eventsNode, String eventName, Map<String, String> commandLineById) {
+        JsonNode eventCommandIds = eventsNode.path(eventName);
+        if (!eventCommandIds.isArray() || eventCommandIds.isEmpty()) {
+            return null;
+        }
+        List<String> commandLines = new ArrayList<>();
+        for (JsonNode idNode : eventCommandIds) {
+            String id = idNode.asText(null);
+            String commandLine = id != null ? commandLineById.get(id) : null;
+            if (commandLine != null) {
+                commandLines.add(commandLine);
+            } else {
+                log.warn("devfile events.{} references unknown or non-exec command id '{}', skipping",
+                    eventName, id);
+            }
+        }
+        if (commandLines.isEmpty()) {
+            return null;
+        }
+        return new LifecycleCommand.Sequential(List.of(String.join(" && ", commandLines)));
     }
 
     /**
@@ -141,8 +207,12 @@ public class DevfileParser {
      *   <li>{@code cpuRequest} → {@link DevfileSeed#cpuRequest()}</li>
      * </ul>
      * The workspace {@code metadata.name} becomes {@link DevfileSeed#name()}.
+     * Resolved {@code preStart}/{@code postStart} lifecycle commands are set from
+     * top-level {@code events} resolved against {@code commands}.
      */
-    private DevfileSeed mapContainerComponent(String workspaceName, String componentName, JsonNode container) {
+    private DevfileSeed mapContainerComponent(
+            String workspaceName, String componentName, JsonNode container,
+            LifecycleCommand preStartCommand, LifecycleCommand postStartCommand) {
         DevfileSeed.Builder builder = Seed.devfile();
 
         if (workspaceName != null && !workspaceName.isBlank()) {
@@ -192,6 +262,9 @@ public class DevfileParser {
         nullableText(container, "memoryRequest").ifPresent(builder::memoryRequest);
         nullableText(container, "cpuLimit").ifPresent(builder::cpuLimit);
         nullableText(container, "cpuRequest").ifPresent(builder::cpuRequest);
+
+        builder.preStartCommand(preStartCommand);
+        builder.postStartCommand(postStartCommand);
 
         return builder.build();
     }
