@@ -354,15 +354,18 @@ public class FruitGrower {
             cmd.append(" sleep infinity");
 
             String containerId = executeSsh(seedling, cmd.toString()).trim();
+            List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
+
+            // Record container details before executing lifecycle commands so the fruit
+            // retains a containerId reference for cleanup even if a command fails.
+            fruit = fruit.withContainerDetails(containerId, ports);
 
             // devfile events.postStart — runs inside the container, after it starts.
             if (seed.postStartCommand() != null) {
                 runLifecycleCommand(seed.postStartCommand(), c -> inContainer(seedling, containerId, c));
             }
 
-            List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
-
-            return fruit.withContainerDetails(containerId, ports).withState(FruitState.RIPE);
+            return fruit.withState(FruitState.RIPE);
 
         } catch (Exception e) {
             log.error("Failed to grow fruit {} via devfile docker path", fruit.id(), e);

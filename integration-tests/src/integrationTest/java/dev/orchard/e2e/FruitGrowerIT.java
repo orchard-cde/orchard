@@ -243,9 +243,9 @@ class FruitGrowerIT {
                 .name("devfile-lifecycle-test")
                 .image("alpine:3.19")
                 .preStartCommand(new LifecycleCommand.Sequential(
-                    List.of("sh -c 'echo pre-start-ran > /tmp/prestart-marker'")))
+                    List.of("echo pre-start-ran > /tmp/prestart-marker")))
                 .postStartCommand(new LifecycleCommand.Sequential(
-                    List.of("sh -c 'echo post-start-ran > /tmp/poststart-marker'")))
+                    List.of("echo post-start-ran > /tmp/poststart-marker")))
                 .build();
 
         Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
