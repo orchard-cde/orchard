@@ -304,6 +304,13 @@ public class FruitGrower {
      * <p>Env vars and forwarded ports from the devfile are applied. Resource limits
      * ({@code memoryLimit} / {@code cpuLimit}) are passed as docker {@code --memory} /
      * {@code --cpus} constraints when present.
+     *
+     * <p>{@code preStartCommand} (devfile {@code events.preStart}) runs over SSH on the
+     * seedling host before {@code docker pull}/{@code docker run}. {@code postStartCommand}
+     * (devfile {@code events.postStart}) runs inside the container via {@code docker exec}
+     * immediately after it starts, before the fruit is reported {@code RIPE} — both reuse the
+     * same {@link LifecycleCommand}/{@code runLifecycleCommand} primitive the devcontainer
+     * hooks use, with no translation between devfile and devcontainer event names.
      */
     Fruit growDevfileViaDocker(Seedling seedling, Fruit fruit) {
         DevfileSeed seed = devfileSeed(fruit);
@@ -311,6 +318,11 @@ public class FruitGrower {
             if (seed.image() == null || seed.image().isBlank()) {
                 throw new IllegalArgumentException(
                     "DevfileSeed for fruit " + fruit.id() + " has no image — cannot start container");
+            }
+
+            // devfile events.preStart — runs on the seedling host, before the container starts.
+            if (seed.preStartCommand() != null) {
+                runLifecycleCommand(seed.preStartCommand(), cmd -> executeSsh(seedling, cmd));
             }
 
             executeSsh(seedling, "docker pull " + shellQuote(seed.image()));
@@ -342,6 +354,12 @@ public class FruitGrower {
             cmd.append(" sleep infinity");
 
             String containerId = executeSsh(seedling, cmd.toString()).trim();
+
+            // devfile events.postStart — runs inside the container, after it starts.
+            if (seed.postStartCommand() != null) {
+                runLifecycleCommand(seed.postStartCommand(), c -> inContainer(seedling, containerId, c));
+            }
+
             List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
 
             return fruit.withContainerDetails(containerId, ports).withState(FruitState.RIPE);
