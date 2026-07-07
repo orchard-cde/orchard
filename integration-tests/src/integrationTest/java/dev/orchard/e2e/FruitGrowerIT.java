@@ -1,7 +1,9 @@
 package dev.orchard.e2e;
 
+import dev.orchard.core.model.DevfileSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
+import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
@@ -25,6 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -231,6 +234,42 @@ class FruitGrowerIT {
         assertThat(inspectFailed)
             .as("docker inspect must fail after compost — container should be removed")
             .isTrue();
+    }
+
+    @Test
+    @Order(5)
+    void growsFruitViaDevfileDockerAndRunsPreStartPostStartCommands() throws Exception {
+        Seed seed = DevfileSeed.builder()
+                .name("devfile-lifecycle-test")
+                .image("alpine:3.19")
+                .preStartCommand(new LifecycleCommand.Sequential(
+                    List.of("echo pre-start-ran > /tmp/prestart-marker")))
+                .postStartCommand(new LifecycleCommand.Sequential(
+                    List.of("echo post-start-ran > /tmp/poststart-marker")))
+                .build();
+
+        Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
+
+        Fruit devfileGrown = fruitGrower.grow(seedling, budding).join();
+
+        try {
+            assertThat(devfileGrown.state()).isEqualTo(FruitState.RIPE);
+            assertThat(devfileGrown.containerId()).isNotBlank();
+
+            // preStartCommand ran on the seedling host before the container started.
+            String preStartMarker =
+                new SshExecutor(seedling).execute("cat /tmp/prestart-marker").trim();
+            assertThat(preStartMarker).isEqualTo("pre-start-ran");
+
+            // postStartCommand ran inside the container after it started.
+            String postStartMarker = new SshExecutor(seedling)
+                .execute("docker exec " + devfileGrown.containerId() + " cat /tmp/poststart-marker")
+                .trim();
+            assertThat(postStartMarker).isEqualTo("post-start-ran");
+        } finally {
+            fruitGrower.compost(seedling, devfileGrown).join();
+            new SshExecutor(seedling).execute("rm -f /tmp/prestart-marker");
+        }
     }
 
     @AfterAll

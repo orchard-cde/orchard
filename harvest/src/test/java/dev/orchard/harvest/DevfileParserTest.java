@@ -1,6 +1,7 @@
 package dev.orchard.harvest;
 
 import dev.orchard.core.model.DevfileSeed;
+import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.harvest.DevfileParser.DevfileParseException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -301,5 +303,110 @@ class DevfileParserTest {
         assertThatThrownBy(() -> parser.parse(devfile))
             .isInstanceOf(DevfileParseException.class)
             .hasMessageContaining("No parseable container component");
+    }
+
+    // --- commands / events lifecycle mapping ------------------------------------------------
+
+    @Test
+    void parseYaml_singlePostStartCommand() {
+        Optional<DevfileSeed> result = parser.parseYaml("""
+            schemaVersion: "2.2.0"
+            metadata:
+              name: my-workspace
+            components:
+              - name: dev
+                container:
+                  image: quay.io/devfile/universal-developer-image:latest
+            commands:
+              - id: install-deps
+                exec:
+                  component: dev
+                  commandLine: "npm install"
+            events:
+              postStart:
+                - install-deps
+            """);
+
+        assertThat(result).isPresent();
+        DevfileSeed seed = result.get();
+        assertThat(seed.preStartCommand()).isNull();
+        assertThat(seed.postStartCommand())
+            .isEqualTo(new LifecycleCommand.Sequential(List.of("npm install")));
+    }
+
+    @Test
+    void parseYaml_preStartAndPostStartCommands() {
+        Optional<DevfileSeed> result = parser.parseYaml("""
+            schemaVersion: "2.2.0"
+            metadata:
+              name: my-workspace
+            components:
+              - name: dev
+                container:
+                  image: quay.io/devfile/universal-developer-image:latest
+            commands:
+              - id: fetch-secrets
+                exec:
+                  component: dev
+                  commandLine: "fetch-secrets.sh"
+              - id: install-deps
+                exec:
+                  component: dev
+                  commandLine: "npm install"
+              - id: start-server
+                exec:
+                  component: dev
+                  commandLine: "npm start"
+            events:
+              preStart:
+                - fetch-secrets
+              postStart:
+                - install-deps
+                - start-server
+            """);
+
+        assertThat(result).isPresent();
+        DevfileSeed seed = result.get();
+        assertThat(seed.preStartCommand())
+            .isEqualTo(new LifecycleCommand.Sequential(List.of("fetch-secrets.sh")));
+        assertThat(seed.postStartCommand())
+            .isEqualTo(new LifecycleCommand.Sequential(List.of("npm install && npm start")));
+    }
+
+    @Test
+    void parseYaml_eventReferencesUnknownCommandId_isSkipped() {
+        Optional<DevfileSeed> result = parser.parseYaml("""
+            schemaVersion: "2.2.0"
+            metadata:
+              name: my-workspace
+            components:
+              - name: dev
+                container:
+                  image: quay.io/devfile/universal-developer-image:latest
+            events:
+              postStart:
+                - does-not-exist
+            """);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().postStartCommand()).isNull();
+    }
+
+    @Test
+    void parseYaml_noCommandsOrEvents_leavesLifecycleCommandsNull() {
+        Optional<DevfileSeed> result = parser.parseYaml("""
+            schemaVersion: "2.2.0"
+            metadata:
+              name: my-workspace
+            components:
+              - name: dev
+                container:
+                  image: quay.io/devfile/universal-developer-image:latest
+            """);
+
+        assertThat(result).isPresent();
+        DevfileSeed seed = result.get();
+        assertThat(seed.preStartCommand()).isNull();
+        assertThat(seed.postStartCommand()).isNull();
     }
 }
