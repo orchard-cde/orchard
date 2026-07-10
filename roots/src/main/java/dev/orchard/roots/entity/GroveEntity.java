@@ -2,6 +2,7 @@ package dev.orchard.roots.entity;
 
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.GroveState;
+import dev.orchard.core.model.SeedSpec;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -31,6 +32,10 @@ public class GroveEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private GroveState state;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private SeedSpec seedSpec = SeedSpec.AUTO;
 
     @Column(nullable = false)
     private Instant plantedAt;
@@ -64,6 +69,7 @@ public class GroveEntity {
         entity.branch = grove.branch();
         entity.commitSha = grove.commitSha();
         entity.state = grove.state();
+        entity.seedSpec = grove.seedSpec();
         entity.plantedAt = grove.plantedAt();
         entity.lastAccessedAt = grove.lastAccessedAt();
 
@@ -92,12 +98,17 @@ public class GroveEntity {
     public String getBranch() { return branch; }
     public String getCommitSha() { return commitSha; }
     public GroveState getState() { return state; }
+    public SeedSpec getSeedSpec() { return seedSpec; }
     public Instant getPlantedAt() { return plantedAt; }
     public Instant getLastAccessedAt() { return lastAccessedAt; }
     public UUID getSeedlingId() { return seedlingId; }
     public String getSeedlingIpAddress() { return seedlingIpAddress; }
     public Integer getSeedlingSshPort() { return seedlingSshPort; }
     public dev.orchard.core.model.SeedlingState getSeedlingState() { return seedlingState; }
+    public String getSeedlingProviderInstanceId() { return seedlingProviderInstanceId; }
+    public Integer getSeedlingCpuCores() { return seedlingCpuCores; }
+    public Integer getSeedlingMemoryMb() { return seedlingMemoryMb; }
+    public Integer getSeedlingDiskGb() { return seedlingDiskGb; }
 
     public void setState(GroveState state) { this.state = state; }
     public void setLastAccessedAt(Instant lastAccessedAt) { this.lastAccessedAt = lastAccessedAt; }

@@ -93,6 +93,7 @@ public class GroveService {
 
         Grove grove = Grove.plant(cultivatorId, name, request.repositoryUrl(), request.branch());
         grove = grove.withState(GroveState.PLANTING);
+        grove = grove.withSeedSpec(seedSpec);
 
         // Determine seedling spec
         Seedling.SeedlingSpec spec = switch (request.machineSize()) {
@@ -586,17 +587,121 @@ public class GroveService {
         });
     }
 
+    /**
+     * Stops a running grove by tearing down its fruit and seedling, transitioning it to
+     * {@link GroveState#DORMANT}. Only groves in {@link GroveState#GROWING} or
+     * {@link GroveState#FLOURISHING} can be stopped.
+     */
+    @Transactional
+    public Optional<Grove> stopGrove(UUID groveId) {
+        return groveRepository.findById(groveId).map(entity -> {
+            GroveState state = entity.getState();
+            if (state != GroveState.GROWING && state != GroveState.FLOURISHING) {
+                log.warn("Cannot stop grove {} in state {}", groveId, state);
+                return entityToModel(entity);
+            }
+
+            log.info("Stopping grove {}", groveId);
+            entity.setState(GroveState.DORMANT);
+            groveRepository.save(entity);
+
+            Grove grove = entityToModel(entity);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            // Container cleanup requires SSH — skip if VM is unreachable
+                            boolean vmReachable = false;
+                            if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
+                                try (var socket = new java.net.Socket()) {
+                                    socket.connect(new java.net.InetSocketAddress(
+                                        grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
+                                    vmReachable = true;
+                                } catch (java.io.IOException e) {
+                                    log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
+                                }
+                            }
+
+                            if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
+                                for (Fruit fruit : grove.fruits()) {
+                                    if (fruit.containerId() != null) {
+                                        log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
+                                        fruitGrower.compost(grove.seedling(), fruit).join();
+                                    }
+                                }
+                            }
+                            fruitRepository.deleteAll(fruitRepository.findByGroveId(groveId));
+
+                            // Uproot is a provider-side operation (kill QEMU process / cloud terminate)
+                            // — does not require SSH reachability
+                            if (grove.seedling() != null) {
+                                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
+                                providerRegistry.getDefault().uproot(grove.seedling()).join();
+                            }
+                        } catch (Exception e) {
+                            log.error("Error during grove stop for {}", groveId, e);
+                        }
+                    });
+                }
+            });
+
+            return grove;
+        });
+    }
+
+    /**
+     * Restarts a dormant grove by re-provisioning its seedling and fruit, transitioning it
+     * back to {@link GroveState#GROWING} / {@link GroveState#FLOURISHING}.
+     * Only groves in {@link GroveState#DORMANT} can be started.
+     */
+    @Transactional
+    public Optional<Grove> startGrove(UUID groveId) {
+        return groveRepository.findById(groveId).map(entity -> {
+            GroveState state = entity.getState();
+            if (state != GroveState.DORMANT) {
+                log.warn("Cannot start grove {} in state {}", groveId, state);
+                return entityToModel(entity);
+            }
+
+            log.info("Starting grove {}", groveId);
+            Grove grove = entityToModel(entity);
+            Seedling seedling = Seedling.germinate(grove.id(), grove.seedling().spec());
+            grove = grove.withSeedling(seedling);
+            grove = grove.withState(GroveState.PLANTING);
+            updateGroveState(grove);
+
+            final Grove groveToProvision = grove;
+            final SeedSpec seedSpec = grove.seedSpec() != null ? grove.seedSpec() : SeedSpec.AUTO;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    CompletableFuture.runAsync(() -> provisionGrove(groveToProvision, seedSpec));
+                }
+            });
+
+            return grove;
+        });
+    }
+
     private Grove entityToModel(GroveEntity entity) {
         Seedling seedling = null;
         if (entity.getSeedlingId() != null) {
+            var spec = new Seedling.SeedlingSpec(
+                entity.getSeedlingCpuCores() != null ? entity.getSeedlingCpuCores() : 2,
+                entity.getSeedlingMemoryMb() != null ? entity.getSeedlingMemoryMb() : 4096,
+                entity.getSeedlingDiskGb() != null ? entity.getSeedlingDiskGb() : 20,
+                "small",
+                null
+            );
             seedling = new Seedling(
                 entity.getSeedlingId(),
                 entity.getId(),
-                null,
+                entity.getSeedlingProviderInstanceId(),
                 entity.getSeedlingIpAddress(),
                 entity.getSeedlingSshPort() != null ? entity.getSeedlingSshPort() : 22,
                 entity.getSeedlingState(),
-                new Seedling.SeedlingSpec(2, 4096, 20, "small", null),
+                spec,
                 entity.getPlantedAt(),
                 null
             );
@@ -616,6 +721,7 @@ public class GroveService {
             entity.getBranch(),
             entity.getCommitSha(),
             entity.getState(),
+            entity.getSeedSpec() != null ? entity.getSeedSpec() : SeedSpec.AUTO,
             seedling,
             fruits,
             entity.getPlantedAt(),

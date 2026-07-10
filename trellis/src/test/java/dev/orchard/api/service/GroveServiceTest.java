@@ -323,4 +323,114 @@ class GroveServiceTest {
         assertThat(GroveService.classifyCloudInitStatus(""))
             .isEqualTo(GroveService.CloudInitStatus.IN_PROGRESS);
     }
+
+    // --- stopGrove / startGrove ---
+
+    @Test
+    void stopGrove_growingGrove_transitionsToDormant() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            UUID cultivatorId = UUID.randomUUID();
+            Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+                .withState(GroveState.GROWING)
+                .withSeedling(new Seedling(UUID.randomUUID(), null, null, "127.0.0.1", 22,
+                    SeedlingState.SAPLING, SeedlingSpec.small(), null, null));
+            GroveEntity entity = GroveEntity.fromModel(grove);
+            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+
+            Optional<Grove> result = groveService.stopGrove(grove.id());
+
+            assertThat(result).isPresent();
+            assertThat(result.get().state()).isEqualTo(GroveState.DORMANT);
+            ArgumentCaptor<GroveEntity> captor = ArgumentCaptor.forClass(GroveEntity.class);
+            verify(groveRepository).save(captor.capture());
+            assertThat(captor.getValue().getState()).isEqualTo(GroveState.DORMANT);
+        }
+    }
+
+    @Test
+    void stopGrove_flourishingGrove_transitionsToDormant() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            UUID cultivatorId = UUID.randomUUID();
+            Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+                .withState(GroveState.FLOURISHING)
+                .withSeedling(new Seedling(UUID.randomUUID(), null, null, "127.0.0.1", 22,
+                    SeedlingState.SAPLING, SeedlingSpec.small(), null, null));
+            GroveEntity entity = GroveEntity.fromModel(grove);
+            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+
+            Optional<Grove> result = groveService.stopGrove(grove.id());
+
+            assertThat(result).isPresent();
+            assertThat(result.get().state()).isEqualTo(GroveState.DORMANT);
+        }
+    }
+
+    @Test
+    void stopGrove_plantingGrove_returnsUnchanged() {
+        UUID cultivatorId = UUID.randomUUID();
+        Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+            .withState(GroveState.PLANTING);
+        GroveEntity entity = GroveEntity.fromModel(grove);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+        when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+
+        Optional<Grove> result = groveService.stopGrove(grove.id());
+
+        assertThat(result).isPresent();
+        assertThat(result.get().state()).isEqualTo(GroveState.PLANTING);
+        verify(groveRepository, never()).save(any());
+    }
+
+    @Test
+    void stopGrove_nonexistentGrove_returnsEmpty() {
+        when(groveRepository.findById(any())).thenReturn(Optional.empty());
+
+        assertThat(groveService.stopGrove(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void startGrove_dormantGrove_transitionsToPlanting() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            UUID cultivatorId = UUID.randomUUID();
+            Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+                .withState(GroveState.DORMANT)
+                .withSeedling(new Seedling(UUID.randomUUID(), null, null, null, 22,
+                    SeedlingState.WITHERED, SeedlingSpec.small(), null, null));
+            GroveEntity entity = GroveEntity.fromModel(grove);
+            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+
+            Optional<Grove> result = groveService.startGrove(grove.id());
+
+            assertThat(result).isPresent();
+            assertThat(result.get().state()).isEqualTo(GroveState.PLANTING);
+            assertThat(result.get().seedling()).isNotNull();
+            assertThat(result.get().seedling().state()).isEqualTo(SeedlingState.GERMINATING);
+        }
+    }
+
+    @Test
+    void startGrove_growingGrove_returnsUnchanged() {
+        UUID cultivatorId = UUID.randomUUID();
+        Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+            .withState(GroveState.GROWING);
+        GroveEntity entity = GroveEntity.fromModel(grove);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+        when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+
+        Optional<Grove> result = groveService.startGrove(grove.id());
+
+        assertThat(result).isPresent();
+        assertThat(result.get().state()).isEqualTo(GroveState.GROWING);
+        verify(groveRepository, never()).save(any());
+    }
+
+    @Test
+    void startGrove_nonexistentGrove_returnsEmpty() {
+        when(groveRepository.findById(any())).thenReturn(Optional.empty());
+
+        assertThat(groveService.startGrove(UUID.randomUUID())).isEmpty();
+    }
 }

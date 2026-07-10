@@ -109,16 +109,14 @@ public class GroveController {
 
     @PostMapping("/{groveId}/actions/stop")
     public ResponseEntity<GroveResponse> stopGrove(@PathVariable UUID groveId) {
-        // TODO: Implement grove suspension
-        return groveService.getGrove(groveId)
+        return groveService.stopGrove(groveId)
             .map(grove -> ResponseEntity.ok(GroveResponse.fromModel(grove)))
             .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping("/{groveId}/actions/start")
     public ResponseEntity<GroveResponse> startGrove(@PathVariable UUID groveId) {
-        // TODO: Implement grove resumption
-        return groveService.getGrove(groveId)
+        return groveService.startGrove(groveId)
             .map(grove -> ResponseEntity.ok(GroveResponse.fromModel(grove)))
             .orElse(ResponseEntity.notFound().build());
     }
