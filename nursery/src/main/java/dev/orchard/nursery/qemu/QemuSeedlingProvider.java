@@ -295,7 +295,9 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         if (isAarch64()) {
             cmd.add("-machine"); cmd.add("virt");
             cmd.add("-cpu"); cmd.add("host");
-            cmd.add("-accel"); cmd.add("hvf");
+            if (QemuPlatformDefaults.isMacOS()) {
+                cmd.add("-accel"); cmd.add("hvf");
+            }
             // UEFI firmware required for aarch64
             Path efiCode = config.qemuBinary().getParent().getParent()
                 .resolve("share/qemu/edk2-aarch64-code.fd");

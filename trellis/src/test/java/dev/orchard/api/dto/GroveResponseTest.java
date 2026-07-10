@@ -29,7 +29,7 @@ class GroveResponseTest {
 
         Grove grove = new Grove(
             groveId, cultivatorId, "my-grove", "https://github.com/user/repo", "main",
-            "abc1234", GroveState.FLOURISHING, seedling, List.of(fruit),
+            "abc1234", GroveState.FLOURISHING, SeedSpec.AUTO, seedling, List.of(fruit),
             Instant.now(), Instant.now()
         );
 

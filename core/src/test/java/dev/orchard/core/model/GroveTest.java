@@ -154,7 +154,7 @@ class GroveTest {
     void primaryFruit_returnsNullWhenNull() {
         Grove grove = new Grove(UUID.randomUUID(), cultivatorId, "my-grove",
                 "https://github.com/test/repo", "main", null, GroveState.PREPARING,
-                null, null, Instant.now(), Instant.now());
+                SeedSpec.AUTO, null, null, Instant.now(), Instant.now());
 
         assertThat(grove.primaryFruit()).isNull();
     }

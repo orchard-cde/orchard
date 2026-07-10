@@ -18,6 +18,7 @@ public record Grove(
     String branch,
     String commitSha,
     GroveState state,
+    SeedSpec seedSpec,
     Seedling seedling,
     List<Fruit> fruits,
     Instant plantedAt,
@@ -32,6 +33,7 @@ public record Grove(
             branch,
             null,
             GroveState.PREPARING,
+            SeedSpec.AUTO,
             null,
             List.of(),
             Instant.now(),
@@ -48,17 +50,22 @@ public record Grove(
 
     public Grove withState(GroveState newState) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            newState, seedling, fruits, plantedAt, Instant.now());
+            newState, seedSpec, seedling, fruits, plantedAt, Instant.now());
     }
 
     public Grove withSeedling(Seedling seedling) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedling, fruits, plantedAt, Instant.now());
+            state, seedSpec, seedling, fruits, plantedAt, Instant.now());
+    }
+
+    public Grove withSeedSpec(SeedSpec seedSpec) {
+        return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
+            state, seedSpec, seedling, fruits, plantedAt, Instant.now());
     }
 
     public Grove withFruits(List<Fruit> fruits) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedling, fruits, plantedAt, Instant.now());
+            state, seedSpec, seedling, fruits, plantedAt, Instant.now());
     }
 
     public Grove withFruit(Fruit fruit) {
@@ -76,12 +83,12 @@ public record Grove(
             updated.add(fruit);
         }
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedling, List.copyOf(updated), plantedAt, Instant.now());
+            state, seedSpec, seedling, List.copyOf(updated), plantedAt, Instant.now());
     }
 
     public Grove withCommit(String sha) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, sha,
-            state, seedling, fruits, plantedAt, Instant.now());
+            state, seedSpec, seedling, fruits, plantedAt, Instant.now());
     }
 
     public boolean isReady() {
