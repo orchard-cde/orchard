@@ -33,6 +33,7 @@ dependencies {
     implementation(project(":trellis"))
     implementation(project(":trowel"))
     implementation(project(":core"))
+    implementation(project(":nursery"))
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
 }
 
