@@ -1,6 +1,7 @@
 plugins {
     id("org.springframework.boot")
     id("org.graalvm.buildtools.native")
+    id("me.champeau.jmh")
 }
 
 configurations.all {
@@ -36,13 +37,14 @@ dependencies {
     implementation(project(":harvest"))
     implementation(project(":nursery"))
     implementation(project(":greenhouse"))
-    implementation(project(":api"))
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.postgresql:postgresql")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server") // for default credential chain (web-identity tokens)
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
 
     // AWS SDK needed to wire Ec2Client / Ec2Operations / Ec2InstanceWaiter beans in NurseryConfig.
@@ -57,4 +59,11 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
+}
+
+jmh {
+    jmhVersion.set("1.37")
+    fork.set(1)
+    resultFormat.set("JSON")
+    resultsFile.set(layout.buildDirectory.file("results/jmh/results.json").get().asFile)
 }
