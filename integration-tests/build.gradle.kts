@@ -18,7 +18,7 @@ dependencies {
     "integrationTestImplementation"("info.picocli:picocli:4.7.7")
     "integrationTestImplementation"("org.assertj:assertj-core:3.27.7")
     "integrationTestImplementation"("org.awaitility:awaitility:4.3.0")
-    "integrationTestImplementation"(platform("org.junit:junit-bom:6.1.1"))
+    "integrationTestImplementation"(platform("org.junit:junit-bom:6.1.2"))
     "integrationTestImplementation"("org.junit.jupiter:junit-jupiter")
     "integrationTestRuntimeOnly"("org.junit.platform:junit-platform-launcher")
     "integrationTestImplementation"("org.springframework.boot:spring-boot-restclient")
