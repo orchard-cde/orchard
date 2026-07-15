@@ -21,6 +21,8 @@ import java.util.concurrent.Callable;
         GroveCommand.Plant.class,
         GroveCommand.ListGroves.class,
         GroveCommand.Show.class,
+        GroveCommand.Stop.class,
+        GroveCommand.Start.class,
         GroveCommand.Clear.class,
         GroveCommand.Connect.class
     }
@@ -212,6 +214,64 @@ public class GroveCommand implements Callable<Integer> {
                 return 0;
             } catch (Exception e) {
                 System.err.println("Failed to clear grove: " + e.getMessage());
+                return 1;
+            }
+        }
+    }
+
+    @Command(name = "stop", description = "Stop a grove (transitions to DORMANT)")
+    public static class Stop implements Callable<Integer> {
+
+        @ParentCommand
+        GroveCommand parent;
+
+        @Parameters(index = "0", description = "Grove ID")
+        UUID groveId;
+
+        @Override
+        public Integer call() {
+            try {
+                OrchardClient client = new OrchardClient(
+                    parent.parent.getServerUrl(),
+                    parent.parent.getCultivatorId()
+                );
+
+                GroveResponse grove = client.stopGrove(groveId);
+                System.out.println("Grove " + grove.name() + " has been stopped.");
+                printGrove(grove);
+
+                return 0;
+            } catch (Exception e) {
+                System.err.println("Failed to stop grove: " + e.getMessage());
+                return 1;
+            }
+        }
+    }
+
+    @Command(name = "start", description = "Start a dormant grove")
+    public static class Start implements Callable<Integer> {
+
+        @ParentCommand
+        GroveCommand parent;
+
+        @Parameters(index = "0", description = "Grove ID")
+        UUID groveId;
+
+        @Override
+        public Integer call() {
+            try {
+                OrchardClient client = new OrchardClient(
+                    parent.parent.getServerUrl(),
+                    parent.parent.getCultivatorId()
+                );
+
+                GroveResponse grove = client.startGrove(groveId);
+                System.out.println("Grove " + grove.name() + " is starting up.");
+                printGrove(grove);
+
+                return 0;
+            } catch (Exception e) {
+                System.err.println("Failed to start grove: " + e.getMessage());
                 return 1;
             }
         }
