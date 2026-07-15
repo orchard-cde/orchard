@@ -76,6 +76,30 @@ public class OrchardClient {
         return objectMapper.readValue(response.body(), new TypeReference<List<GroveResponse>>() {});
     }
 
+    public GroveResponse stopGrove(UUID groveId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/groves/" + groveId + "/actions/stop"))
+            .header("X-Cultivator-Id", cultivatorId)
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), GroveResponse.class);
+    }
+
+    public GroveResponse startGrove(UUID groveId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/groves/" + groveId + "/actions/start"))
+            .header("X-Cultivator-Id", cultivatorId)
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), GroveResponse.class);
+    }
+
     public void clearGrove(UUID groveId) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(baseUrl + "/api/groves/" + groveId))
