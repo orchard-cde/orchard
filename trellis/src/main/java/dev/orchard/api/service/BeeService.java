@@ -5,6 +5,8 @@ import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
 import dev.orchard.apiary.BeeKeeperRegistry;
 import dev.orchard.core.model.*;
+import dev.orchard.nursery.CommandRunner;
+import dev.orchard.nursery.SshExecutor;
 import dev.orchard.roots.entity.BeeEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.BeeRepository;
@@ -68,10 +70,11 @@ public class BeeService {
 
         final Bee beeToProvision = bee;
         final BeeKeeper keeper = beeKeeper;
+        final CommandRunner runner = commandRunnerFor(groveEntity);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                CompletableFuture.runAsync(() -> provisionBee(beeToProvision, keeper));
+                CompletableFuture.runAsync(() -> provisionBee(beeToProvision, keeper, runner));
             }
         });
 
@@ -105,10 +108,17 @@ public class BeeService {
                 return bee;
             }
 
+            GroveEntity groveEntity = groveRepository.findById(bee.groveId()).orElse(null);
+            if (groveEntity == null) {
+                log.warn("Grove {} not found for bee {}, cannot wake", bee.groveId(), beeId);
+                return bee;
+            }
+            CommandRunner runner = commandRunnerFor(groveEntity);
+
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(() -> releaseBee(bee, keeper));
+                    CompletableFuture.runAsync(() -> releaseBee(bee, keeper, runner));
                 }
             });
 
@@ -139,10 +149,10 @@ public class BeeService {
         });
     }
 
-    private void provisionBee(Bee bee, BeeKeeper keeper) {
+    private void provisionBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {
         BeeSpec spec = bee.spec();
-        installBee(bee, keeper, spec)
-            .thenCompose(releasedBee -> releaseBee(releasedBee, keeper))
+        installBee(bee, keeper, spec, runner)
+            .thenCompose(releasedBee -> releaseBee(releasedBee, keeper, runner))
             .exceptionally(ex -> {
                 log.error("Bee provisioning failed for bee {}", bee.id(), ex);
                 updateBeeState(bee.id(), BeeState.SMOKED, bee.state());
@@ -150,15 +160,15 @@ public class BeeService {
             });
     }
 
-    private CompletableFuture<Bee> installBee(Bee bee, BeeKeeper keeper, BeeSpec spec) {
-        return keeper.install(bee, spec).thenCompose(installedBee -> {
+    private CompletableFuture<Bee> installBee(Bee bee, BeeKeeper keeper, BeeSpec spec, CommandRunner runner) {
+        return keeper.install(bee, spec, runner).thenCompose(installedBee -> {
             updateBeeState(bee.id(), BeeState.HIBERNATING, bee.state());
             return CompletableFuture.completedFuture(installedBee);
         });
     }
 
-    private CompletableFuture<Bee> releaseBee(Bee bee, BeeKeeper keeper) {
-        return keeper.release(bee).thenCompose(releasedBee -> {
+    private CompletableFuture<Bee> releaseBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {
+        return keeper.release(bee, runner).thenCompose(releasedBee -> {
             BeeState previousState = BeeState.HIBERNATING;
             BeeEntity entity = beeRepository.findById(bee.id()).orElseThrow();
             entity.setState(BeeState.BUZZING);
@@ -183,5 +193,27 @@ public class BeeService {
         } catch (Exception e) {
             log.error("Failed to update bee state for bee {}", beeId, e);
         }
+    }
+
+    private CommandRunner commandRunnerFor(GroveEntity groveEntity) {
+        Seedling.SeedlingSpec spec = new Seedling.SeedlingSpec(
+            groveEntity.getSeedlingCpuCores() != null ? groveEntity.getSeedlingCpuCores() : 0,
+            groveEntity.getSeedlingMemoryMb() != null ? groveEntity.getSeedlingMemoryMb() : 0,
+            groveEntity.getSeedlingDiskGb() != null ? groveEntity.getSeedlingDiskGb() : 0,
+            null,
+            null
+        );
+        Seedling seedling = new Seedling(
+            groveEntity.getSeedlingId(),
+            groveEntity.getId(),
+            groveEntity.getSeedlingProviderInstanceId(),
+            groveEntity.getSeedlingIpAddress(),
+            groveEntity.getSeedlingSshPort() != null ? groveEntity.getSeedlingSshPort() : 22,
+            groveEntity.getSeedlingState(),
+            spec,
+            groveEntity.getPlantedAt(),
+            null
+        );
+        return new SshExecutor(seedling);
     }
 }
