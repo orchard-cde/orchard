@@ -37,6 +37,7 @@ dependencies {
     implementation(project(":harvest"))
     implementation(project(":nursery"))
     implementation(project(":greenhouse"))
+    implementation(project(":apiary"))
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.postgresql:postgresql")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
