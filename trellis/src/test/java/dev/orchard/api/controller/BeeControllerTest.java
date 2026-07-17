@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(BeeController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(BeeController.class)
+@Import({BeeController.class, GlobalExceptionHandler.class})
 class BeeControllerTest {
 
     @Autowired
@@ -35,25 +35,43 @@ class BeeControllerTest {
 
     private final UUID groveId = UUID.randomUUID();
     private final UUID beeId = UUID.randomUUID();
+    private final UUID cultivatorId = UUID.randomUUID();
 
     @Test
-    void createBee_returns201() throws Exception {
+    void createBee_returns202() throws Exception {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE));
         when(beeService.attachBee(eq(groveId), any(), any())).thenReturn(bee);
 
         mockMvc.perform(post("/api/groves/{groveId}/bees", groveId)
+                .header("X-Cultivator-Id", cultivatorId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"beeType\":\"CLAUDE_CODE\"}"))
-            .andExpect(status().isCreated())
+            .andExpect(status().isAccepted())
             .andExpect(jsonPath("$.state").value("HATCHING"))
             .andExpect(jsonPath("$.type").value("CLAUDE_CODE"));
     }
 
     @Test
-    void createBee_invalidType_returns400() throws Exception {
+    void createBee_groveNotFlourishing_returns409() throws Exception {
+        when(beeService.attachBee(eq(groveId), any(), any()))
+            .thenThrow(new IllegalStateException("Grove must be FLOURISHING"));
+
         mockMvc.perform(post("/api/groves/{groveId}/bees", groveId)
+                .header("X-Cultivator-Id", cultivatorId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"beeType\":\"INVALID\"}"))
+                .content("{\"beeType\":\"CLAUDE_CODE\"}"))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    void createBee_unregisteredBeeType_returns400() throws Exception {
+        when(beeService.attachBee(eq(groveId), any(), any()))
+            .thenThrow(new IllegalArgumentException("No BeeKeeper registered for bee type: CLAUDE_CODE"));
+
+        mockMvc.perform(post("/api/groves/{groveId}/bees", groveId)
+                .header("X-Cultivator-Id", cultivatorId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"beeType\":\"CLAUDE_CODE\"}"))
             .andExpect(status().isBadRequest());
     }
 
@@ -92,7 +110,7 @@ class BeeControllerTest {
             .withState(BeeState.BUZZING);
         when(beeService.wake(beeId)).thenReturn(Optional.of(bee));
 
-        mockMvc.perform(post("/api/groves/{groveId}/bees/{beeId}/wake", groveId, beeId))
+        mockMvc.perform(post("/api/groves/{groveId}/bees/{beeId}/actions/wake", groveId, beeId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.state").value("BUZZING"));
     }
@@ -103,7 +121,7 @@ class BeeControllerTest {
             .withState(BeeState.SMOKED);
         when(beeService.smoke(beeId)).thenReturn(Optional.of(bee));
 
-        mockMvc.perform(post("/api/groves/{groveId}/bees/{beeId}/smoke", groveId, beeId))
+        mockMvc.perform(post("/api/groves/{groveId}/bees/{beeId}/actions/smoke", groveId, beeId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.state").value("SMOKED"));
     }
