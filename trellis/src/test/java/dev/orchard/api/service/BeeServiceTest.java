@@ -226,6 +226,35 @@ class BeeServiceTest {
         }
     }
 
+    @Test
+    void smoke_withRegisteredKeeper_callsSmokeCommand() {
+        BeeEntity entity = mock(BeeEntity.class);
+        UUID beeId = UUID.randomUUID();
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE))
+            .withState(BeeState.BUZZING);
+        when(beeRepository.findById(beeId)).thenReturn(Optional.of(entity));
+        when(entity.toModel()).thenReturn(bee);
+
+        BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        GroveEntity groveEntity = mock(GroveEntity.class);
+        when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
+        when(keeper.smoke(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+                .thenAnswer(invocation -> {
+                    TransactionSynchronization sync = invocation.getArgument(0);
+                    sync.afterCommit();
+                    return null;
+                });
+
+            beeService.smoke(beeId);
+
+            verify(keeper, timeout(500)).smoke(eq(bee), any(CommandRunner.class));
+        }
+    }
+
     private void setupFlourishingGrove() {
         GroveEntity groveEntity = mock(GroveEntity.class);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));

@@ -137,9 +137,21 @@ public class BeeService {
 
             Bee smokedBee = bee.withState(BeeState.SMOKED).withStoppedAt();
 
+            BeeKeeper keeper = beeKeeperRegistry.get(bee.type()).orElse(null);
+            GroveEntity groveEntity = keeper != null ? groveRepository.findById(bee.groveId()).orElse(null) : null;
+            CommandRunner runner = groveEntity != null ? commandRunnerFor(groveEntity) : null;
+
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
+                    if (keeper != null && runner != null) {
+                        keeper.smoke(bee, runner).exceptionally(ex -> {
+                            log.warn("BeeKeeper smoke command failed for bee {}", beeId, ex);
+                            return null;
+                        });
+                    } else {
+                        log.warn("Skipping keeper.smoke() for bee {}: no registered keeper or grove", beeId);
+                    }
                     eventPublisher.publishEvent(BeeStateChangedEvent.of(
                         smokedBee.id(), smokedBee.groveId(), previousState, BeeState.SMOKED));
                 }
