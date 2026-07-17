@@ -13,6 +13,7 @@ include(
     "harvest",
     "nursery",
     "greenhouse",
+    "apiary",
     "trellis",
     "trowel",
     "integration-tests"
