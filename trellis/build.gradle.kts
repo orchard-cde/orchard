@@ -37,6 +37,7 @@ dependencies {
     implementation(project(":harvest"))
     implementation(project(":nursery"))
     implementation(project(":greenhouse"))
+    implementation(project(":apiary"))
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.postgresql:postgresql")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
@@ -56,6 +57,7 @@ dependencies {
     runtimeOnly("software.amazon.awssdk:sts")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
 }
