@@ -100,7 +100,9 @@ class BeeServiceTest {
     @Test
     void attachBee_registersAfterCommitCallback() {
         setupFlourishingGrove();
-        setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE));
+        when(keeper.install(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
 
         try (MockedStatic<TransactionSynchronizationManager> tsm =
                 mockStatic(TransactionSynchronizationManager.class)) {
@@ -114,8 +116,7 @@ class BeeServiceTest {
             CreateBeeRequest request = new CreateBeeRequest(BeeType.CLAUDE_CODE, null, null);
             beeService.attachBee(groveId, cultivatorId, request);
 
-            BeeKeeper keeper = beeKeeperRegistry.get(BeeType.CLAUDE_CODE).orElseThrow();
-            verify(keeper).install(any(Bee.class), any(BeeSpec.class));
+            verify(keeper, timeout(500)).install(any(Bee.class), any(BeeSpec.class));
         }
     }
 
@@ -170,7 +171,7 @@ class BeeServiceTest {
     }
 
     @Test
-    void wake_hibernating_callsRelease() throws Exception {
+    void wake_hibernating_callsRelease() {
         BeeEntity entity = mock(BeeEntity.class);
         UUID beeId = UUID.randomUUID();
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE))
@@ -191,9 +192,8 @@ class BeeServiceTest {
                 });
 
             beeService.wake(beeId);
-            Thread.sleep(100);
 
-            verify(keeper).release(eq(bee));
+            verify(keeper, timeout(500)).release(eq(bee));
         }
     }
 
