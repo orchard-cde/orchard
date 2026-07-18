@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -153,4 +154,21 @@ public class OrchardClient {
     public record SeedlingInfo(UUID id, String state, String ipAddress, int sshPort, int cpuCores, int memoryMb, int diskGb) {}
     public record FruitInfo(UUID id, String state, String containerId, String containerName, String serviceName) {}
     public record HealthResponse(String status, String name, String version) {}
+
+    public record BeeResponse(
+        UUID id,
+        UUID groveId,
+        String type,
+        String state,
+        String processId,
+        String hatchedAt,
+        String startedAt,
+        String stoppedAt
+    ) {}
+
+    public record SwarmStatusResponse(
+        UUID groveId,
+        int totalBees,
+        Map<String, Integer> byState
+    ) {}
 }
