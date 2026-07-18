@@ -19,8 +19,7 @@ For the themed naming glossary, see [README.md](../../README.md#themed-glossary)
 
 ```mermaid
 graph TD
-    trellis[trellis - Spring Boot app]
-    api[api - REST controllers & services]
+    trellis[trellis - Spring Boot app<br/>incl. dev.orchard.api REST layer]
     roots[roots - JPA entities & repos]
     nursery[nursery - VM provisioning]
     harvest[harvest - devcontainer parsing]
@@ -30,19 +29,12 @@ graph TD
     canopy[canopy - web UI<br/>separate repo: orchard-cde/orchard-ui]
     apiary[apiary - Bee provisioning]
 
-    trellis --> api
+    trellis --> core
     trellis --> roots
     trellis --> nursery
     trellis --> harvest
     trellis --> greenhouse
     trellis --> apiary
-
-    api --> core
-    api --> roots
-    api --> harvest
-    api --> nursery
-    api --> greenhouse
-    api --> apiary
 
     roots --> core
     roots --> harvest
@@ -106,9 +98,14 @@ All operations return `CompletableFuture` for non-blocking async execution, foll
 | Gemini CLI | `gemini` | npm package (TBD) | Node.js 18+ | `GOOGLE_API_KEY` |
 | Codex | `codex` | npm package (TBD) | Node.js 18+ | `OPENAI_API_KEY` |
 | Kiro CLI | `kiro` | `curl -fsSL https://cli.kiro.dev/install \| bash` | macOS/Linux | TBD |
+| OpenCode | `opencode` | curl install (binary download) | none — no API key/account required | per-session auth via URL |
 | Custom | `custom` | User-provided | User-specified | User-provided env vars |
 
 BeeKeepers are registered as Spring beans in `trellis/src/main/java/dev/orchard/trellis/config/ApiaryConfig.java`, following the `NurseryConfig` pattern. Agent-specific adapters use `@ConditionalOnProperty` for optional registration.
+
+### 2.3 Headless vs. Interactive Mode
+
+`release()` defaults to starting the agent headless — as a background process/API server the Grove's own tooling talks to — so that `BeeService` can track a `processId` and move the Bee straight to `BUZZING` without a human present. For any BeeKeeper whose underlying CLI also supports an interactive/TUI mode, the convention is: a `"mode"` key in `BeeSpec.configOverrides()`, defaulting to `"headless"`, with `"interactive"` as the opt-in alternative. In interactive mode, `release()` skips starting a process itself — the cultivator launches the agent from a terminal (VS Code Remote/SSH pane) instead — and the Bee still transitions to `BUZZING` with no `processId`, on the same timing as headless. `OpencodeBeeKeeper` is the first adapter to implement this (see the OpenCode BeeKeeper adapter plan); other adapters should follow the same `"mode"` convention if/when their underlying CLI gains an equivalent interactive mode, rather than inventing a per-adapter config key. A `processId`-less `BUZZING` Bee will never satisfy `Bee.isReady()` (`state == BUZZING && processId != null`) — accepted for now since no production code currently calls `isReady()`.
 
 ---
 
@@ -241,6 +238,7 @@ public enum BeeType {
     GEMINI("gemini"),
     CODEX("codex"),
     KIRO("kiro"),
+    OPENCODE("opencode"),
     CUSTOM("custom");
 
     private final String value;
@@ -272,7 +270,7 @@ public record BeeHealth(
 
 ## 6. Database Schema
 
-New Flyway migration (V6) in `roots/src/main/resources/db/migration/`:
+New Flyway migration (V7) in `roots/src/main/resources/db/migration/`:
 
 **`bees` table:**
 

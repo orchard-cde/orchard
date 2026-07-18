@@ -20,6 +20,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 - **VS Code Remote SSH**: Connect directly from your local VS Code
 - **Web UI (Canopy)**: Manage workspaces from your browser — [separate repo](https://github.com/orchard-cde/orchard-ui)
 - **CLI (Trowel)**: Plant and manage groves from the command line
+- **AI Coding Assistants**: Attach AI-powered Bees (OpenCode, Claude Code, Gemini, Codex) to any grove
 
 ## Quick Start
 
@@ -144,16 +145,17 @@ sha256sum --check checksums-sha256.txt --ignore-missing
 ├─────────────────────────────────────────────────────────────┤
 │                     Trellis (REST API)                      │
 │                  Spring Boot Controllers                    │
-├──────────────┬──────────────┬───────────────────────────────┤
-│     API      │   Harvest    │           Nursery             │
-│   Services   │  Devcontainer│      VM Provisioning          │
-│              │   Parsing    │  (QEMU, AWS; soon GCP/Azure)  │
-├──────────────┴──────────────┴───────────────────────────────┤
+├──────────┬──────────┬──────────────────┬────────────────────┤
+│   API    │ Harvest  │     Nursery      │     Apiary         │
+│ Services │ Devcontainer│ VM Provisioning│  BeeKeeper (AI)    │
+│          │  Parsing │(QEMU, AWS, GCP,  │ OpenCode, Claude,  │
+│          │          │  Azure)          │  Gemini, Codex     │
+├──────────┴──────────┴──────────────────┴────────────────────┤
 │                     Roots (Persistence)                     │
 │              JPA Entities, Spring Data Repos                │
 ├─────────────────────────────────────────────────────────────┤
 │                    Core (Domain Models)                     │
-│           Grove, Seedling, Fruit, Seed, Cultivator          │
+│       Grove, Seedling, Fruit, Seed, Bee, Cultivator         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,6 +177,9 @@ We use orchard/gardening terminology throughout the codebase:
 | **Harvest** | Building container images |
 | **Trellis** | The Spring Boot application server |
 | **Greenhouse** | Prebuild service for image caching (TBD) |
+| **Apiary** | AI coding assistant integration subsystem |
+| **Bee** | An AI coding assistant attached to a grove |
+| **BeeKeeper** | Extension point for managing a specific AI assistant type |
 
 ## Project Structure
 
@@ -184,6 +189,7 @@ orchard/
 ├── roots/      # Persistence layer (JPA, Flyway)
 ├── harvest/    # Devcontainer spec parsing
 ├── nursery/    # VM lifecycle management
+├── apiary/     # AI assistant integration (BeeKeeper extension point)
 ├── api/        # REST API and services
 ├── trellis/    # Spring Boot application
 └── trowel/     # Command-line interface
@@ -242,6 +248,7 @@ cultivator = "<your-uuid>"
 - [x] Real-time status updates (Server-Sent Events)
 - [x] VS Code extension for direct integration — [orchard-vscode-extension](https://github.com/orchard-cde/orchard-vscode-extension)
 - [ ] Multi-container workspace support
+- [ ] AI coding assistant integration (BeeKeeper adapters — OpenCode, Claude Code, Gemini, Codex)
 
 ## License
 
