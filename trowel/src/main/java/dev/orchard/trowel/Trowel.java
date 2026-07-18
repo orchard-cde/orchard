@@ -17,6 +17,7 @@ import java.util.concurrent.Callable;
     description = "Cultivate your cloud development environments",
     subcommands = {
         GroveCommand.class,
+        BeeCommand.class,
         ConfigCommand.class,
         StatusCommand.class,
         DevServerCommand.class,
