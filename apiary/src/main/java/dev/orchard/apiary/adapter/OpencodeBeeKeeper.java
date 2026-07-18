@@ -7,6 +7,8 @@ import dev.orchard.core.model.BeeHealth;
 import dev.orchard.core.model.BeeSpec;
 import dev.orchard.core.model.BeeType;
 import dev.orchard.nursery.CommandRunner;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -38,6 +40,7 @@ public class OpencodeBeeKeeper implements BeeKeeper {
     private static final String MODE_INTERACTIVE = "interactive";
 
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
     public BeeType getBeeType() {
@@ -130,24 +133,19 @@ public class OpencodeBeeKeeper implements BeeKeeper {
         runner.execute("mkdir -p " + CONFIG_DIR + " && echo " + encoded + " | base64 -d > " + CONFIG_PATH);
     }
 
-    private String renderConfig(Bee bee, BeeSpec spec) {
-        StringBuilder json = new StringBuilder();
-        json.append("{\n");
-        json.append("  \"workspace_root\": \"").append(WORKSPACE_ROOT).append("\",\n");
-        json.append("  \"orchard\": {\n");
-        json.append("    \"grove_id\": \"").append(bee.groveId()).append("\",\n");
-        json.append("    \"bee_id\": \"").append(bee.id()).append("\"\n");
-        json.append("  }");
-        for (Map.Entry<String, String> entry : spec.configOverrides().entrySet()) {
-            json.append(",\n  \"").append(escapeJson(entry.getKey()))
-                .append("\": \"").append(escapeJson(entry.getValue())).append("\"");
-        }
-        json.append("\n}\n");
-        return json.toString();
-    }
+    private String renderConfig(Bee bee, BeeSpec spec) throws IOException {
+        ObjectNode root = mapper.createObjectNode();
+        root.put("workspace_root", WORKSPACE_ROOT);
 
-    private static String escapeJson(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        ObjectNode orchard = root.putObject("orchard");
+        orchard.put("grove_id", bee.groveId().toString());
+        orchard.put("bee_id", bee.id().toString());
+
+        for (Map.Entry<String, String> entry : spec.configOverrides().entrySet()) {
+            root.put(entry.getKey(), entry.getValue());
+        }
+
+        return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
     }
 
     private boolean isProcessAlive(Bee bee, CommandRunner runner) {
