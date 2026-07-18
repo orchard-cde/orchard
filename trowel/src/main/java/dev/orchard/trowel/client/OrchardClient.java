@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -111,6 +112,84 @@ public class OrchardClient {
         checkResponse(response);
     }
 
+    public BeeResponse installBee(UUID groveId, String beeType, String version)
+            throws IOException, InterruptedException {
+        String body = objectMapper.writeValueAsString(
+            Map.of("beeType", beeType, "version", version != null ? version : "", "configOverrides", Map.of())
+        );
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/groves/" + groveId + "/bees"))
+            .header("Content-Type", "application/json")
+            .header("X-Cultivator-Id", cultivatorId)
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), BeeResponse.class);
+    }
+
+    public List<BeeResponse> listBees(UUID groveId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/groves/" + groveId + "/bees"))
+            .header("X-Cultivator-Id", cultivatorId)
+            .GET()
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), new TypeReference<List<BeeResponse>>() {});
+    }
+
+    public BeeResponse showBee(UUID groveId, UUID beeId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/groves/" + groveId + "/bees/" + beeId))
+            .header("X-Cultivator-Id", cultivatorId)
+            .GET()
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), BeeResponse.class);
+    }
+
+    public BeeResponse wakeBee(UUID groveId, UUID beeId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/groves/" + groveId + "/bees/" + beeId + "/actions/wake"))
+            .header("X-Cultivator-Id", cultivatorId)
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), BeeResponse.class);
+    }
+
+    public BeeResponse smokeBee(UUID groveId, UUID beeId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/groves/" + groveId + "/bees/" + beeId + "/actions/smoke"))
+            .header("X-Cultivator-Id", cultivatorId)
+            .POST(HttpRequest.BodyPublishers.noBody())
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), BeeResponse.class);
+    }
+
+    public SwarmStatusResponse getSwarmStatus(UUID groveId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/groves/" + groveId + "/bees/status"))
+            .header("X-Cultivator-Id", cultivatorId)
+            .GET()
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), SwarmStatusResponse.class);
+    }
+
     public HealthResponse checkHealth() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(baseUrl + "/api/health"))
@@ -153,4 +232,21 @@ public class OrchardClient {
     public record SeedlingInfo(UUID id, String state, String ipAddress, int sshPort, int cpuCores, int memoryMb, int diskGb) {}
     public record FruitInfo(UUID id, String state, String containerId, String containerName, String serviceName) {}
     public record HealthResponse(String status, String name, String version) {}
+
+    public record BeeResponse(
+        UUID id,
+        UUID groveId,
+        String type,
+        String state,
+        String processId,
+        String hatchedAt,
+        String startedAt,
+        String stoppedAt
+    ) {}
+
+    public record SwarmStatusResponse(
+        UUID groveId,
+        int totalBees,
+        Map<String, Integer> byState
+    ) {}
 }
