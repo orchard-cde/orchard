@@ -40,6 +40,22 @@
     "allRecordComponents" : true
   },
   {
+    "name" : "dev.orchard.trowel.client.OrchardClient$BeeResponse",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
+    "name" : "dev.orchard.trowel.client.OrchardClient$SwarmStatusResponse",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
     "name" : "dev.orchard.trowel.command.DevServerCommand$ServerInfo",
     "allDeclaredConstructors" : true,
     "allPublicConstructors" : true,

@@ -2,8 +2,10 @@ package dev.orchard.trowel.client;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import dev.orchard.trowel.client.OrchardClient.BeeResponse;
 import dev.orchard.trowel.client.OrchardClient.GroveResponse;
 import dev.orchard.trowel.client.OrchardClient.HealthResponse;
+import dev.orchard.trowel.client.OrchardClient.SwarmStatusResponse;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -210,6 +212,157 @@ class OrchardClientTest {
         assertThat(health.version()).isEqualTo("0.1.0-SNAPSHOT");
     }
 
+    // -- installBee tests --
+
+    @Test
+    void installBee_sendsPostWithCorrectBodyAndHeaders() throws Exception {
+        server.createContext("/api/groves", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isEqualTo("application/json");
+            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(body).contains("\"beeType\":\"OPENCODE\"");
+            assertThat(body).contains("\"version\":\"latest\"");
+
+            respond(exchange, 201, BEE_JSON);
+        });
+
+        BeeResponse bee = client.installBee(UUID.fromString("11111111-1111-1111-1111-111111111111"), "OPENCODE", "latest");
+
+        assertThat(bee.id()).isEqualTo(UUID.fromString("44444444-4444-4444-4444-444444444444"));
+        assertThat(bee.type()).isEqualTo("OPENCODE");
+        assertThat(bee.state()).isEqualTo("HIBERNATING");
+    }
+
+    @Test
+    void installBee_throwsOnValidationError() {
+        server.createContext("/api/groves", exchange -> respond(exchange, 400, "{\"error\":\"bad request\"}"));
+
+        assertThatThrownBy(() -> client.installBee(UUID.randomUUID(), "OPENCODE", null))
+            .isInstanceOf(IOException.class)
+            .hasMessageContaining("400");
+    }
+
+    // -- listBees tests --
+
+    @Test
+    void listBees_sendsGetToCorrectPath() throws Exception {
+        UUID groveId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+
+        server.createContext("/api/groves", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees");
+            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
+
+            respond(exchange, 200, "[" + BEE_JSON + "]");
+        });
+
+        List<BeeResponse> bees = client.listBees(groveId);
+
+        assertThat(bees).hasSize(1);
+        assertThat(bees.getFirst().type()).isEqualTo("OPENCODE");
+    }
+
+    @Test
+    void listBees_handlesEmptyList() throws Exception {
+        server.createContext("/api/groves", exchange -> respond(exchange, 200, "[]"));
+
+        List<BeeResponse> bees = client.listBees(UUID.randomUUID());
+
+        assertThat(bees).isEmpty();
+    }
+
+    // -- showBee tests --
+
+    @Test
+    void showBee_sendsGetToCorrectPath() throws Exception {
+        UUID groveId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID beeId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+
+        server.createContext("/api/groves", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees/" + beeId);
+            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
+
+            respond(exchange, 200, BEE_JSON);
+        });
+
+        BeeResponse bee = client.showBee(groveId, beeId);
+
+        assertThat(bee.id()).isEqualTo(beeId);
+        assertThat(bee.state()).isEqualTo("HIBERNATING");
+    }
+
+    @Test
+    void showBee_throwsOnNotFound() {
+        server.createContext("/api/groves", exchange -> respond(exchange, 404, "{\"error\":\"not found\"}"));
+
+        assertThatThrownBy(() -> client.showBee(UUID.randomUUID(), UUID.randomUUID()))
+            .isInstanceOf(IOException.class)
+            .hasMessageContaining("404");
+    }
+
+    // -- wakeBee / smokeBee tests --
+
+    @Test
+    void wakeBee_sendsPostToCorrectPath() throws Exception {
+        UUID groveId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID beeId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+
+        server.createContext("/api/groves", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees/" + beeId + "/actions/wake");
+            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
+
+            respond(exchange, 200, BEE_JSON.replace("\"HIBERNATING\"", "\"BUZZING\""));
+        });
+
+        BeeResponse bee = client.wakeBee(groveId, beeId);
+
+        assertThat(bee.state()).isEqualTo("BUZZING");
+    }
+
+    @Test
+    void smokeBee_sendsPostToCorrectPath() throws Exception {
+        UUID groveId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+        UUID beeId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+
+        server.createContext("/api/groves", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees/" + beeId + "/actions/smoke");
+            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
+
+            respond(exchange, 200, BEE_JSON.replace("\"HIBERNATING\"", "\"SMOKED\""));
+        });
+
+        BeeResponse bee = client.smokeBee(groveId, beeId);
+
+        assertThat(bee.state()).isEqualTo("SMOKED");
+    }
+
+    // -- getSwarmStatus tests --
+
+    @Test
+    void getSwarmStatus_sendsGetAndDeserializesResponse() throws Exception {
+        UUID groveId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+
+        server.createContext("/api/groves", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees/status");
+
+            respond(exchange, 200, """
+                {"groveId":"11111111-1111-1111-1111-111111111111","totalBees":2,"byState":{"HIBERNATING":1,"BUZZING":1}}
+                """);
+        });
+
+        SwarmStatusResponse status = client.getSwarmStatus(groveId);
+
+        assertThat(status.totalBees()).isEqualTo(2);
+        assertThat(status.byState()).containsEntry("HIBERNATING", 1);
+        assertThat(status.byState()).containsEntry("BUZZING", 1);
+    }
+
     // -- baseUrl normalization --
 
     @Test
@@ -302,6 +455,19 @@ class OrchardClientTest {
           ],
           "plantedAt": "2026-02-26T10:00:00Z",
           "lastAccessedAt": "2026-02-26T10:05:00Z"
+        }
+        """;
+
+    static final String BEE_JSON = """
+        {
+          "id": "44444444-4444-4444-4444-444444444444",
+          "groveId": "11111111-1111-1111-1111-111111111111",
+          "type": "OPENCODE",
+          "state": "HIBERNATING",
+          "processId": null,
+          "hatchedAt": "2026-07-18T10:30:00Z",
+          "startedAt": null,
+          "stoppedAt": null
         }
         """;
 }
