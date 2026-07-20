@@ -8,7 +8,9 @@ public enum BeeState {
     SMOKED;
 
     public boolean canTransitionTo(BeeState target) {
-        if (target == SMOKED) return true;
+        if (target == SMOKED) {
+            return true;
+        }
         return switch (this) {
             case HATCHING -> target == HIBERNATING;
             case HIBERNATING -> target == BUZZING;
