@@ -27,7 +27,7 @@ dependencies {
     "integrationTestImplementation"("org.testcontainers:testcontainers:2.0.5")
     "integrationTestImplementation"("org.testcontainers:testcontainers-junit-jupiter:2.0.5")
     "integrationTestImplementation"("org.testcontainers:testcontainers-localstack:2.0.5")
-    "integrationTestImplementation"(platform("software.amazon.awssdk:bom:2.47.5"))
+    "integrationTestImplementation"(platform("software.amazon.awssdk:bom:2.49.1"))
     "integrationTestImplementation"("software.amazon.awssdk:ec2")
     "integrationTestImplementation"("software.amazon.awssdk:url-connection-client")
     implementation(project(":trellis"))
