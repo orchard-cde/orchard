@@ -40,6 +40,7 @@ public class AuthorizationServerConfig {
                 .oidc(Customizer.withDefaults());
 
         http.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+                .cors(Customizer.withDefaults())
                 .with(authorizationServerConfigurer, Customizer.withDefaults())
                 .authorizeHttpRequests(authorize ->
                         authorize.anyRequest().permitAll()

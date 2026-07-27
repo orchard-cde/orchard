@@ -27,6 +27,15 @@ fence:
     registration-id: google
     client-id: ${GOOGLE_CLIENT_ID:}
     client-secret: ${GOOGLE_CLIENT_SECRET:}
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+    allowed-methods:
+      - GET
+      - POST
+      - OPTIONS
+    allowed-headers:
+      - "*"
 
 management:
   endpoints:
