@@ -1,5 +1,8 @@
 package dev.orchard.trowel;
 
+import dev.orchard.trowel.auth.AuthProvider;
+import dev.orchard.trowel.auth.NoAuthProvider;
+import dev.orchard.trowel.auth.TokenAuthProvider;
 import dev.orchard.trowel.command.*;
 import dev.orchard.trowel.config.ConfigException;
 import dev.orchard.trowel.config.ConfigLoader;
@@ -36,6 +39,9 @@ import java.util.concurrent.Callable;
     }
 )
 public class Trowel implements Callable<Integer> {
+
+    public static final String CLIENT_ID = "trowel-cli";
+    public static final String DEFAULT_FENCE_SERVER = "https://fence.orchard.dev";
 
     @Option(names = {"-s", "--server"}, description = "Orchard server URL")
     private String serverUrl;
@@ -102,6 +108,21 @@ public class Trowel implements Callable<Integer> {
         return target != null ? target.cultivator() : null;
     }
 
+    public AuthProvider getAuthProvider() {
+        OrchardConfig.Target target = resolveConfigTarget();
+        if (target != null && target.accessToken() != null && target.refreshToken() != null
+                && target.fenceServer() != null && target.expiresAt() != null) {
+            return new TokenAuthProvider(
+                target.accessToken(),
+                target.refreshToken(),
+                target.expiresAt(),
+                target.fenceServer(),
+                CLIENT_ID
+            );
+        }
+        return new NoAuthProvider();
+    }
+
     /** Returns the --target flag value or ORCHARD_TARGET env var, or null if neither is set. */
     public String getTargetName() {
         if (targetName != null) {
@@ -110,7 +131,7 @@ public class Trowel implements Callable<Integer> {
         return System.getenv("ORCHARD_TARGET");
     }
 
-    private OrchardConfig.Target resolveConfigTarget() {
+    OrchardConfig.Target resolveConfigTarget() {
         OrchardConfig config = ConfigLoader.load();
         if (config == null || config.targets() == null) {
             return null;
