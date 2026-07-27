@@ -12,7 +12,7 @@ public class TokenClaimsConfig {
     @Bean
     OAuth2TokenCustomizer<JwtEncodingContext> tokenClaimsCustomizer() {
         return context -> {
-            if (context.getPrincipal() instanceof OidcUser oidcUser) {
+            if (context.getPrincipal().getPrincipal() instanceof OidcUser oidcUser) {
                 UpstreamIdentityClaims claims = UpstreamIdentityClaims.from(oidcUser);
                 context.getClaims().claim("sub", claims.subject());
                 context.getClaims().claim("email", claims.email());

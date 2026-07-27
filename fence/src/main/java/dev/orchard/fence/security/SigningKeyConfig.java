@@ -36,7 +36,7 @@ public class SigningKeyConfig {
         JWKSet jwkSet = new JWKSet(rsaKey);
 
         keyFile.getParentFile().mkdirs();
-        Files.writeString(keyFile.toPath(), jwkSet.toString());
+        Files.writeString(keyFile.toPath(), jwkSet.toString(false));
         log.info("Signing key generated and saved");
 
         return jwkSet;
