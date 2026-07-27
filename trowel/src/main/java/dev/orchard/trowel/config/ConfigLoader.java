@@ -2,6 +2,7 @@ package dev.orchard.trowel.config;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.dataformat.toml.TomlMapper;
 
@@ -21,6 +22,7 @@ public class ConfigLoader {
     private static final TomlMapper MAPPER = TomlMapper.builder()
             .enable(SerializationFeature.INDENT_OUTPUT)
             .changeDefaultPropertyInclusion(incl -> incl.withValueInclusion(JsonInclude.Include.NON_NULL))
+            .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
             .build();
 
     public static Path configDir() {
