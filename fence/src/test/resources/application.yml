@@ -1,3 +1,11 @@
 fence:
   signing-key:
     path: ${java.io.tmpdir}/orchard-fence-test/signing-key.jwk
+  client:
+    client-id: orchard-ui
+    client-secret: test-secret
+    redirect-uri: http://localhost:3000/callback
+  upstream:
+    registration-id: google
+    client-id: test-google-client-id
+    client-secret: test-google-client-secret
