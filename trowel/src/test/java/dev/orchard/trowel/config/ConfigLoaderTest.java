@@ -142,4 +142,75 @@ class ConfigLoaderTest {
 
         assertThat(config.activeTarget()).isNull();
     }
+
+    @Test
+    void target_twoArgConstructor_defaultsNewFieldsToNull() {
+        var target = new OrchardConfig.Target("http://localhost:7778", "some-uuid");
+
+        assertThat(target.fenceServer()).isNull();
+        assertThat(target.accessToken()).isNull();
+        assertThat(target.refreshToken()).isNull();
+        assertThat(target.expiresAt()).isNull();
+    }
+
+    @Test
+    void save_and_load_roundTripsTokenFields() throws IOException {
+        var targets = new LinkedHashMap<String, OrchardConfig.Target>();
+        targets.put("local", new OrchardConfig.Target(
+            "http://localhost:7778",
+            "3f2a1c4e-0000-0000-0000-0000000009b7",
+            "http://localhost:7779",
+            "access-token-abc",
+            "refresh-token-xyz",
+            1785036296L
+        ));
+        ConfigLoader.save(new OrchardConfig("local", targets));
+
+        OrchardConfig reloaded = ConfigLoader.load();
+
+        assertThat(reloaded).isNotNull();
+        OrchardConfig.Target target = reloaded.targets().get("local");
+        assertThat(target.fenceServer()).isEqualTo("http://localhost:7779");
+        assertThat(target.accessToken()).isEqualTo("access-token-abc");
+        assertThat(target.refreshToken()).isEqualTo("refresh-token-xyz");
+        assertThat(target.expiresAt()).isEqualTo(1785036296L);
+    }
+
+    @Test
+    void save_targetWithNullTokenFields_omitsThemAndRoundTripsToNull() throws IOException {
+        var targets = new LinkedHashMap<String, OrchardConfig.Target>();
+        targets.put("local", new OrchardConfig.Target("http://localhost:7778", "some-uuid"));
+        ConfigLoader.save(new OrchardConfig("local", targets));
+
+        OrchardConfig reloaded = ConfigLoader.load();
+
+        OrchardConfig.Target target = reloaded.targets().get("local");
+        assertThat(target.fenceServer()).isNull();
+        assertThat(target.accessToken()).isNull();
+        assertThat(target.refreshToken()).isNull();
+        assertThat(target.expiresAt()).isNull();
+    }
+
+    @Test
+    void save_writesSnakeCaseKeysForTokenFields() throws Exception {
+        var targets = new LinkedHashMap<String, OrchardConfig.Target>();
+        targets.put("local", new OrchardConfig.Target(
+            "http://localhost:7778",
+            "3f2a1c4e-0000-0000-0000-0000000009b7",
+            "http://localhost:7779",
+            "access-token-abc",
+            "refresh-token-xyz",
+            1785036296L
+        ));
+        ConfigLoader.save(new OrchardConfig("local", targets));
+
+        String written = Files.readString(ConfigLoader.tomlFile());
+
+        assertThat(written).contains("fence_server");
+        assertThat(written).contains("access_token");
+        assertThat(written).contains("refresh_token");
+        assertThat(written).contains("expires_at");
+        assertThat(written).doesNotContain("fenceServer");
+        assertThat(written).doesNotContain("accessToken");
+    }
 }
