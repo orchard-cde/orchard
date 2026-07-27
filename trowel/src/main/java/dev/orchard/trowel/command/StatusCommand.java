@@ -1,6 +1,7 @@
 package dev.orchard.trowel.command;
 
 import dev.orchard.trowel.Trowel;
+import dev.orchard.trowel.auth.NoAuthProvider;
 import dev.orchard.trowel.client.OrchardClient;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.ParentCommand;
@@ -19,7 +20,7 @@ public class StatusCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            OrchardClient client = new OrchardClient(parent.getServerUrl(), parent.getCultivatorId());
+            OrchardClient client = new OrchardClient(parent.getServerUrl(), new NoAuthProvider());
             var health = client.checkHealth();
 
             System.out.println();
