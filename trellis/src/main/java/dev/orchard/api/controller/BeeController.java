@@ -28,10 +28,9 @@ public class BeeController {
     @PostMapping
     public ResponseEntity<BeeResponse> createBee(
             HttpServletRequest request,
-            @RequestHeader(value = "X-Cultivator-Id", required = false) UUID headerCultivatorId,
             @PathVariable UUID groveId,
             @Valid @RequestBody CreateBeeRequest createBeeRequest) {
-        UUID cultivatorId = resolveCultivatorId(request, headerCultivatorId);
+        UUID cultivatorId = (UUID) request.getAttribute("cultivatorId");
         if (cultivatorId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -84,11 +83,4 @@ public class BeeController {
             .orElse(ResponseEntity.notFound().build());
     }
 
-    private UUID resolveCultivatorId(HttpServletRequest request, UUID headerCultivatorId) {
-        UUID cultivatorId = (UUID) request.getAttribute("cultivatorId");
-        if (cultivatorId != null) {
-            return cultivatorId;
-        }
-        return headerCultivatorId;
-    }
 }

@@ -43,7 +43,7 @@ class BeeControllerTest {
         when(beeService.attachBee(eq(groveId), any(), any())).thenReturn(bee);
 
         mockMvc.perform(post("/api/groves/{groveId}/bees", groveId)
-                .header("X-Cultivator-Id", cultivatorId)
+                .requestAttr("cultivatorId", cultivatorId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"beeType\":\"CLAUDE_CODE\"}"))
             .andExpect(status().isAccepted())
@@ -52,12 +52,20 @@ class BeeControllerTest {
     }
 
     @Test
+    void createBee_noCultivatorAttribute_returns401() throws Exception {
+        mockMvc.perform(post("/api/groves/{groveId}/bees", groveId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"beeType\":\"CLAUDE_CODE\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void createBee_groveNotFlourishing_returns409() throws Exception {
         when(beeService.attachBee(eq(groveId), any(), any()))
             .thenThrow(new IllegalStateException("Grove must be FLOURISHING"));
 
         mockMvc.perform(post("/api/groves/{groveId}/bees", groveId)
-                .header("X-Cultivator-Id", cultivatorId)
+                .requestAttr("cultivatorId", cultivatorId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"beeType\":\"CLAUDE_CODE\"}"))
             .andExpect(status().isConflict());
@@ -69,7 +77,7 @@ class BeeControllerTest {
             .thenThrow(new IllegalArgumentException("No BeeKeeper registered for bee type: CLAUDE_CODE"));
 
         mockMvc.perform(post("/api/groves/{groveId}/bees", groveId)
-                .header("X-Cultivator-Id", cultivatorId)
+                .requestAttr("cultivatorId", cultivatorId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"beeType\":\"CLAUDE_CODE\"}"))
             .andExpect(status().isBadRequest());

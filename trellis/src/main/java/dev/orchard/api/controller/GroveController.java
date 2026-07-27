@@ -27,9 +27,8 @@ public class GroveController {
     @PostMapping
     public ResponseEntity<GroveResponse> plantGrove(
             HttpServletRequest request,
-            @RequestHeader(value = "X-Cultivator-Id", required = false) UUID headerCultivatorId,
             @Valid @RequestBody CreateGroveRequest groveRequest) {
-        UUID cultivatorId = resolveCultivatorId(request, headerCultivatorId);
+        UUID cultivatorId = (UUID) request.getAttribute("cultivatorId");
         if (cultivatorId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -49,9 +48,8 @@ public class GroveController {
     @GetMapping
     public ResponseEntity<List<GroveResponse>> listGroves(
             HttpServletRequest request,
-            @RequestHeader(value = "X-Cultivator-Id", required = false) UUID headerCultivatorId,
             @RequestParam(defaultValue = "false") boolean all) {
-        UUID cultivatorId = resolveCultivatorId(request, headerCultivatorId);
+        UUID cultivatorId = (UUID) request.getAttribute("cultivatorId");
         if (cultivatorId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -133,15 +131,4 @@ public class GroveController {
         return "%s/.ssh/orchard_ed25519".formatted(System.getProperty("user.home"));
     }
 
-    /**
-     * Resolves the cultivator ID from the auth filter's request attribute first,
-     * falling back to the X-Cultivator-Id header for dev/unauthenticated mode.
-     */
-    private UUID resolveCultivatorId(HttpServletRequest request, UUID headerCultivatorId) {
-        UUID cultivatorId = (UUID) request.getAttribute("cultivatorId");
-        if (cultivatorId != null) {
-            return cultivatorId;
-        }
-        return headerCultivatorId;
-    }
 }
