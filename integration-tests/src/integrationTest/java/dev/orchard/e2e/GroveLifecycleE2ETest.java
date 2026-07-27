@@ -71,7 +71,6 @@ class GroveLifecycleE2ETest {
         var request = new CreateGroveRequest(TEST_REPO_URL, TEST_REPO_BRANCH, null, "small", null);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Cultivator-Id", TEST_CULTIVATOR_ID.toString());
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         ResponseEntity<GroveResponse> response = restTemplate.exchange(
@@ -172,13 +171,10 @@ class GroveLifecycleE2ETest {
     void canListGroves() {
         assertThat(groveId).as("groveId must be set").isNotNull();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Cultivator-Id", TEST_CULTIVATOR_ID.toString());
-
         ResponseEntity<List<GroveResponse>> response = restTemplate.exchange(
             "/api/groves",
             HttpMethod.GET,
-            new HttpEntity<>(headers),
+            HttpEntity.EMPTY,
             new ParameterizedTypeReference<>() {}
         );
 

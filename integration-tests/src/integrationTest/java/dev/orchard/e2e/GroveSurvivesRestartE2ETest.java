@@ -36,7 +36,6 @@ import java.util.concurrent.TimeUnit;
 import static dev.orchard.e2e.E2ETestConstants.GROVE_CLEARED_TIMEOUT;
 import static dev.orchard.e2e.E2ETestConstants.GROVE_FLOURISHING_TIMEOUT;
 import static dev.orchard.e2e.E2ETestConstants.POLL_INTERVAL;
-import static dev.orchard.e2e.E2ETestConstants.TEST_CULTIVATOR_ID;
 import static dev.orchard.e2e.E2ETestConstants.TEST_REPO_BRANCH;
 import static dev.orchard.e2e.E2ETestConstants.TEST_REPO_URL;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,7 +71,6 @@ class GroveSurvivesRestartE2ETest {
         var request = new CreateGroveRequest(TEST_REPO_URL, TEST_REPO_BRANCH, null, "small", null);
 
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-Cultivator-Id", TEST_CULTIVATOR_ID.toString());
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         ResponseEntity<GroveResponse> response = restTemplate.exchange(
