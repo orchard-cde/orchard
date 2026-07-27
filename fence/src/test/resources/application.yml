@@ -1,0 +1,3 @@
+fence:
+  signing-key:
+    path: ${java.io.tmpdir}/orchard-fence-test/signing-key.jwk
