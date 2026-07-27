@@ -36,13 +36,13 @@ class FenceClientTest {
 
     @AfterEach
     void removeContexts() {
-        try { server.removeContext("/device/authorize"); } catch (IllegalArgumentException ignored) {}
-        try { server.removeContext("/token"); } catch (IllegalArgumentException ignored) {}
+        try { server.removeContext("/oauth2/device_authorization"); } catch (IllegalArgumentException ignored) {}
+        try { server.removeContext("/oauth2/token"); } catch (IllegalArgumentException ignored) {}
     }
 
     @Test
     void requestDeviceAuthorization_parsesResponse() throws Exception {
-        server.createContext("/device/authorize", exchange -> {
+        server.createContext("/oauth2/device_authorization", exchange -> {
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "device_code", "dc-123",
                 "user_code", "ABCD-EFGH",
@@ -65,7 +65,7 @@ class FenceClientTest {
     @Test
     void requestDeviceAuthorization_sendsCorrectBody() throws Exception {
         AtomicReference<String> capturedBody = new AtomicReference<>();
-        server.createContext("/device/authorize", exchange -> {
+        server.createContext("/oauth2/device_authorization", exchange -> {
             capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "device_code", "dc-123",
@@ -80,12 +80,11 @@ class FenceClientTest {
         client.requestDeviceAuthorization();
 
         assertThat(capturedBody.get()).contains("client_id=my-client-id");
-        assertThat(capturedBody.get()).contains("scope=openid");
     }
 
     @Test
     void pollDeviceToken_pending_throwsAuthorizationPendingException() throws Exception {
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "authorization_pending"
             )));
@@ -98,7 +97,7 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_slowDown_throwsSlowDownException() throws Exception {
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "slow_down"
             )));
@@ -111,7 +110,7 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_expiredToken_throwsDeviceCodeExpiredException() throws Exception {
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "expired_token"
             )));
@@ -124,7 +123,7 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_accessDenied_throwsAuthorizationDeniedException() throws Exception {
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "access_denied"
             )));
@@ -137,7 +136,7 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_invalidGrant_throwsInvalidGrantException() throws Exception {
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "invalid_grant"
             )));
@@ -150,7 +149,7 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_success_returnsTokenResponse() throws Exception {
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "access_token", "at-xyz",
                 "refresh_token", "rt-xyz",
@@ -171,7 +170,7 @@ class FenceClientTest {
     @Test
     void pollDeviceToken_sendsCorrectGrantTypeAndDeviceCode() throws Exception {
         AtomicReference<String> capturedBody = new AtomicReference<>();
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "access_token", "at-xyz",
@@ -191,7 +190,7 @@ class FenceClientTest {
 
     @Test
     void refreshToken_success_returnsTokenResponse() throws Exception {
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "access_token", "at-refreshed",
                 "refresh_token", "rt-new",
@@ -209,7 +208,7 @@ class FenceClientTest {
 
     @Test
     void refreshToken_invalidGrant_throwsRefreshTokenInvalidException() throws Exception {
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             respond(exchange, 401, mapper.writeValueAsString(Map.of(
                 "error", "invalid_grant"
             )));
@@ -223,7 +222,7 @@ class FenceClientTest {
     @Test
     void refreshToken_sendsCorrectBody() throws Exception {
         AtomicReference<String> capturedBody = new AtomicReference<>();
-        server.createContext("/token", exchange -> {
+        server.createContext("/oauth2/token", exchange -> {
             capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "access_token", "at-refreshed",
@@ -243,7 +242,7 @@ class FenceClientTest {
 
     @Test
     void requestDeviceAuthorization_httpError_throwsFenceAuthException() throws Exception {
-        server.createContext("/device/authorize", exchange -> {
+        server.createContext("/oauth2/device_authorization", exchange -> {
             respond(exchange, 500, "Internal Server Error");
         });
 

@@ -74,14 +74,14 @@ class LoginCommandTest {
         System.setOut(originalOut);
         System.setErr(originalErr);
         System.setProperty("user.home", originalHome);
-        try { fenceServer.removeContext("/device/authorize"); } catch (Exception ignored) {}
-        try { fenceServer.removeContext("/token"); } catch (Exception ignored) {}
+        try { fenceServer.removeContext("/oauth2/device_authorization"); } catch (Exception ignored) {}
+        try { fenceServer.removeContext("/oauth2/token"); } catch (Exception ignored) {}
         try { fenceServer.removeContext("/api/cultivators/me"); } catch (Exception ignored) {}
     }
 
     @Test
     void login_displaysUserCodeAndVerificationUri() throws Exception {
-        fenceServer.createContext("/device/authorize", exchange -> {
+        fenceServer.createContext("/oauth2/device_authorization", exchange -> {
             respond(exchange, 200, """
                 {
                     "device_code": "dc-test-123",
@@ -94,7 +94,7 @@ class LoginCommandTest {
         });
 
         var pollCount = new AtomicInteger(0);
-        fenceServer.createContext("/token", exchange -> {
+        fenceServer.createContext("/oauth2/token", exchange -> {
             int count = pollCount.incrementAndGet();
             if (count <= 2) {
                 respond(exchange, 200, "{\"error\": \"authorization_pending\"}");
@@ -118,7 +118,7 @@ class LoginCommandTest {
 
     @Test
     void login_persistsTokensAndCultivatorToConfig() throws Exception {
-        fenceServer.createContext("/device/authorize", exchange -> {
+        fenceServer.createContext("/oauth2/device_authorization", exchange -> {
             respond(exchange, 200, """
                 {
                     "device_code": "dc-test-456",
@@ -130,7 +130,7 @@ class LoginCommandTest {
                 """);
         });
 
-        fenceServer.createContext("/token", exchange -> {
+        fenceServer.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, """
                 {
                     "access_token": "access-from-login",
@@ -167,7 +167,7 @@ class LoginCommandTest {
 
     @Test
     void login_showsSuccessMessage() throws Exception {
-        fenceServer.createContext("/device/authorize", exchange -> {
+        fenceServer.createContext("/oauth2/device_authorization", exchange -> {
             respond(exchange, 200, """
                 {
                     "device_code": "dc-test-789",
@@ -179,7 +179,7 @@ class LoginCommandTest {
                 """);
         });
 
-        fenceServer.createContext("/token", exchange -> {
+        fenceServer.createContext("/oauth2/token", exchange -> {
             respond(exchange, 200, """
                 {
                     "access_token": "at-success",

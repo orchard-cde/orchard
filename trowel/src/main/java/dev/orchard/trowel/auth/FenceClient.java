@@ -42,12 +42,11 @@ public class FenceClient {
     public DeviceAuthorizationResponse requestDeviceAuthorization() throws FenceAuthException {
         try {
             String body = encodeForm(Map.of(
-                "client_id", clientId,
-                "scope", "openid"
+                "client_id", clientId
             ));
 
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(fenceServerUrl + "/device/authorize"))
+                .uri(URI.create(fenceServerUrl + "/oauth2/device_authorization"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
@@ -85,7 +84,7 @@ public class FenceClient {
     private TokenResponse exchangeToken(String formBody, java.util.function.Supplier<FenceAuthException> invalidGrantFactory) throws FenceAuthException {
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(fenceServerUrl + "/token"))
+                .uri(URI.create(fenceServerUrl + "/oauth2/token"))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(formBody))
                 .build();
