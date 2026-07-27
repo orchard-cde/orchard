@@ -15,9 +15,15 @@ spring:
   flyway:
     enabled: false
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:7779
+
 orchard:
   security:
     oauth2:
-      enabled: false
+      enabled: true
   dev:
     default-cultivator-id: 11111111-1111-1111-1111-111111111111

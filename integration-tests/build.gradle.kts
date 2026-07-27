@@ -34,7 +34,12 @@ dependencies {
     implementation(project(":trowel"))
     implementation(project(":core"))
     implementation(project(":nursery"))
+    implementation(project(":fence"))
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
+
+    "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-webmvc-test")
+    "integrationTestImplementation"("org.springframework.security:spring-security-test")
+    "integrationTestImplementation"("org.springframework.security:spring-security-oauth2-core")
 }
 
 val integrationTest by tasks.registering(Test::class) {

@@ -27,7 +27,7 @@ spring:
 #   oauth2:
 #     resourceserver:
 #       jwt:
-#         issuer-uri: https://your-idp.example.com/realms/orchard
+#         issuer-uri: http://localhost:7779
 
 server:
   port: 8080
@@ -47,8 +47,6 @@ orchard:
       # Set to true to enable JWT authentication. When false (default), all
       # requests are permitted for local development without an identity provider.
       enabled: false
-  # Uncomment and configure when enabling OAuth2:
-  # issuer-uri: https://your-idp.example.com/realms/orchard
 
   nursery:
     # Default provider: qemu, aws, gcp, azure
@@ -143,20 +141,5 @@ logging:
     org.springframework: INFO
     org.hibernate.SQL: WARN
 
-# Uncomment when orchard.security.oauth2.enabled=true to configure JWT validation
-# security:
-#   oauth2:
-#     resourceserver:
-#       jwt:
-#         issuer-uri: https://your-idp.example.com/realms/orchard
-
 spring.web.error.include-message: always
-
-# Uncomment when orchard.security.oauth2.enabled=true to configure JWT validation
-# security:
-#   oauth2:
-#     resourceserver:
-#       jwt:
-#         issuer-uri: https://your-idp.example.com/realms/orchard
-
 spring.web.error.include-stacktrace: never

@@ -1,0 +1,44 @@
+server:
+  port: 7779
+
+spring:
+  application:
+    name: fence
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:}
+            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            scope: openid,profile,email
+        provider:
+          google:
+            issuer-uri: https://accounts.google.com
+
+fence:
+  signing-key:
+    path: ${FENCE_SIGNING_KEY_PATH:${user.home}/.fence/signing-key.jwk}
+  client:
+    client-id: ${FENCE_CLIENT_ID:orchard-ui}
+    client-secret: ${FENCE_CLIENT_SECRET:}
+    redirect-uri: ${FENCE_REDIRECT_URI:http://localhost:3000/callback}
+  upstream:
+    registration-id: google
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+    allowed-methods:
+      - GET
+      - POST
+      - OPTIONS
+    allowed-headers:
+      - "*"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
