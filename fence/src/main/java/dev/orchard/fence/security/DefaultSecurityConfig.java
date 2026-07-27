@@ -1,0 +1,28 @@
+package dev.orchard.fence.security;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+public class DefaultSecurityConfig {
+
+    @Bean
+    @Order(2)
+    SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .authorizeHttpRequests(authorize ->
+                        authorize
+                                .requestMatchers("/actuator/**").permitAll()
+                                .requestMatchers("/.well-known/**").permitAll()
+                                .anyRequest().authenticated()
+                )
+                .oauth2Login(oauth2 -> oauth2
+                        .loginPage("/login")
+                );
+
+        return http.build();
+    }
+}
