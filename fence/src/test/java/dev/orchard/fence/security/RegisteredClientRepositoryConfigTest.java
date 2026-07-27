@@ -2,9 +2,9 @@ package dev.orchard.fence.security;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 
@@ -17,34 +17,41 @@ class RegisteredClientRepositoryConfigTest {
             .withBean(FenceClientProperties.class, () -> {
                 FenceClientProperties props = new FenceClientProperties();
                 props.setClientId("orchard-ui");
-                props.setClientSecret("test-secret");
                 props.setRedirectUri("http://localhost:3000/callback");
                 return props;
             })
             .withPropertyValues(
                     "fence.client.client-id=orchard-ui",
-                    "fence.client.client-secret=test-secret",
                     "fence.client.redirect-uri=http://localhost:3000/callback"
             );
 
     @Test
-    void registersStaticClient() {
+    void trowelCliIsRegisteredForDeviceFlow() {
         contextRunner.run(context -> {
-            assertThat(context).hasSingleBean(RegisteredClientRepository.class);
             RegisteredClientRepository repo = context.getBean(RegisteredClientRepository.class);
-            RegisteredClient client = repo.findByClientId("orchard-ui");
+            RegisteredClient client = repo.findByClientId("trowel-cli");
+
             assertThat(client).isNotNull();
-            assertThat(client.getClientId()).isEqualTo("orchard-ui");
+            assertThat(client.getClientAuthenticationMethods()).contains(ClientAuthenticationMethod.NONE);
+            assertThat(client.getAuthorizationGrantTypes()).contains(
+                    AuthorizationGrantType.DEVICE_CODE,
+                    AuthorizationGrantType.REFRESH_TOKEN);
+            assertThat(client.getScopes()).contains("openid");
         });
     }
 
     @Test
-    void clientSupportsDeviceCodeGrant() {
+    void orchardUiIsRegisteredForAuthorizationCodeFlow() {
         contextRunner.run(context -> {
             RegisteredClientRepository repo = context.getBean(RegisteredClientRepository.class);
             RegisteredClient client = repo.findByClientId("orchard-ui");
-            assertThat(client.getAuthorizationGrantTypes())
-                    .contains(AuthorizationGrantType.DEVICE_CODE);
+
+            assertThat(client).isNotNull();
+            assertThat(client.getClientAuthenticationMethods()).contains(ClientAuthenticationMethod.NONE);
+            assertThat(client.getAuthorizationGrantTypes()).contains(
+                    AuthorizationGrantType.AUTHORIZATION_CODE,
+                    AuthorizationGrantType.REFRESH_TOKEN);
+            assertThat(client.getScopes()).contains("openid", "profile", "email");
         });
     }
 }
