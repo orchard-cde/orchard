@@ -49,7 +49,10 @@ public class CultivatorAuthFilter extends OncePerRequestFilter {
         if (authentication instanceof JwtAuthenticationToken jwtAuth) {
             Jwt jwt = jwtAuth.getToken();
 
-            String provider = extractIssuerShortName(jwt.getIssuer() != null ? jwt.getIssuer().toString() : "oidc");
+            // fence is the sole JWT issuer regardless of upstream IdP, so the issuer URL no
+            // longer identifies the upstream provider. Hardcoded until multi-IdP support
+            // (orchard#196) adds a provider claim to the token itself.
+            String provider = "google";
             String providerId = jwt.getSubject();
             String email = jwt.getClaimAsString("email");
             String username = resolveUsername(jwt);
@@ -70,29 +73,6 @@ public class CultivatorAuthFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    /**
-     * Extracts a short provider name from the OIDC issuer URL.
-     * For example, "https://accounts.google.com" becomes "google",
-     * "https://github.com" becomes "github".
-     */
-    private String extractIssuerShortName(String issuerUri) {
-        try {
-            String host = java.net.URI.create(issuerUri).getHost();
-            if (host == null) {
-                return "oidc";
-            }
-
-            // Extract second-level domain (e.g., "google" from "accounts.google.com")
-            String[] parts = host.split("\\.");
-            if (parts.length >= 2) {
-                return parts[parts.length - 2];
-            }
-            return host;
-        } catch (Exception e) {
-            return "oidc";
-        }
     }
 
     /**
