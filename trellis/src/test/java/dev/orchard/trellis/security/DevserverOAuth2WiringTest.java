@@ -28,6 +28,10 @@ class DevserverOAuth2WiringTest {
         registry.add("spring.datasource.url",
                 () -> "jdbc:h2:mem:orchard-devserver-test-" + System.nanoTime());
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+        // This test only exercises OAuth2 wiring, not VM lifecycle. Disabling the
+        // qemu provider skips QemuStartupRunner, which otherwise fails startup on
+        // machines/CI runners without qemu binaries installed.
+        registry.add("orchard.nursery.provider", () -> "none");
     }
 
     @Test
