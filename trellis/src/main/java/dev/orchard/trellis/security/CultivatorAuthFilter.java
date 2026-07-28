@@ -22,7 +22,7 @@ import java.io.IOException;
  * Filter that extracts cultivator identity from a validated JWT token.
  * <p>
  * After Spring Security validates the JWT, this filter reads standard OIDC claims
- * (sub, email, preferred_username, name, picture) and uses {@link CultivatorService}
+ * (sub, email, name, picture) and uses {@link CultivatorService}
  * to find or create the corresponding cultivator. The cultivator's ID is then stored
  * as a request attribute ("cultivatorId") for use by downstream controllers.
  * <p>
@@ -76,18 +76,16 @@ public class CultivatorAuthFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Resolves a username from JWT claims, preferring preferred_username,
-     * then falling back to email prefix, then sub.
+     * Resolves a username from JWT claims. Email is used directly rather than a
+     * derived local-part (e.g. "jane" from "jane@example.com"), since only email
+     * is guaranteed unique across upstream IdPs/domains — a local-part collision
+     * between two different domains would violate the username uniqueness
+     * constraint on the cultivators table.
      */
     private String resolveUsername(Jwt jwt) {
-        String preferredUsername = jwt.getClaimAsString("preferred_username");
-        if (preferredUsername != null && !preferredUsername.isBlank()) {
-            return preferredUsername;
-        }
-
         String email = jwt.getClaimAsString("email");
-        if (email != null && email.contains("@")) {
-            return email.substring(0, email.indexOf('@'));
+        if (email != null && !email.isBlank()) {
+            return email;
         }
 
         return jwt.getSubject();

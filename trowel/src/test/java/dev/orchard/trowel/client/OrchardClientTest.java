@@ -49,7 +49,7 @@ class OrchardClientTest {
     void removeHandlers() {
         try { server.removeContext("/api/groves"); } catch (IllegalArgumentException ignored) {}
         try { server.removeContext("/api/health"); } catch (IllegalArgumentException ignored) {}
-        try { server.removeContext("/api/cultivators/me"); } catch (IllegalArgumentException ignored) {}
+        try { server.removeContext("/api/me"); } catch (IllegalArgumentException ignored) {}
     }
 
     // -- plantGrove tests --
@@ -433,25 +433,25 @@ class OrchardClientTest {
 
     @Test
     void getCurrentCultivator_sendsAuthenticatedGetAndDeserializesResponse() throws Exception {
-        server.createContext("/api/cultivators/me", exchange -> {
+        server.createContext("/api/me", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("GET");
             assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer " + TEST_TOKEN);
 
             respond(exchange, 200, """
-                {"id":"cult-uuid-123","name":"Test Cultivator","email":"test@example.com"}
+                {"id":"cult-uuid-123","email":"test@example.com","displayName":"Test Cultivator"}
                 """);
         });
 
         OrchardClient.CultivatorResponse cultivator = authClient.getCurrentCultivator();
 
         assertThat(cultivator.id()).isEqualTo("cult-uuid-123");
-        assertThat(cultivator.name()).isEqualTo("Test Cultivator");
+        assertThat(cultivator.displayName()).isEqualTo("Test Cultivator");
         assertThat(cultivator.email()).isEqualTo("test@example.com");
     }
 
     @Test
     void getCurrentCultivator_throwsOnUnauthorized() {
-        server.createContext("/api/cultivators/me", exchange ->
+        server.createContext("/api/me", exchange ->
             respond(exchange, 401, "{\"error\":\"unauthorized\"}")
         );
 

@@ -202,7 +202,7 @@ public class OrchardClient {
     public CultivatorResponse getCurrentCultivator() throws IOException, InterruptedException {
         HttpRequest request = authenticated(
             HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/api/cultivators/me"))
+                .uri(URI.create(baseUrl + "/api/me"))
                 .GET()
         ).build();
 
@@ -253,7 +253,7 @@ public class OrchardClient {
     public record SeedlingInfo(UUID id, String state, String ipAddress, int sshPort, int cpuCores, int memoryMb, int diskGb) {}
     public record FruitInfo(UUID id, String state, String containerId, String containerName, String serviceName) {}
     public record HealthResponse(String status, String name, String version) {}
-    public record CultivatorResponse(String id, String name, String email) {}
+    public record CultivatorResponse(String id, String email, String displayName) {}
 
     public record BeeResponse(
         UUID id,

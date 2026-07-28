@@ -76,7 +76,7 @@ class LoginCommandTest {
         System.setProperty("user.home", originalHome);
         try { fenceServer.removeContext("/oauth2/device_authorization"); } catch (Exception ignored) {}
         try { fenceServer.removeContext("/oauth2/token"); } catch (Exception ignored) {}
-        try { fenceServer.removeContext("/api/cultivators/me"); } catch (Exception ignored) {}
+        try { fenceServer.removeContext("/api/me"); } catch (Exception ignored) {}
     }
 
     @Test
@@ -105,8 +105,8 @@ class LoginCommandTest {
             }
         });
 
-        fenceServer.createContext("/api/cultivators/me", exchange -> {
-            respond(exchange, 200, "{\"id\": \"c-1\", \"name\": \"Display User\", \"email\": \"d@example.com\"}");
+        fenceServer.createContext("/api/me", exchange -> {
+            respond(exchange, 200, "{\"id\": \"c-1\", \"displayName\": \"Display User\", \"email\": \"d@example.com\"}");
         });
 
         int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort);
@@ -141,11 +141,11 @@ class LoginCommandTest {
                 """);
         });
 
-        fenceServer.createContext("/api/cultivators/me", exchange -> {
+        fenceServer.createContext("/api/me", exchange -> {
             respond(exchange, 200, """
                 {
                     "id": "cultivator-login-uuid",
-                    "name": "Test Cultivator",
+                    "displayName": "Test Cultivator",
                     "email": "test@example.com"
                 }
                 """);
@@ -190,11 +190,11 @@ class LoginCommandTest {
                 """);
         });
 
-        fenceServer.createContext("/api/cultivators/me", exchange -> {
+        fenceServer.createContext("/api/me", exchange -> {
             respond(exchange, 200, """
                 {
                     "id": "cult-success",
-                    "name": "Success User",
+                    "displayName": "Success User",
                     "email": "success@example.com"
                 }
                 """);

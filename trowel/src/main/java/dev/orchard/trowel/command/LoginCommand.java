@@ -80,8 +80,10 @@ public class LoginCommand implements Callable<Integer> {
             // Step 5: Persist to config
             persistLoginResult(tokenResponse, fenceUrl, cultivator.id());
 
+            String greetingName = cultivator.displayName() != null ? cultivator.displayName() : cultivator.email();
+
             System.out.println();
-            System.out.println("Logged in as " + cultivator.name() + " (" + cultivator.email() + ")");
+            System.out.println("Logged in as " + greetingName + " (" + cultivator.email() + ")");
             System.out.println();
 
             return 0;
