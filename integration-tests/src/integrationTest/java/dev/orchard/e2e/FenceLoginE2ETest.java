@@ -64,6 +64,7 @@ class FenceLoginE2ETest {
                         "--spring.security.oauth2.client.registration.google.client-secret=test-google-client-secret",
                         "--spring.security.oauth2.client.registration.google.scope=openid,profile,email",
                         "--spring.security.oauth2.client.provider.google.issuer-uri=https://accounts.google.com",
+                        "--fence.issuer=http://localhost:7779",
                         "--fence.signing-key.path=${java.io.tmpdir}/orchard-fence-e2e-test/signing-key.jwk",
                         "--fence.client.client-id=orchard-ui",
                         "--fence.client.redirect-uri=http://localhost:3000/callback",
@@ -108,7 +109,6 @@ class FenceLoginE2ETest {
                 "http://localhost:7779/oauth2/device_authorization",
                 new HttpEntity<>(deviceAuthBody, formHeaders),
                 Map.class);
-        System.out.println("DEBUG device auth body: " + deviceAuthResponse.getBody());
         assertThat(deviceAuthResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         String deviceCode = (String) deviceAuthResponse.getBody().get("device_code");
         String userCode = (String) deviceAuthResponse.getBody().get("user_code");

@@ -1,5 +1,5 @@
 server:
-  port: 7779
+  port: ${FENCE_PORT:7779}
 
 spring:
   application:
@@ -17,6 +17,7 @@ spring:
             issuer-uri: https://accounts.google.com
 
 fence:
+  issuer: ${FENCE_ISSUER:http://localhost:${FENCE_PORT:7779}}
   signing-key:
     path: ${FENCE_SIGNING_KEY_PATH:${user.home}/.fence/signing-key.jwk}
   client:

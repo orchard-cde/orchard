@@ -12,6 +12,7 @@ spring:
             issuer-uri: https://accounts.google.com
 
 fence:
+  issuer: http://localhost:7779
   signing-key:
     path: ${java.io.tmpdir}/orchard-fence-test/signing-key.jwk
   client:

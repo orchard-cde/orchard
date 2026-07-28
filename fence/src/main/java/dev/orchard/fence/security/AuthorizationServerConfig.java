@@ -82,9 +82,9 @@ public class AuthorizationServerConfig {
     }
 
     @Bean
-    AuthorizationServerSettings authorizationServerSettings() {
+    AuthorizationServerSettings authorizationServerSettings(FenceProperties properties) {
         return AuthorizationServerSettings.builder()
-                .issuer("http://localhost:7779")
+                .issuer(properties.getIssuer())
                 .build();
     }
 }

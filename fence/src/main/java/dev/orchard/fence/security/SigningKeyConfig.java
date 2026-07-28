@@ -12,6 +12,8 @@ import org.springframework.context.annotation.Configuration;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.text.ParseException;
 import java.util.UUID;
 
@@ -36,6 +38,8 @@ public class SigningKeyConfig {
         JWKSet jwkSet = new JWKSet(rsaKey);
 
         keyFile.getParentFile().mkdirs();
+        FileAttribute<?> ownerOnly = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------"));
+        Files.createFile(keyFile.toPath(), ownerOnly);
         Files.writeString(keyFile.toPath(), jwkSet.toString(false));
         log.info("Signing key generated and saved");
 

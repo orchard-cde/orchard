@@ -39,8 +39,6 @@ public final class DeviceClientAuthenticationProvider implements AuthenticationP
             throw new OAuth2AuthenticationException(new OAuth2Error(OAuth2ErrorCodes.INVALID_CLIENT));
         }
 
-        System.out.println("DEBUG resolved client " + clientId + " scopes=" + registeredClient.getScopes()
-                + " grantTypes=" + registeredClient.getAuthorizationGrantTypes());
         return new OAuth2ClientAuthenticationToken(registeredClient, ClientAuthenticationMethod.NONE, null);
     }
 
