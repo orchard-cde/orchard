@@ -1,17 +1,6 @@
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: test-google-client-id
-            client-secret: test-google-client-secret
-            scope: openid,profile,email
-        provider:
-          google:
-            issuer-uri: https://accounts.google.com
-
 fence:
+  standalone:
+    enabled: ${FENCE_STANDALONE_ENABLED:false}
   issuer: http://localhost:7779
   signing-key:
     path: ${java.io.tmpdir}/orchard-fence-test/signing-key.jwk
@@ -23,3 +12,20 @@ fence:
     registration-id: google
     client-id: test-google-client-id
     client-secret: test-google-client-secret
+
+---
+spring:
+  config:
+    activate:
+      on-property: fence.standalone.enabled=false
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test-google-client-id
+            client-secret: test-google-client-secret
+            scope: openid,profile,email
+        provider:
+          google:
+            issuer-uri: https://accounts.google.com

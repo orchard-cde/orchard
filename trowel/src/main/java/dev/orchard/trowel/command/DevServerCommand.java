@@ -60,6 +60,18 @@ public class DevServerCommand implements Callable<Integer> {
         return orchardHome().resolve("bin").resolve("orchard-ui-backend");
     }
 
+    static Path fenceBinary() {
+        return orchardHome().resolve("bin").resolve("fence.jar");
+    }
+
+    static Path fencePidFile() {
+        return orchardHome().resolve("run").resolve("orchard-fence.pid");
+    }
+
+    static Path fenceLogFile() {
+        return orchardHome().resolve("logs").resolve("orchard-fence.log");
+    }
+
     @Override
     public Integer call() {
         picocli.CommandLine.usage(this, System.out);
@@ -104,8 +116,17 @@ public class DevServerCommand implements Callable<Integer> {
         @Option(names = {"--open"}, description = "Open the UI in your browser once it is ready")
         boolean open;
 
+        @Option(names = {"--fence-port"}, description = "Fence auth server port (default: 7779)", defaultValue = "7779")
+        int fencePort = 7779;
+
+        @Option(names = {"--no-auth"}, description = "Start without the fence auth server (disables OAuth2)")
+        boolean noAuth;
+
         // Test seam: override the core port without picocli parsing.
         void setCorePortForTest(int p) { this.corePort = p; }
+
+        // Test seam: override the fence port without picocli parsing.
+        void setFencePortForTest(int p) { this.fencePort = p; }
 
         @Override
         public Integer call() {
@@ -131,7 +152,22 @@ public class DevServerCommand implements Callable<Integer> {
 
                 ensureDirectories();
 
-                // ADJ-1: resolve UI binary BEFORE launching core (fail fast → nothing started)
+                if (!noAuth) {
+                    Path fenceJar = fenceBinary();
+                    if (!Files.isRegularFile(fenceJar) || !Files.isReadable(fenceJar)) {
+                        System.err.println("Fence auth server JAR not found at: " + fenceJar);
+                        System.err.println();
+                        System.err.println("Build it from source with:");
+                        System.err.println("  ./gradlew :fence:bootJar");
+                        System.err.println();
+                        System.err.println("Then install it:");
+                        System.err.println("  mkdir -p " + fenceJar.getParent());
+                        System.err.println("  cp fence/build/libs/fence-*.jar " + fenceJar);
+                        return 1;
+                    }
+                }
+
+                // ADJ-1: resolve UI binary BEFORE launching anything (fail fast -> nothing started)
                 Path uiBinary = null;
                 if (!noUi && !foreground) {
                     try {
@@ -149,12 +185,21 @@ public class DevServerCommand implements Callable<Integer> {
                     System.out.println("foreground mode runs core only (:" + corePort + "); omit -f to also run the UI");
                 }
 
+                // Start fence before core when auth is enabled
+                Process fenceProcess = null;
+                if (!noAuth) {
+                    fenceProcess = startFence();
+                    if (fenceProcess == null) {
+                        return 1;
+                    }
+                }
+
                 var command = buildCommand(coreBinary);
 
                 if (foreground) {
-                    return runForeground(command);
+                    return runForeground(command, fenceProcess);
                 } else {
-                    return runBackground(command, uiBinary);
+                    return runBackground(command, uiBinary, fenceProcess);
                 }
 
             } catch (Exception e) {
@@ -178,6 +223,12 @@ public class DevServerCommand implements Callable<Integer> {
                 command.add("--logging.level.dev.orchard=DEBUG");
             }
 
+            if (noAuth) {
+                command.add("--orchard.security.oauth2.enabled=false");
+            } else {
+                command.add("--spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:" + fencePort);
+            }
+
             return command;
         }
 
@@ -192,9 +243,12 @@ public class DevServerCommand implements Callable<Integer> {
             return java.util.Map.of("ORCHARD_CORE_BASE_URL", "http://localhost:" + corePort);
         }
 
-        private int runForeground(ArrayList<String> command) throws IOException, InterruptedException {
-            System.out.println("[1;32mStarting Orchard dev-server (foreground)...[0m");
+        private int runForeground(ArrayList<String> command, Process fenceProcess) throws IOException, InterruptedException {
+            System.out.println("\u001B[1;32mStarting Orchard dev-server (foreground)...\u001B[0m");
             System.out.println("  Port: " + corePort);
+            if (fenceProcess != null) {
+                System.out.println("  Fence: http://localhost:" + fencePort);
+            }
             System.out.println("  Press Ctrl+C to stop");
             System.out.println();
 
@@ -202,17 +256,28 @@ public class DevServerCommand implements Callable<Integer> {
             pb.inheritIO();
             Process process = pb.start();
 
+            Process fenceFinal = fenceProcess;
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 if (process.isAlive()) {
                     process.destroy();
                 }
+                if (fenceFinal != null && fenceFinal.isAlive()) {
+                    fenceFinal.destroy();
+                }
             }));
 
-            return process.waitFor();
+            int exitCode = process.waitFor();
+
+            if (fenceFinal != null && fenceFinal.isAlive()) {
+                fenceFinal.destroy();
+                fenceFinal.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                Files.deleteIfExists(fencePidFile());
+            }
+            return exitCode;
         }
 
-        private int runBackground(ArrayList<String> command, Path uiBinary) throws IOException, InterruptedException {
-            System.out.println("[1;32mStarting Orchard dev-server...[0m");
+        private int runBackground(ArrayList<String> command, Path uiBinary, Process fenceProcess) throws IOException, InterruptedException {
+            System.out.println("\u001B[1;32mStarting Orchard dev-server...\u001B[0m");
 
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile().toFile()));
@@ -222,8 +287,8 @@ public class DevServerCommand implements Callable<Integer> {
             long pid = process.pid();
             Files.writeString(pidFile(), pid + "\n" + corePort);
 
-            System.out.println("  PID: " + pid);
-            System.out.println("  Logs: " + logFile());
+            System.out.println("  Core PID: " + pid);
+            System.out.println("  Core logs: " + logFile());
 
             // Wait for health check
             System.out.print("  Waiting for server to start");
@@ -232,12 +297,16 @@ public class DevServerCommand implements Callable<Integer> {
             if (!coreHealthy) {
                 process.destroy();
                 Files.deleteIfExists(pidFile());
+                if (fenceProcess != null && fenceProcess.isAlive()) {
+                    fenceProcess.destroy();
+                    Files.deleteIfExists(fencePidFile());
+                }
                 if (!process.isAlive()) {
                     System.out.println(" exited.");
-                    System.err.println("orchard core exited on startup — check " + logFile());
+                    System.err.println("orchard core exited on startup - check " + logFile());
                 } else {
                     System.out.println(" timed out.");
-                    System.err.println("orchard core did not become healthy in time — check " + logFile());
+                    System.err.println("orchard core did not become healthy in time - check " + logFile());
                 }
                 return 1;
             }
@@ -246,6 +315,10 @@ public class DevServerCommand implements Callable<Integer> {
             if (uiBinary != null) {   // i.e. !noUi && !foreground
                 int r = startUiBackend(uiBinary, process);
                 if (r != 0) {
+                    if (fenceProcess != null && fenceProcess.isAlive()) {
+                        fenceProcess.destroy();
+                        Files.deleteIfExists(fencePidFile());
+                    }
                     return r;
                 }
                 printConnectionInfo(port);   // BFF URL is what to open
@@ -291,7 +364,7 @@ public class DevServerCommand implements Callable<Integer> {
         }
 
         private int startUiBackend(Path uiBinary, Process coreProcess) throws IOException, InterruptedException {
-            System.out.println("[1;32mStarting orchard-ui...[0m");
+            System.out.println("\u001B[1;32mStarting orchard-ui...\u001B[0m");
             ProcessBuilder pb = new ProcessBuilder(buildUiCommand(uiBinary));
             pb.environment().putAll(uiEnv());
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(uiLogFile().toFile()));
@@ -308,10 +381,10 @@ public class DevServerCommand implements Callable<Integer> {
                 Files.deleteIfExists(pidFile());
                 if (!ui.isAlive()) {
                     System.out.println(" exited.");
-                    System.err.println("orchard-ui exited on startup — check " + uiLogFile());
+                    System.err.println("orchard-ui exited on startup - check " + uiLogFile());
                 } else {
                     System.out.println(" timed out.");
-                    System.err.println("orchard-ui did not become healthy in time — check " + uiLogFile());
+                    System.err.println("orchard-ui did not become healthy in time - check " + uiLogFile());
                 }
                 return 1;
             }
@@ -326,6 +399,45 @@ public class DevServerCommand implements Callable<Integer> {
                 catch (IOException ex) { System.out.println("  (could not auto-open browser: " + ex.getMessage() + ")"); }
             }
             return 0;
+        }
+
+        private Process startFence() throws IOException {
+            var fenceJar = fenceBinary();
+            System.out.println("  Fence: starting on port " + fencePort);
+
+            var command = new ArrayList<String>();
+            command.add("java");
+            command.add("-jar");
+            command.add(fenceJar.toString());
+            command.add("--server.port=" + fencePort);
+            command.add("--fence.standalone.enabled=true");
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(fenceLogFile().toFile()));
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            Files.writeString(fencePidFile(), process.pid() + "\n" + fencePort);
+
+            System.out.println("    PID: " + process.pid());
+            System.out.println("    Logs: " + fenceLogFile());
+
+            System.out.print("  Waiting for fence to start");
+            boolean healthy = waitForHealth(process, fencePort, "/actuator/health", 15);
+            if (!healthy) {
+                process.destroy();
+                Files.deleteIfExists(fencePidFile());
+                if (!process.isAlive()) {
+                    System.out.println(" exited.");
+                    System.err.println("fence exited on startup - check " + fenceLogFile());
+                } else {
+                    System.out.println(" timed out.");
+                    System.err.println("fence did not become healthy in time - check " + fenceLogFile());
+                }
+                return null;
+            }
+            System.out.println(" ready!");
+            return process;
         }
     }
 
@@ -362,13 +474,14 @@ public class DevServerCommand implements Callable<Integer> {
         @Override
         public Integer call() {
             try {
-                if (!Files.exists(pidFile()) && !Files.exists(uiPidFile())) {
+                if (!Files.exists(pidFile()) && !Files.exists(uiPidFile()) && !Files.exists(fencePidFile())) {
                     System.out.println("Orchard dev-server is not running (no PID file found).");
                     return 0;
                 }
-                stopOne(uiPidFile(), "orchard-ui");   // proxy first
-                stopOne(pidFile(), "orchard core");   // then upstream
-                System.out.println("[1;32mOrchard dev-server stopped.[0m");
+                stopOne(uiPidFile(), "orchard-ui");       // proxy first
+                stopOne(pidFile(), "orchard core");       // then upstream
+                stopOne(fencePidFile(), "orchard fence"); // fence last (core depends on it)
+                System.out.println("\u001B[1;32mOrchard dev-server stopped.\u001B[0m");
                 return 0;
             } catch (Exception e) {
                 System.err.println("Failed to stop dev-server: " + e.getMessage());
@@ -388,7 +501,7 @@ public class DevServerCommand implements Callable<Integer> {
             try {
                 ServerInfo info = readServerInfo();
                 if (info == null) {
-                    System.out.println("Orchard dev-server: [31mstopped[0m");
+                    System.out.println("Orchard dev-server: \u001B[31mstopped\u001B[0m");
                     return 0;
                 }
 
@@ -397,12 +510,12 @@ public class DevServerCommand implements Callable<Integer> {
                     .orElse(false);
 
                 if (!processAlive) {
-                    System.out.println("Orchard dev-server: [31mstopped[0m (stale PID file)");
+                    System.out.println("Orchard dev-server: \u001B[31mstopped\u001B[0m (stale PID file)");
                     Files.deleteIfExists(pidFile());
                     return 0;
                 }
 
-                System.out.println("Orchard dev-server: [1;32mrunning[0m");
+                System.out.println("Orchard dev-server: \u001B[1;32mrunning\u001B[0m");
                 System.out.println("  PID: " + info.pid());
 
                 // Try health endpoint to get more info
@@ -435,6 +548,14 @@ public class DevServerCommand implements Callable<Integer> {
                 } else if (ui != null) {
                     Files.deleteIfExists(uiPidFile());
                 }
+
+                ServerInfo fence = readFenceInfo();
+                if (fence != null && ProcessHandle.of(fence.pid()).map(ProcessHandle::isAlive).orElse(false)) {
+                    System.out.println("  Fence PID: " + fence.pid());
+                    System.out.println("  Fence URL: http://localhost:" + fence.port());
+                } else if (fence != null) {
+                    Files.deleteIfExists(fencePidFile());
+                }
                 return 0;
 
             } catch (Exception e) {
@@ -462,6 +583,8 @@ public class DevServerCommand implements Callable<Integer> {
 
     static ServerInfo readUiInfo()     { return readInfo(uiPidFile(), 7777); }
 
+    static ServerInfo readFenceInfo()  { return readInfo(fencePidFile(), 7779); }
+
     private static boolean isServerRunning() {
         ServerInfo info = readServerInfo();
         if (info == null) {
@@ -481,7 +604,7 @@ public class DevServerCommand implements Callable<Integer> {
 
     private static void printConnectionInfo(int port) {
         System.out.println();
-        System.out.println("  [1mOrchard dev-server[0m");
+        System.out.println("  \u001B[1mOrchard dev-server\u001B[0m");
         System.out.println("  UI:   http://localhost:" + port);
         System.out.println("  (API is proxied through the UI at /api)");
         System.out.println();
@@ -491,7 +614,7 @@ public class DevServerCommand implements Callable<Integer> {
 
     private static void printCoreOnlyInfo(int corePort) {
         System.out.println();
-        System.out.println("  [1mOrchard dev-server (core only)[0m");
+        System.out.println("  \u001B[1mOrchard dev-server (core only)\u001B[0m");
         System.out.println("  API:  http://localhost:" + corePort + "/api");
         System.out.println();
         System.out.println("  Use 'trowel dev-server stop' to shut down.");

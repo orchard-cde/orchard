@@ -331,6 +331,8 @@ class DevServerCommandTest {
         Path ranMarker = tempDir.resolve("CORE_RAN");
         Files.writeString(core, "#!/bin/sh\ntouch '" + ranMarker + "'\nsleep 60\n");
         core.toFile().setExecutable(true, false);
+        // fence.jar must exist for auth mode (default) to pass the binary check
+        Files.writeString(bin.resolve("fence.jar"), "");
         System.setProperty("orchard.ui.releaseBase", "http://localhost:1");
         try {
             int exit = execute("dev-server", "start");
@@ -395,6 +397,144 @@ class DevServerCommandTest {
         } finally {
             core.destroyForcibly();
             ui.destroyForcibly();
+        }
+    }
+
+    @Test
+    void fenceBinary_resolvesUnderOrchardBin() {
+        assertThat(DevServerCommand.fenceBinary().toString())
+            .endsWith("/.orchard/bin/fence.jar");
+    }
+
+    @Test
+    void fencePidFile_resolvesUnderRun() {
+        assertThat(DevServerCommand.fencePidFile().toString())
+            .endsWith("/.orchard/run/orchard-fence.pid");
+    }
+
+    @Test
+    void readFenceInfo_defaultsToFencePortWhenPortMissing() throws Exception {
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-fence.pid"), "12345");
+
+        DevServerCommand.ServerInfo info = DevServerCommand.readFenceInfo();
+
+        assertThat(info).isNotNull();
+        assertThat(info.pid()).isEqualTo(12345);
+        assertThat(info.port()).isEqualTo(7779);
+    }
+
+    @Test
+    void readFenceInfo_readsPortFromFile() throws Exception {
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-fence.pid"), "12345\n9999");
+
+        DevServerCommand.ServerInfo info = DevServerCommand.readFenceInfo();
+
+        assertThat(info).isNotNull();
+        assertThat(info.pid()).isEqualTo(12345);
+        assertThat(info.port()).isEqualTo(9999);
+    }
+
+    @Test
+    void start_failsWhenFenceJarNotFound() throws Exception {
+        Path bin = tempDir.resolve(".orchard").resolve("bin");
+        Files.createDirectories(bin);
+        Path core = bin.resolve("orchard-server");
+        Files.writeString(core, "#!/bin/sh\necho fake\n");
+        core.toFile().setExecutable(true, false);
+        // No fence.jar created -> should fail with fence JAR error
+
+        int exitCode = execute("dev-server", "start");
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(errContent.toString()).contains("Fence auth server JAR not found");
+        assertThat(errContent.toString()).contains("./gradlew :fence:bootJar");
+    }
+
+    @Test
+    void start_noAuth_omitsFenceAndDisablesOAuth() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCultivatorIdForTest(null);
+        start.setCorePortForTest(7778);
+        start.noAuth = true;
+
+        java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
+
+        assertThat(cmd).contains("--orchard.security.oauth2.enabled=false");
+        assertThat(cmd).noneMatch(a -> a.contains("issuer-uri"));
+    }
+
+    @Test
+    void start_auth_includesIssuerUri() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCultivatorIdForTest(null);
+        start.setCorePortForTest(7778);
+
+        java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
+
+        assertThat(cmd).contains("--spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:7779");
+    }
+
+    @Test
+    void start_auth_fencePortOverridesIssuerUri() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCultivatorIdForTest(null);
+        start.setCorePortForTest(7778);
+        start.setFencePortForTest(8888);
+
+        java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
+
+        assertThat(cmd).contains("--spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:8888");
+    }
+
+    @Test
+    void stop_killsAllThreeProcesses() throws Exception {
+        Process fence = new ProcessBuilder("sleep", "60").start();
+        Process core = new ProcessBuilder("sleep", "60").start();
+        Process ui = new ProcessBuilder("sleep", "60").start();
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n7779");
+        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
+        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
+
+        int exitCode = execute("dev-server", "stop");
+
+        assertThat(exitCode).isZero();
+        assertThat(Files.exists(runDir.resolve("orchard-fence.pid"))).isFalse();
+        assertThat(Files.exists(runDir.resolve("orchard-server.pid"))).isFalse();
+        assertThat(Files.exists(runDir.resolve("orchard-ui.pid"))).isFalse();
+        assertThat(fence.isAlive()).isFalse();
+        assertThat(core.isAlive()).isFalse();
+        assertThat(ui.isAlive()).isFalse();
+    }
+
+    @Test
+    void status_showsFenceWhenRunning() throws Exception {
+        Process core = new ProcessBuilder("sleep", "60").start();
+        Process ui = new ProcessBuilder("sleep", "60").start();
+        Process fence = new ProcessBuilder("sleep", "60").start();
+        try {
+            Path runDir = tempDir.resolve(".orchard").resolve("run");
+            Files.createDirectories(runDir);
+            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
+            Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
+            Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n7779");
+
+            int exitCode = execute("dev-server", "status");
+
+            assertThat(exitCode).isZero();
+            String out = outContent.toString();
+            assertThat(out).contains("running");
+            assertThat(out).contains(String.valueOf(fence.pid()));
+            assertThat(out).contains("http://localhost:7779");
+        } finally {
+            core.destroyForcibly();
+            ui.destroyForcibly();
+            fence.destroyForcibly();
         }
     }
 }

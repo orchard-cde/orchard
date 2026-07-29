@@ -4,19 +4,10 @@ server:
 spring:
   application:
     name: fence
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: ${GOOGLE_CLIENT_ID:}
-            client-secret: ${GOOGLE_CLIENT_SECRET:}
-            scope: openid,profile,email
-        provider:
-          google:
-            issuer-uri: https://accounts.google.com
 
 fence:
+  standalone:
+    enabled: ${FENCE_STANDALONE_ENABLED:false}
   issuer: ${FENCE_ISSUER:http://localhost:${FENCE_PORT:7779}}
   signing-key:
     path: ${FENCE_SIGNING_KEY_PATH:${user.home}/.fence/signing-key.jwk}
@@ -43,3 +34,20 @@ management:
     web:
       exposure:
         include: health,info
+
+---
+spring:
+  config:
+    activate:
+      on-property: fence.standalone.enabled=false
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:}
+            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            scope: openid,profile,email
+        provider:
+          google:
+            issuer-uri: https://accounts.google.com
