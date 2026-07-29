@@ -2,8 +2,8 @@ package dev.orchard.apiary;
 
 import dev.orchard.core.model.Bee;
 import dev.orchard.core.model.BeeHealth;
-import dev.orchard.core.model.BeeType;
 import dev.orchard.core.model.BeeSpec;
+import dev.orchard.core.model.BeeType;
 import dev.orchard.nursery.CommandRunner;
 
 import java.util.Map;

@@ -89,7 +89,9 @@ public class BeeCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 UUID groveId = parent.resolveGroveId();
-                if (groveId == null) return 1;
+                if (groveId == null) {
+                    return 1;
+                }
 
                 String normalizedType = beeType.toUpperCase().replace('-', '_');
 
@@ -122,7 +124,9 @@ public class BeeCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 UUID groveId = parent.resolveGroveId();
-                if (groveId == null) return 1;
+                if (groveId == null) {
+                    return 1;
+                }
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
@@ -173,7 +177,9 @@ public class BeeCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 UUID groveId = parent.resolveGroveId();
-                if (groveId == null) return 1;
+                if (groveId == null) {
+                    return 1;
+                }
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
@@ -204,7 +210,9 @@ public class BeeCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 UUID groveId = parent.resolveGroveId();
-                if (groveId == null) return 1;
+                if (groveId == null) {
+                    return 1;
+                }
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
@@ -236,7 +244,9 @@ public class BeeCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 UUID groveId = parent.resolveGroveId();
-                if (groveId == null) return 1;
+                if (groveId == null) {
+                    return 1;
+                }
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
@@ -265,7 +275,9 @@ public class BeeCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 UUID groveId = parent.resolveGroveId();
-                if (groveId == null) return 1;
+                if (groveId == null) {
+                    return 1;
+                }
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
