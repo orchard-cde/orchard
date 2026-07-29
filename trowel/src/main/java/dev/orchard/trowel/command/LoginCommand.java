@@ -59,7 +59,15 @@ public class LoginCommand implements Callable<Integer> {
 
             if (!noBrowser) {
                 try {
-                    var pb = new ProcessBuilder("xdg-open", deviceAuth.verificationUri());
+                    String osName = System.getProperty("os.name", "").toLowerCase();
+                    ProcessBuilder pb;
+                    if (osName.contains("mac") || osName.contains("darwin")) {
+                        pb = new ProcessBuilder("open", deviceAuth.verificationUri());
+                    } else if (osName.contains("win")) {
+                        pb = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", deviceAuth.verificationUri());
+                    } else {
+                        pb = new ProcessBuilder("xdg-open", deviceAuth.verificationUri());
+                    }
                     pb.redirectErrorStream(true);
                     pb.start();
                 } catch (Exception ignored) {

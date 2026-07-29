@@ -3,6 +3,9 @@ spring:
     url: jdbc:h2:mem:orchard-e2e;DB_CLOSE_DELAY=-1
 
 orchard:
+  security:
+    oauth2:
+      enabled: false
   qemu:
     base-image-path: /tmp/orchard/images/ubuntu-22.04-base.qcow2
     vm-storage-path: /tmp/orchard-e2e/vms

@@ -38,7 +38,11 @@ curl -fsSL "${base_url}/${asset}" -o "${tmp_dir}/${asset}"
 curl -fsSL "${base_url}/checksums-sha256.txt" -o "${tmp_dir}/checksums-sha256.txt"
 
 echo "Verifying checksum..."
-( cd "$tmp_dir" && sha256sum --check checksums-sha256.txt --ignore-missing )
+if command -v sha256sum &>/dev/null; then
+  ( cd "$tmp_dir" && sha256sum --check checksums-sha256.txt --ignore-missing )
+else
+  ( cd "$tmp_dir" && shasum -a 256 --check checksums-sha256.txt --ignore-missing )
+fi
 
 tar -xzf "${tmp_dir}/${asset}" -C "$tmp_dir"
 
