@@ -5,6 +5,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -20,6 +21,7 @@ import org.springframework.security.oauth2.server.authorization.settings.Authori
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
@@ -33,7 +35,8 @@ public class AuthorizationServerConfig {
             HttpSecurity http,
             JWKSource<SecurityContext> jwkSource,
             RegisteredClientRepository registeredClientRepository,
-            AuthorizationServerSettings authorizationServerSettings) throws Exception {
+            AuthorizationServerSettings authorizationServerSettings,
+            ObjectProvider<StandaloneAuthenticationFilter> standaloneAuthenticationFilterProvider) throws Exception {
 
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 new OAuth2AuthorizationServerConfigurer();
@@ -72,6 +75,11 @@ public class AuthorizationServerConfig {
                 .authorizeHttpRequests(authorize ->
                         authorize.anyRequest().permitAll()
                 );
+
+        StandaloneAuthenticationFilter standaloneAuthenticationFilter = standaloneAuthenticationFilterProvider.getIfAvailable();
+        if (standaloneAuthenticationFilter != null) {
+            http.addFilterAfter(standaloneAuthenticationFilter, org.springframework.security.web.context.SecurityContextHolderFilter.class);
+        }
 
         return http.build();
     }
