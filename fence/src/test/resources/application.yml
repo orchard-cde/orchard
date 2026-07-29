@@ -1,6 +1,6 @@
 fence:
   standalone:
-    enabled: ${FENCE_STANDALONE_ENABLED:false}
+    enabled: false
   issuer: http://localhost:7779
   signing-key:
     path: ${java.io.tmpdir}/orchard-fence-test/signing-key.jwk
@@ -17,7 +17,7 @@ fence:
 spring:
   config:
     activate:
-      on-property: fence.standalone.enabled=false
+      on-profile: "!standalone"
   security:
     oauth2:
       client:
@@ -29,3 +29,13 @@ spring:
         provider:
           google:
             issuer-uri: https://accounts.google.com
+
+---
+spring:
+  config:
+    activate:
+      on-profile: standalone
+
+fence:
+  standalone:
+    enabled: true

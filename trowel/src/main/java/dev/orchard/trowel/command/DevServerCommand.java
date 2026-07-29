@@ -410,7 +410,7 @@ public class DevServerCommand implements Callable<Integer> {
             command.add("-jar");
             command.add(fenceJar.toString());
             command.add("--server.port=" + fencePort);
-            command.add("--fence.standalone.enabled=true");
+            command.add("--spring.profiles.active=standalone");
 
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(fenceLogFile().toFile()));

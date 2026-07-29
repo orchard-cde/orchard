@@ -7,7 +7,7 @@ spring:
 
 fence:
   standalone:
-    enabled: ${FENCE_STANDALONE_ENABLED:false}
+    enabled: false
   issuer: ${FENCE_ISSUER:http://localhost:${FENCE_PORT:7779}}
   signing-key:
     path: ${FENCE_SIGNING_KEY_PATH:${user.home}/.fence/signing-key.jwk}
@@ -39,7 +39,7 @@ management:
 spring:
   config:
     activate:
-      on-property: fence.standalone.enabled=false
+      on-profile: "!standalone"
   security:
     oauth2:
       client:
@@ -51,3 +51,13 @@ spring:
         provider:
           google:
             issuer-uri: https://accounts.google.com
+
+---
+spring:
+  config:
+    activate:
+      on-profile: standalone
+
+fence:
+  standalone:
+    enabled: true
