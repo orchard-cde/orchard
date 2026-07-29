@@ -50,6 +50,9 @@ jobs:
       - name: Build native images
         run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} :trellis:nativeCompile :trowel:nativeCompile
 
+      - name: Build fence
+        run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} :fence:bootJar
+
       - name: Smoke test trowel
         run: |
           echo "=== trowel --version ==="
@@ -79,7 +82,9 @@ jobs:
           tar czf trowel-${{ matrix.os }}-${{ matrix.arch }}.tar.gz trowel
           rm trowel
 
-          sha256sum *.tar.gz | tee checksums-sha256.txt
+          cp ../fence/build/libs/fence-${{ steps.version.outputs.version }}.jar .
+
+          sha256sum *.tar.gz *.jar | tee checksums-sha256.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -113,4 +118,5 @@ jobs:
             orchard-server-linux-arm64.tar.gz
             trowel-linux-amd64.tar.gz
             trowel-linux-arm64.tar.gz
+            fence-*.jar
             checksums-sha256.txt

@@ -6,7 +6,18 @@ import java.util.UUID;
 
 public record OrchardConfig(String active, Map<String, Target> targets) {
 
-    public record Target(String server, String cultivator) {}
+    public record Target(
+        String server,
+        String cultivator,
+        String fenceServer,
+        String accessToken,
+        String refreshToken,
+        Long expiresAt
+    ) {
+        public Target(String server, String cultivator) {
+            this(server, cultivator, null, null, null, null);
+        }
+    }
 
     public Target activeTarget() {
         if (targets == null || active == null) {

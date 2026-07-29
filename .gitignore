@@ -38,6 +38,8 @@ test-output/
 
 # Superpowers planning artifacts
 docs/superpowers/
+# Local workflow
+docs/handoffs/
 
 # Eclipse
 .project

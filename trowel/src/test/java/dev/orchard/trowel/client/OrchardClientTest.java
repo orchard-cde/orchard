@@ -2,6 +2,7 @@ package dev.orchard.trowel.client;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import dev.orchard.trowel.auth.NoAuthProvider;
 import dev.orchard.trowel.client.OrchardClient.BeeResponse;
 import dev.orchard.trowel.client.OrchardClient.GroveResponse;
 import dev.orchard.trowel.client.OrchardClient.HealthResponse;
@@ -25,14 +26,16 @@ class OrchardClientTest {
 
     static HttpServer server;
     static OrchardClient client;
-    static final String CULTIVATOR_ID = "test-cultivator-123";
+    static OrchardClient authClient;
+    static final String TEST_TOKEN = "test-token";
 
     @BeforeAll
     static void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.start();
         int port = server.getAddress().getPort();
-        client = new OrchardClient("http://localhost:" + port, CULTIVATOR_ID);
+        client = new OrchardClient("http://localhost:" + port, new NoAuthProvider());
+        authClient = new OrchardClient("http://localhost:" + port, () -> "Bearer " + TEST_TOKEN);
     }
 
     @AfterAll
@@ -44,9 +47,9 @@ class OrchardClientTest {
 
     @AfterEach
     void removeHandlers() {
-        // Remove all contexts to avoid handler conflicts between tests
         try { server.removeContext("/api/groves"); } catch (IllegalArgumentException ignored) {}
         try { server.removeContext("/api/health"); } catch (IllegalArgumentException ignored) {}
+        try { server.removeContext("/api/me"); } catch (IllegalArgumentException ignored) {}
     }
 
     // -- plantGrove tests --
@@ -56,7 +59,7 @@ class OrchardClientTest {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("POST");
             assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isEqualTo("application/json");
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
+            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isNull();
 
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             assertThat(body).contains("\"repositoryUrl\":\"https://github.com/test/repo\"");
@@ -111,13 +114,38 @@ class OrchardClientTest {
             .hasMessageContaining("400");
     }
 
+    // -- Authentication header tests --
+
+    @Test
+    void plantGrove_attachesAuthorizationHeaderWhenAuthProviderProvidesOne() throws Exception {
+        server.createContext("/api/groves", exchange -> {
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer " + TEST_TOKEN);
+            respond(exchange, 201, GROVE_JSON);
+        });
+
+        GroveResponse grove = authClient.plantGrove("https://github.com/test/repo", "main", "my-grove", "small", "auto");
+
+        assertThat(grove.id()).isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+    }
+
+    @Test
+    void plantGrove_omitsAuthorizationHeaderWhenAuthProviderReturnsNull() throws Exception {
+        server.createContext("/api/groves", exchange -> {
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            respond(exchange, 201, GROVE_JSON);
+        });
+
+        GroveResponse grove = client.plantGrove("https://github.com/test/repo", "main", "my-grove", "small", "auto");
+
+        assertThat(grove.id()).isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+    }
+
     // -- listGroves tests --
 
     @Test
-    void listGroves_sendsGetWithCultivatorHeader() throws Exception {
+    void listGroves_sendsGetWithCorrectHeaders() throws Exception {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("GET");
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
 
             respond(exchange, 200, "[" + GROVE_JSON + "]");
         });
@@ -146,7 +174,6 @@ class OrchardClientTest {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("GET");
             assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId);
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
 
             respond(exchange, 200, GROVE_JSON);
         });
@@ -175,7 +202,6 @@ class OrchardClientTest {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("DELETE");
             assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId);
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
 
             respond(exchange, 204, "");
         });
@@ -199,7 +225,7 @@ class OrchardClientTest {
     void checkHealth_sendsGetAndDeserializesResponse() throws Exception {
         server.createContext("/api/health", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("GET");
-            // Health endpoint should NOT require cultivator header
+            // Health endpoint should NOT require auth header
             respond(exchange, 200, """
                 {"status":"healthy","name":"Orchard","version":"0.1.0-SNAPSHOT"}
                 """);
@@ -219,7 +245,6 @@ class OrchardClientTest {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("POST");
             assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isEqualTo("application/json");
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
 
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             assertThat(body).contains("\"beeType\":\"OPENCODE\"");
@@ -253,7 +278,6 @@ class OrchardClientTest {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("GET");
             assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees");
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
 
             respond(exchange, 200, "[" + BEE_JSON + "]");
         });
@@ -283,7 +307,6 @@ class OrchardClientTest {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("GET");
             assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees/" + beeId);
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
 
             respond(exchange, 200, BEE_JSON);
         });
@@ -313,7 +336,6 @@ class OrchardClientTest {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("POST");
             assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees/" + beeId + "/actions/wake");
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
 
             respond(exchange, 200, BEE_JSON.replace("\"HIBERNATING\"", "\"BUZZING\""));
         });
@@ -331,7 +353,6 @@ class OrchardClientTest {
         server.createContext("/api/groves", exchange -> {
             assertThat(exchange.getRequestMethod()).isEqualTo("POST");
             assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/groves/" + groveId + "/bees/" + beeId + "/actions/smoke");
-            assertThat(exchange.getRequestHeaders().getFirst("X-Cultivator-Id")).isEqualTo(CULTIVATOR_ID);
 
             respond(exchange, 200, BEE_JSON.replace("\"HIBERNATING\"", "\"SMOKED\""));
         });
@@ -368,7 +389,7 @@ class OrchardClientTest {
     @Test
     void client_handlesTrailingSlashInBaseUrl() throws Exception {
         int port = server.getAddress().getPort();
-        OrchardClient slashClient = new OrchardClient("http://localhost:" + port + "/", CULTIVATOR_ID);
+        OrchardClient slashClient = new OrchardClient("http://localhost:" + port + "/", new NoAuthProvider());
 
         server.createContext("/api/health", exchange ->
             respond(exchange, 200, """
@@ -406,6 +427,37 @@ class OrchardClientTest {
         GroveResponse grove = client.getGrove(UUID.fromString("11111111-1111-1111-1111-111111111111"));
 
         assertThat(grove.primaryFruit()).isNull();
+    }
+
+    // -- getCurrentCultivator tests --
+
+    @Test
+    void getCurrentCultivator_sendsAuthenticatedGetAndDeserializesResponse() throws Exception {
+        server.createContext("/api/me", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer " + TEST_TOKEN);
+
+            respond(exchange, 200, """
+                {"id":"cult-uuid-123","email":"test@example.com","displayName":"Test Cultivator"}
+                """);
+        });
+
+        OrchardClient.CultivatorResponse cultivator = authClient.getCurrentCultivator();
+
+        assertThat(cultivator.id()).isEqualTo("cult-uuid-123");
+        assertThat(cultivator.displayName()).isEqualTo("Test Cultivator");
+        assertThat(cultivator.email()).isEqualTo("test@example.com");
+    }
+
+    @Test
+    void getCurrentCultivator_throwsOnUnauthorized() {
+        server.createContext("/api/me", exchange ->
+            respond(exchange, 401, "{\"error\":\"unauthorized\"}")
+        );
+
+        assertThatThrownBy(() -> authClient.getCurrentCultivator())
+            .isInstanceOf(IOException.class)
+            .hasMessageContaining("401");
     }
 
     // -- Helpers --

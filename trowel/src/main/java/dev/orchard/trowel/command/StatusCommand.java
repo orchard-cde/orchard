@@ -19,7 +19,7 @@ public class StatusCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            OrchardClient client = new OrchardClient(parent.getServerUrl(), parent.getCultivatorId());
+            OrchardClient client = new OrchardClient(parent.getServerUrl(), parent.getAuthProvider());
             var health = client.checkHealth();
 
             System.out.println();

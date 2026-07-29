@@ -83,7 +83,7 @@ public class GroveCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 GroveResponse grove = client.plantGrove(repositoryUrl, branch, name, machineSize, spec);
@@ -114,7 +114,7 @@ public class GroveCommand implements Callable<Integer> {
             try {
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 List<GroveResponse> groves = client.listGroves();
@@ -165,7 +165,7 @@ public class GroveCommand implements Callable<Integer> {
             try {
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 GroveResponse grove = client.getGrove(groveId);
@@ -205,7 +205,7 @@ public class GroveCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 client.clearGrove(groveId);
@@ -233,7 +233,7 @@ public class GroveCommand implements Callable<Integer> {
             try {
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 GroveResponse grove = client.stopGrove(groveId);
@@ -262,7 +262,7 @@ public class GroveCommand implements Callable<Integer> {
             try {
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 GroveResponse grove = client.startGrove(groveId);
@@ -291,7 +291,7 @@ public class GroveCommand implements Callable<Integer> {
             try {
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 GroveResponse grove = client.getGrove(groveId);

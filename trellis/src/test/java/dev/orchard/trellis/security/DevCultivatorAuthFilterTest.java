@@ -18,7 +18,7 @@ class DevCultivatorAuthFilterTest {
     private static final UUID DEFAULT_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     @Test
-    void setsDefaultCultivatorWhenNoHeader() throws Exception {
+    void setsDefaultCultivatorOnEveryRequest() throws Exception {
         CultivatorService service = mock(CultivatorService.class);
         DevCultivatorAuthFilter filter = new DevCultivatorAuthFilter(service, DEFAULT_ID);
 
@@ -34,7 +34,7 @@ class DevCultivatorAuthFilterTest {
     }
 
     @Test
-    void doesNotOverrideExplicitHeader() throws Exception {
+    void ignoresAnyClientSuppliedCultivatorHeader() throws Exception {
         CultivatorService service = mock(CultivatorService.class);
         DevCultivatorAuthFilter filter = new DevCultivatorAuthFilter(service, DEFAULT_ID);
 
@@ -44,8 +44,7 @@ class DevCultivatorAuthFilterTest {
 
         filter.doFilter(request, response, new MockFilterChain());
 
-        assertThat(request.getAttribute("cultivatorId")).isNull();
-        verify(service, never()).ensureCultivator(any());
+        assertThat(request.getAttribute("cultivatorId")).isEqualTo(DEFAULT_ID);
     }
 
     @Test
@@ -67,7 +66,6 @@ class DevCultivatorAuthFilterTest {
             .thenReturn(null);
         DevCultivatorAuthFilter filter = new DevCultivatorAuthFilter(service, DEFAULT_ID);
 
-        // First request: ensureCultivator throws, flag is reset
         MockHttpServletRequest req1 = new MockHttpServletRequest();
         try {
             filter.doFilter(req1, new MockHttpServletResponse(), new MockFilterChain());
@@ -75,7 +73,6 @@ class DevCultivatorAuthFilterTest {
             // expected
         }
 
-        // Second request: flag was reset, so ensureCultivator is called again and succeeds
         MockHttpServletRequest req2 = new MockHttpServletRequest();
         filter.doFilter(req2, new MockHttpServletResponse(), new MockFilterChain());
 
@@ -90,13 +87,12 @@ class DevCultivatorAuthFilterTest {
             .withPropertyValues("orchard.dev.default-cultivator-id=11111111-1111-1111-1111-111111111111")
             .withUserConfiguration(DevCultivatorAuthFilter.class);
 
-        runner.run(ctx -> assertThat(ctx).hasSingleBean(DevCultivatorAuthFilter.class)); // matchIfMissing
+        runner.run(ctx -> assertThat(ctx).hasSingleBean(DevCultivatorAuthFilter.class));
         runner.withPropertyValues("orchard.security.oauth2.enabled=false")
             .run(ctx -> assertThat(ctx).hasSingleBean(DevCultivatorAuthFilter.class));
         runner.withPropertyValues("orchard.security.oauth2.enabled=true")
             .run(ctx -> assertThat(ctx).doesNotHaveBean(DevCultivatorAuthFilter.class));
 
-        // Confirm the gate annotation is declared as designed
         ConditionalOnProperty gate = DevCultivatorAuthFilter.class.getAnnotation(ConditionalOnProperty.class);
         assertThat(gate).isNotNull();
         assertThat(gate.name()).contains("orchard.security.oauth2.enabled");

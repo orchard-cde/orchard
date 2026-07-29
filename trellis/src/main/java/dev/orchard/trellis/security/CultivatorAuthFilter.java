@@ -22,7 +22,7 @@ import java.io.IOException;
  * Filter that extracts cultivator identity from a validated JWT token.
  * <p>
  * After Spring Security validates the JWT, this filter reads standard OIDC claims
- * (sub, email, preferred_username, name, picture) and uses {@link CultivatorService}
+ * (sub, email, name, picture) and uses {@link CultivatorService}
  * to find or create the corresponding cultivator. The cultivator's ID is then stored
  * as a request attribute ("cultivatorId") for use by downstream controllers.
  * <p>
@@ -49,7 +49,10 @@ public class CultivatorAuthFilter extends OncePerRequestFilter {
         if (authentication instanceof JwtAuthenticationToken jwtAuth) {
             Jwt jwt = jwtAuth.getToken();
 
-            String provider = extractIssuerShortName(jwt.getIssuer() != null ? jwt.getIssuer().toString() : "oidc");
+            // fence is the sole JWT issuer regardless of upstream IdP, so the issuer URL no
+            // longer identifies the upstream provider. Hardcoded until multi-IdP support
+            // (orchard#196) adds a provider claim to the token itself.
+            String provider = "google";
             String providerId = jwt.getSubject();
             String email = jwt.getClaimAsString("email");
             String username = resolveUsername(jwt);
@@ -73,41 +76,16 @@ public class CultivatorAuthFilter extends OncePerRequestFilter {
     }
 
     /**
-     * Extracts a short provider name from the OIDC issuer URL.
-     * For example, "https://accounts.google.com" becomes "google",
-     * "https://github.com" becomes "github".
-     */
-    private String extractIssuerShortName(String issuerUri) {
-        try {
-            String host = java.net.URI.create(issuerUri).getHost();
-            if (host == null) {
-                return "oidc";
-            }
-
-            // Extract second-level domain (e.g., "google" from "accounts.google.com")
-            String[] parts = host.split("\\.");
-            if (parts.length >= 2) {
-                return parts[parts.length - 2];
-            }
-            return host;
-        } catch (Exception e) {
-            return "oidc";
-        }
-    }
-
-    /**
-     * Resolves a username from JWT claims, preferring preferred_username,
-     * then falling back to email prefix, then sub.
+     * Resolves a username from JWT claims. Email is used directly rather than a
+     * derived local-part (e.g. "jane" from "jane@example.com"), since only email
+     * is guaranteed unique across upstream IdPs/domains — a local-part collision
+     * between two different domains would violate the username uniqueness
+     * constraint on the cultivators table.
      */
     private String resolveUsername(Jwt jwt) {
-        String preferredUsername = jwt.getClaimAsString("preferred_username");
-        if (preferredUsername != null && !preferredUsername.isBlank()) {
-            return preferredUsername;
-        }
-
         String email = jwt.getClaimAsString("email");
-        if (email != null && email.contains("@")) {
-            return email.substring(0, email.indexOf('@'));
+        if (email != null && !email.isBlank()) {
+            return email;
         }
 
         return jwt.getSubject();

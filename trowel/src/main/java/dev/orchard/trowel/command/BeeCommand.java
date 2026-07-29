@@ -97,7 +97,7 @@ public class BeeCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 OrchardClient.BeeResponse bee = client.installBee(groveId, normalizedType, version);
@@ -130,7 +130,7 @@ public class BeeCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 List<OrchardClient.BeeResponse> bees = client.listBees(groveId);
@@ -183,7 +183,7 @@ public class BeeCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 OrchardClient.BeeResponse bee = client.showBee(groveId, beeId);
@@ -216,7 +216,7 @@ public class BeeCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 OrchardClient.BeeResponse bee = client.wakeBee(groveId, beeId);
@@ -250,7 +250,7 @@ public class BeeCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 OrchardClient.BeeResponse bee = client.smokeBee(groveId, beeId);
@@ -281,7 +281,7 @@ public class BeeCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(
                     parent.parent.getServerUrl(),
-                    parent.parent.getCultivatorId()
+                    parent.parent.getAuthProvider()
                 );
 
                 OrchardClient.SwarmStatusResponse status = client.getSwarmStatus(groveId);

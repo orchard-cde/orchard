@@ -1,5 +1,7 @@
 package dev.orchard.trowel;
 
+import dev.orchard.trowel.auth.NoAuthProvider;
+import dev.orchard.trowel.auth.TokenAuthProvider;
 import dev.orchard.trowel.config.ConfigLoader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,5 +75,40 @@ class TrowelTargetResolutionTest {
 
         assertThat(exitCode).isZero();
         assertThat(outContent.toString()).contains("http://localhost:7778");
+    }
+
+    @Test
+    void target_withNoStoredToken_usesNoAuthProvider() throws Exception {
+        Files.writeString(ConfigLoader.tomlFile(), """
+                active = "local"
+
+                [targets.local]
+                server = "http://localhost:7778"
+                cultivator = "local-uuid"
+                """);
+
+        var trowel = new Trowel();
+        var authProvider = trowel.getAuthProvider();
+        assertThat(authProvider).isInstanceOf(NoAuthProvider.class);
+    }
+
+    @Test
+    void target_withStoredToken_usesTokenAuthProvider() throws Exception {
+        long futureExpiry = (System.currentTimeMillis() / 1000) + 3600;
+        Files.writeString(ConfigLoader.tomlFile(), """
+                active = "local"
+
+                [targets.local]
+                server = "http://localhost:7778"
+                cultivator = "local-uuid"
+                fence_server = "http://localhost:7779"
+                access_token = "my-access-token"
+                refresh_token = "my-refresh-token"
+                expires_at = %d
+                """.formatted(futureExpiry));
+
+        var trowel = new Trowel();
+        var authProvider = trowel.getAuthProvider();
+        assertThat(authProvider).isInstanceOf(TokenAuthProvider.class);
     }
 }
