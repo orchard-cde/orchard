@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":core"))
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-restclient")
     implementation("org.apache.sshd:sshd-core:2.19.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
