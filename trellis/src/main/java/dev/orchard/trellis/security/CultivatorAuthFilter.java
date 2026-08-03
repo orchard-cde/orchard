@@ -49,12 +49,21 @@ public class CultivatorAuthFilter extends OncePerRequestFilter {
         if (authentication instanceof JwtAuthenticationToken jwtAuth) {
             Jwt jwt = jwtAuth.getToken();
 
+            // Service tokens (e.g. the SSH gateway's client_credentials JWT) carry no
+            // email claim and must not be resolved into a cultivator. Interactive user
+            // tokens always carry email via the openid scope.
+            String email = jwt.getClaimAsString("email");
+            if (email == null || email.isBlank()) {
+                log.debug("JWT has no email claim; skipping cultivator resolution (service token?)");
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             // fence is the sole JWT issuer regardless of upstream IdP, so the issuer URL no
             // longer identifies the upstream provider. Hardcoded until multi-IdP support
             // (orchard#196) adds a provider claim to the token itself.
             String provider = "google";
             String providerId = jwt.getSubject();
-            String email = jwt.getClaimAsString("email");
             String username = resolveUsername(jwt);
             String avatarUrl = jwt.getClaimAsString("picture");
             String displayName = jwt.getClaimAsString("name");
