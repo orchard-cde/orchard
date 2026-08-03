@@ -1,10 +1,10 @@
 package dev.orchard.trowel.auth;
 
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.*;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -31,7 +31,9 @@ class FenceClientTest {
 
     @AfterAll
     static void stopServer() {
-        if (server != null) server.stop(0);
+        if (server != null) {
+            server.stop(0);
+        }
     }
 
     @AfterEach
@@ -42,15 +44,14 @@ class FenceClientTest {
 
     @Test
     void requestDeviceAuthorization_parsesResponse() throws Exception {
-        server.createContext("/oauth2/device_authorization", exchange -> {
+        server.createContext("/oauth2/device_authorization", exchange ->
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "device_code", "dc-123",
                 "user_code", "ABCD-EFGH",
                 "verification_uri", "https://fence.example.com/device",
                 "expires_in", 600,
                 "interval", 5
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         var response = client.requestDeviceAuthorization();
@@ -84,11 +85,10 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_pending_throwsAuthorizationPendingException() throws Exception {
-        server.createContext("/oauth2/token", exchange -> {
+        server.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "authorization_pending"
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         assertThatThrownBy(() -> client.pollDeviceToken("dc-123"))
@@ -97,11 +97,10 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_slowDown_throwsSlowDownException() throws Exception {
-        server.createContext("/oauth2/token", exchange -> {
+        server.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "slow_down"
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         assertThatThrownBy(() -> client.pollDeviceToken("dc-123"))
@@ -110,11 +109,10 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_expiredToken_throwsDeviceCodeExpiredException() throws Exception {
-        server.createContext("/oauth2/token", exchange -> {
+        server.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "expired_token"
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         assertThatThrownBy(() -> client.pollDeviceToken("dc-123"))
@@ -123,11 +121,10 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_accessDenied_throwsAuthorizationDeniedException() throws Exception {
-        server.createContext("/oauth2/token", exchange -> {
+        server.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "access_denied"
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         assertThatThrownBy(() -> client.pollDeviceToken("dc-123"))
@@ -136,11 +133,10 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_invalidGrant_throwsInvalidGrantException() throws Exception {
-        server.createContext("/oauth2/token", exchange -> {
+        server.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "error", "invalid_grant"
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         assertThatThrownBy(() -> client.pollDeviceToken("dc-123"))
@@ -149,14 +145,13 @@ class FenceClientTest {
 
     @Test
     void pollDeviceToken_success_returnsTokenResponse() throws Exception {
-        server.createContext("/oauth2/token", exchange -> {
+        server.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "access_token", "at-xyz",
                 "refresh_token", "rt-xyz",
                 "token_type", "Bearer",
                 "expires_in", 3600
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         var response = client.pollDeviceToken("dc-123");
@@ -190,14 +185,13 @@ class FenceClientTest {
 
     @Test
     void refreshToken_success_returnsTokenResponse() throws Exception {
-        server.createContext("/oauth2/token", exchange -> {
+        server.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, mapper.writeValueAsString(Map.of(
                 "access_token", "at-refreshed",
                 "refresh_token", "rt-new",
                 "token_type", "Bearer",
                 "expires_in", 3600
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         var response = client.refreshToken("rt-old");
@@ -208,11 +202,10 @@ class FenceClientTest {
 
     @Test
     void refreshToken_invalidGrant_throwsRefreshTokenInvalidException() throws Exception {
-        server.createContext("/oauth2/token", exchange -> {
+        server.createContext("/oauth2/token", exchange ->
             respond(exchange, 401, mapper.writeValueAsString(Map.of(
                 "error", "invalid_grant"
-            )));
-        });
+            ))));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         assertThatThrownBy(() -> client.refreshToken("rt-bad"))
@@ -242,9 +235,8 @@ class FenceClientTest {
 
     @Test
     void requestDeviceAuthorization_httpError_throwsFenceAuthException() throws Exception {
-        server.createContext("/oauth2/device_authorization", exchange -> {
-            respond(exchange, 500, "Internal Server Error");
-        });
+        server.createContext("/oauth2/device_authorization", exchange ->
+            respond(exchange, 500, "Internal Server Error"));
 
         var client = new FenceClient(baseUrl, "test-client-id");
         assertThatThrownBy(() -> client.requestDeviceAuthorization())
