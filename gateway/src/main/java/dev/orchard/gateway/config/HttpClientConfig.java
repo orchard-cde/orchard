@@ -2,6 +2,7 @@ package dev.orchard.gateway.config;
 
 import dev.orchard.gateway.api.TrellisApiClient;
 import dev.orchard.gateway.auth.FenceTokenClient;
+import dev.orchard.gateway.server.HostKeyProvider;
 import org.apache.sshd.client.SshClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,6 +15,11 @@ public class HttpClientConfig {
     @Bean(destroyMethod = "stop")
     SshClient sshClient() {
         return SshClient.setUpDefaultClient();
+    }
+
+    @Bean
+    HostKeyProvider hostKeyProvider(GatewayProperties properties) {
+        return new HostKeyProvider(properties.getHostKeyPath());
     }
 
     @Bean

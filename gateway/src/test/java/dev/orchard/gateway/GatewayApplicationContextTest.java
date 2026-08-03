@@ -25,6 +25,9 @@ class GatewayApplicationContextTest {
 
     // SeedlingRelay's @PostConstruct requires a readable internal key at startup;
     // point it at a throwaway generated key rather than the real ~/.ssh path.
+    // GroveRelayServer's @PostConstruct starts a real MINA listener, so it must be
+    // pointed at an ephemeral port and a temp host-key path too — otherwise this
+    // context would try to bind the real 2222 and write to ~/.orchard in CI.
     @DynamicPropertySource
     static void internalSshKey(DynamicPropertyRegistry registry) throws Exception {
         Path keyFile = Files.createTempFile("orchard-gateway-test", "-ed25519");
@@ -33,6 +36,9 @@ class GatewayApplicationContextTest {
                     new net.i2p.crypto.eddsa.KeyPairGenerator().generateKeyPair(), "test-key", null, out);
         }
         registry.add("orchard.gateway.internal-ssh-key-path", keyFile::toString);
+        registry.add("orchard.gateway.ssh-port", () -> 0);
+        Path hostKeyDir = Files.createTempDirectory("orchard-gateway-test-hostkey");
+        registry.add("orchard.gateway.host-key-path", () -> hostKeyDir.resolve("gateway-host-key").toString());
     }
 
     @Autowired
