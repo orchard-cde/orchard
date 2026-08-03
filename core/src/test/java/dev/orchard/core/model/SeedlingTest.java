@@ -3,6 +3,7 @@ package dev.orchard.core.model;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -119,6 +120,52 @@ class SeedlingTest {
         assertThat(updated.sshPort()).isEqualTo(22);
         assertThat(updated.state()).isEqualTo(SeedlingState.GERMINATING);
         assertThat(updated.spec()).isEqualTo(Seedling.SeedlingSpec.medium());
+    }
+
+    @Test
+    void germinate_setsEmptyAuthorizedKeys() {
+        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        assertThat(seedling.authorizedKeys()).isEmpty();
+    }
+
+    @Test
+    void withAuthorizedKeys_setsKeys() {
+        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling updated = seedling.withAuthorizedKeys(List.of("ssh-ed25519 AAAA key1", "ssh-ed25519 AAAA key2"));
+
+        assertThat(updated.authorizedKeys()).containsExactly("ssh-ed25519 AAAA key1", "ssh-ed25519 AAAA key2");
+    }
+
+    @Test
+    void withAuthorizedKeys_preservesOtherFields() {
+        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling updated = seedling.withAuthorizedKeys(List.of("ssh-ed25519 AAAA key1"));
+
+        assertThat(updated.id()).isEqualTo(seedling.id());
+        assertThat(updated.groveId()).isEqualTo(groveId);
+        assertThat(updated.sshPort()).isEqualTo(22);
+        assertThat(updated.state()).isEqualTo(SeedlingState.GERMINATING);
+        assertThat(updated.spec()).isEqualTo(Seedling.SeedlingSpec.small());
+    }
+
+    @Test
+    void withState_preservesAuthorizedKeys() {
+        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small())
+            .withAuthorizedKeys(List.of("ssh-ed25519 AAAA key1"));
+
+        Seedling updated = seedling.withState(SeedlingState.SAPLING);
+
+        assertThat(updated.authorizedKeys()).containsExactly("ssh-ed25519 AAAA key1");
+    }
+
+    @Test
+    void withProviderDetails_preservesAuthorizedKeys() {
+        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small())
+            .withAuthorizedKeys(List.of("ssh-ed25519 AAAA key1"));
+
+        Seedling updated = seedling.withProviderDetails("i-12345", "10.0.0.1");
+
+        assertThat(updated.authorizedKeys()).containsExactly("ssh-ed25519 AAAA key1");
     }
 
     @Test

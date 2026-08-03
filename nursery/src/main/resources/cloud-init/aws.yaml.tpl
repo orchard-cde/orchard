@@ -3,9 +3,7 @@ users:
   - name: cultivator
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
-    ssh_authorized_keys:
-      - ${ssh_public_key}
-packages:
+${ssh_authorized_keys_block}packages:
   - docker.io
   - git
   - curl

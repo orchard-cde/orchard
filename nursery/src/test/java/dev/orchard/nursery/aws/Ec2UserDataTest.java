@@ -4,6 +4,7 @@ import dev.orchard.core.model.Seedling.SeedlingSpec;
 import org.junit.jupiter.api.Test;
 
 import java.util.Base64;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -11,6 +12,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class Ec2UserDataTest {
 
     private static final String PUBLIC_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5testkey orchard@host";
+    private static final String REGISTERED_KEY_1 = "ssh-ed25519 AAAAreg1 cultivator@orchard";
+    private static final String REGISTERED_KEY_2 = "ssh-rsa AAAAreg2 cultivator@laptop";
     private static final String CLI_VERSION = "0.87.0";
 
     @Test
@@ -111,5 +114,43 @@ class Ec2UserDataTest {
             .startsWith("#cloud-config\n")
             .contains("cultivator")
             .contains("npm install -g @devcontainers/cli@" + CLI_VERSION);
+    }
+
+    @Test
+    void render_withRegisteredKeys_includesAllKeys() {
+        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, List.of(REGISTERED_KEY_1, REGISTERED_KEY_2), CLI_VERSION);
+
+        assertThat(yaml)
+            .contains("ssh_authorized_keys:")
+            .contains("- " + PUBLIC_KEY)
+            .contains("- " + REGISTERED_KEY_1)
+            .contains("- " + REGISTERED_KEY_2);
+    }
+
+    @Test
+    void render_withNoRegisteredKeys_includesOnlyConfiguredKey() {
+        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, List.of(), CLI_VERSION);
+
+        assertThat(yaml)
+            .contains("ssh_authorized_keys:")
+            .contains("- " + PUBLIC_KEY)
+            .doesNotContain("reg1", "reg2");
+    }
+
+    @Test
+    void renderBase64_withRegisteredKeys_decodesToAllKeys() {
+        String base64 = Ec2UserData.renderBase64(SeedlingSpec.small(), PUBLIC_KEY, List.of(REGISTERED_KEY_1), CLI_VERSION);
+        String decoded = new String(Base64.getDecoder().decode(base64));
+
+        assertThat(decoded)
+            .contains("- " + PUBLIC_KEY)
+            .contains("- " + REGISTERED_KEY_1);
+    }
+
+    @Test
+    void render_nullRegisteredKeys_treatedAsEmpty() {
+        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, null, CLI_VERSION);
+
+        assertThat(yaml).contains("- " + PUBLIC_KEY);
     }
 }

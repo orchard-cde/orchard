@@ -52,6 +52,7 @@ public class GroveService {
     private final DevcontainerCliConfig devcontainerCliConfig;
     private final FruitGrower fruitGrower;
     private final CultivatorService cultivatorService;
+    private final SshPublicKeyService sshPublicKeyService;
     private final DevcontainerParser devcontainerParser;
     private final DevfileParser devfileParser;
     private final SeedSerializer seedSerializer;
@@ -64,13 +65,15 @@ public class GroveService {
             DevcontainerCliConfig devcontainerCliConfig,
             FruitGrower fruitGrower,
             CultivatorService cultivatorService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            SshPublicKeyService sshPublicKeyService) {
         this.groveRepository = groveRepository;
         this.fruitRepository = fruitRepository;
         this.providerRegistry = providerRegistry;
         this.devcontainerCliConfig = devcontainerCliConfig;
         this.fruitGrower = fruitGrower;
         this.cultivatorService = cultivatorService;
+        this.sshPublicKeyService = sshPublicKeyService;
         this.devcontainerParser = new DevcontainerParser();
         this.devfileParser = new DevfileParser();
         this.seedSerializer = new SeedSerializer();
@@ -123,13 +126,21 @@ public class GroveService {
         return grove;
     }
 
-    private void provisionGrove(Grove grove, SeedSpec seedSpec) {
+    void provisionGrove(Grove grove, SeedSpec seedSpec) {
         try {
             log.info("Starting provisioning for grove {}", grove.id());
 
+            // Bake the cultivator's registered SSH public keys into the seedling so the
+            // provider's cloud-init grants them access alongside the shared trellis key.
+            List<String> registeredKeys = sshPublicKeyService.listForCultivator(grove.cultivatorId())
+                .stream()
+                .map(SshPublicKey::publicKey)
+                .toList();
+            Seedling seedlingToPlant = grove.seedling().withAuthorizedKeys(registeredKeys);
+
             // Plant seedling (start VM)
             SeedlingProvider seedlingProvider = providerRegistry.getDefault();
-            Seedling plantedSeedling = seedlingProvider.plant(grove.seedling()).join();
+            Seedling plantedSeedling = seedlingProvider.plant(seedlingToPlant).join();
             grove = grove.withSeedling(plantedSeedling);
             grove = grove.withState(GroveState.GROWING);
             updateGroveState(grove);

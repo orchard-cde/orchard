@@ -7,6 +7,7 @@ import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
+import dev.orchard.nursery.SeedlingProvider;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.FruitRepository;
@@ -25,6 +26,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,6 +41,7 @@ class GroveServiceTest {
     @Mock private FruitGrower fruitGrower;
     @Mock private CultivatorService cultivatorService;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private SshPublicKeyService sshPublicKeyService;
 
     private GroveService groveService;
 
@@ -47,7 +50,7 @@ class GroveServiceTest {
         groveService = new GroveService(
             groveRepository, fruitRepository, providerRegistry,
             new DevcontainerCliConfig("0.87.0", 0, 0),
-            fruitGrower, cultivatorService, eventPublisher
+            fruitGrower, cultivatorService, eventPublisher, sshPublicKeyService
         );
     }
 
@@ -322,6 +325,51 @@ class GroveServiceTest {
         // `cloud-init status` not yet answerable early in boot — must NOT be read as "done".
         assertThat(GroveService.classifyCloudInitStatus(""))
             .isEqualTo(GroveService.CloudInitStatus.IN_PROGRESS);
+    }
+
+    // --- provisionGrove: registered SSH keys baked into the seedling --------------------
+
+    @Test
+    void provisionGrove_attachesRegisteredKeysToSeedlingBeforePlanting() {
+        UUID cultivatorId = UUID.randomUUID();
+        Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+            .withSeedling(Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small()));
+
+        SshPublicKey registered = SshPublicKey.register(cultivatorId, "laptop",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINu3uCEBEcYqqjErEWRewbGZw8qrfWt/0inp+HfZR7MR test@orchard.dev");
+        when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of(registered));
+
+        SeedlingProvider provider = mock(SeedlingProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        ArgumentCaptor<Seedling> seedlingCaptor = ArgumentCaptor.forClass(Seedling.class);
+        when(provider.plant(seedlingCaptor.capture()))
+            .thenReturn(CompletableFuture.completedFuture(
+                grove.seedling().withState(SeedlingState.BLIGHTED)));
+
+        groveService.provisionGrove(grove, SeedSpec.AUTO);
+
+        assertThat(seedlingCaptor.getValue().authorizedKeys())
+            .containsExactly(registered.publicKey());
+    }
+
+    @Test
+    void provisionGrove_withNoRegisteredKeys_plantsSeedlingWithoutKeys() {
+        UUID cultivatorId = UUID.randomUUID();
+        Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+            .withSeedling(Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small()));
+
+        when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of());
+
+        SeedlingProvider provider = mock(SeedlingProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        ArgumentCaptor<Seedling> seedlingCaptor = ArgumentCaptor.forClass(Seedling.class);
+        when(provider.plant(seedlingCaptor.capture()))
+            .thenReturn(CompletableFuture.completedFuture(
+                grove.seedling().withState(SeedlingState.BLIGHTED)));
+
+        groveService.provisionGrove(grove, SeedSpec.AUTO);
+
+        assertThat(seedlingCaptor.getValue().authorizedKeys()).isEmpty();
     }
 
     // --- stopGrove / startGrove ---
