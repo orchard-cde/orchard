@@ -1,6 +1,7 @@
 package dev.orchard.gateway.server;
 
 import dev.orchard.gateway.auth.KeyAuthenticator;
+import dev.orchard.gateway.auth.OwnerTokenAuthenticator;
 import dev.orchard.gateway.config.GatewayProperties;
 import dev.orchard.gateway.relay.RelayDirectTcpipFactory;
 import dev.orchard.gateway.relay.SeedlingRelay;
@@ -29,15 +30,18 @@ public class GroveRelayServer {
     private final GatewayProperties properties;
     private final HostKeyProvider hostKeyProvider;
     private final KeyAuthenticator keyAuthenticator;
+    private final OwnerTokenAuthenticator ownerTokenAuthenticator;
     private final SeedlingRelay seedlingRelay;
 
     private SshServer server;
 
     public GroveRelayServer(GatewayProperties properties, HostKeyProvider hostKeyProvider,
-                            KeyAuthenticator keyAuthenticator, SeedlingRelay seedlingRelay) {
+                            KeyAuthenticator keyAuthenticator, OwnerTokenAuthenticator ownerTokenAuthenticator,
+                            SeedlingRelay seedlingRelay) {
         this.properties = properties;
         this.hostKeyProvider = hostKeyProvider;
         this.keyAuthenticator = keyAuthenticator;
+        this.ownerTokenAuthenticator = ownerTokenAuthenticator;
         this.seedlingRelay = seedlingRelay;
     }
 
@@ -47,6 +51,7 @@ public class GroveRelayServer {
         server.setPort(properties.getSshPort());
         server.setKeyPairProvider(hostKeyProvider);
         server.setPublickeyAuthenticator(keyAuthenticator);
+        server.setPasswordAuthenticator(ownerTokenAuthenticator);
 
         server.setShellFactory(seedlingRelay.shellFactory());
         server.setCommandFactory(seedlingRelay.commandFactory());

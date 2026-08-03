@@ -2,10 +2,12 @@ package dev.orchard.gateway.api;
 
 import dev.orchard.gateway.auth.FenceTokenClient;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,6 +52,23 @@ public class TrellisApiClient {
                         return Optional.of(objectMapper.readValue(response.getBody(), GatewayRoute.class));
                     }
                     if (status == 404 || status == 409) {
+                        return Optional.<GatewayRoute>empty();
+                    }
+                    throw new IllegalStateException("Unexpected status " + status + " from trellis");
+                });
+    }
+
+    public Optional<GatewayRoute> authorizeOwner(UUID groveId, String email) {
+        return restClient.post()
+                .uri("/api/gateway/authorize-owner")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("groveId", groveId, "email", email))
+                .exchange((request, response) -> {
+                    int status = response.getStatusCode().value();
+                    if (status == 200) {
+                        return Optional.of(objectMapper.readValue(response.getBody(), GatewayRoute.class));
+                    }
+                    if (status == 400 || status == 403 || status == 404) {
                         return Optional.<GatewayRoute>empty();
                     }
                     throw new IllegalStateException("Unexpected status " + status + " from trellis");

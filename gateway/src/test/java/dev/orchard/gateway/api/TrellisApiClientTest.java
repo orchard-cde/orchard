@@ -13,6 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.HttpMethod.GET;
+import static org.springframework.http.HttpMethod.POST;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -20,6 +22,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.HttpStatus.CONFLICT;
+import static org.springframework.http.HttpStatus.FORBIDDEN;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 
 class TrellisApiClientTest {
@@ -68,6 +71,31 @@ class TrellisApiClientTest {
         assertThat(client.resolveGrove(groveId)).isEmpty();
         assertThat(client.resolveGrove(groveId)).isEmpty();
         server.verify();
+    }
+
+    @Test
+    void authorizeOwner_returnsRouteForOwner() throws Exception {
+        setUp("http://trellis:8080");
+        UUID groveId = UUID.randomUUID();
+        GatewayRoute expected = new GatewayRoute(groveId, UUID.randomUUID(), "127.0.0.1", 22, "FLOURISHING");
+        server.expect(requestTo("http://trellis:8080/api/gateway/authorize-owner"))
+                .andExpect(method(POST))
+                .andExpect(content().json("{\"groveId\":\"" + groveId + "\",\"email\":\"alice@example.com\"}"))
+                .andRespond(withSuccess(
+                        new tools.jackson.databind.ObjectMapper().writeValueAsString(expected),
+                        APPLICATION_JSON));
+
+        assertThat(client.authorizeOwner(groveId, "alice@example.com")).contains(expected);
+    }
+
+    @Test
+    void authorizeOwner_notOwnerOrUnknown_returnsEmpty() {
+        setUp("http://trellis:8080");
+        server.expect(requestTo("http://trellis:8080/api/gateway/authorize-owner"))
+                .andExpect(method(POST))
+                .andRespond(withStatus(FORBIDDEN));
+
+        assertThat(client.authorizeOwner(UUID.randomUUID(), "bob@example.com")).isEmpty();
     }
 
     @Test
