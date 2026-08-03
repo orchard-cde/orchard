@@ -2,9 +2,15 @@ package dev.orchard.gateway;
 
 import dev.orchard.gateway.api.TrellisApiClient;
 import dev.orchard.gateway.auth.FenceTokenClient;
+import org.apache.sshd.common.config.keys.writer.openssh.OpenSSHKeyPairResourceWriter;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,6 +22,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 class GatewayApplicationContextTest {
+
+    // SeedlingRelay's @PostConstruct requires a readable internal key at startup;
+    // point it at a throwaway generated key rather than the real ~/.ssh path.
+    @DynamicPropertySource
+    static void internalSshKey(DynamicPropertyRegistry registry) throws Exception {
+        Path keyFile = Files.createTempFile("orchard-gateway-test", "-ed25519");
+        try (var out = Files.newOutputStream(keyFile)) {
+            OpenSSHKeyPairResourceWriter.INSTANCE.writePrivateKey(
+                    new net.i2p.crypto.eddsa.KeyPairGenerator().generateKeyPair(), "test-key", null, out);
+        }
+        registry.add("orchard.gateway.internal-ssh-key-path", keyFile::toString);
+    }
 
     @Autowired
     private FenceTokenClient fenceTokenClient;

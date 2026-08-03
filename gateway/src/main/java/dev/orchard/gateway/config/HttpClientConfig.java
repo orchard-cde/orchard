@@ -2,6 +2,7 @@ package dev.orchard.gateway.config;
 
 import dev.orchard.gateway.api.TrellisApiClient;
 import dev.orchard.gateway.auth.FenceTokenClient;
+import org.apache.sshd.client.SshClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
@@ -9,6 +10,11 @@ import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 public class HttpClientConfig {
+
+    @Bean(destroyMethod = "stop")
+    SshClient sshClient() {
+        return SshClient.setUpDefaultClient();
+    }
 
     @Bean
     FenceTokenClient fenceTokenClient(RestClient.Builder builder, GatewayProperties properties) {
