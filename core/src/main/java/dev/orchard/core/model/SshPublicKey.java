@@ -34,7 +34,7 @@ public record SshPublicKey(
         );
     }
 
-    static String fingerprint(String publicKey) {
+    public static String fingerprint(String publicKey) {
         String[] parts = publicKey.trim().split("\\s+");
         if (parts.length < 2) {
             throw new IllegalArgumentException("publicKey must contain a key type and base64-encoded key material");
