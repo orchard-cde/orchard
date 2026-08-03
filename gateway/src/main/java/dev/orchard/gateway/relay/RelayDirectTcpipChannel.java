@@ -18,6 +18,7 @@ import org.apache.sshd.server.session.ServerSession;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.Collections;
 
 /**
@@ -84,14 +85,26 @@ public class RelayDirectTcpipChannel extends AbstractServerChannel {
         // Bytes arriving from the target (via the relay) go back to the SSH client
         // through the server channel's ChannelAsyncOutputStream. getInvertedOut() is the
         // InputStream side of the tunnel channel (bytes the target sent back).
+        //
+        // writeBuffer() is async and retains its buffer until the write drains, so each
+        // chunk gets its own copy (the shared read buffer would otherwise be overwritten
+        // by the next read before the write finished draining it). verify() blocks this
+        // reader thread until that write completes before the next read is issued, which
+        // both caps in-flight writes at one (ChannelAsyncOutputStream throws
+        // WritePendingException on a second concurrent write) and surfaces write failures
+        // here instead of letting them vanish into a discarded listener.
         Thread.ofVirtual().name("relay-tcpip-in").start(() -> {
             try {
                 InputStream in = tunnel.getInvertedOut();
                 byte[] buf = new byte[32768];
                 int n;
                 while ((n = in.read(buf)) >= 0) {
-                    ByteArrayBuffer packet = new ByteArrayBuffer(buf, 0, n, false);
-                    out.writeBuffer(packet).addListener(future -> { });
+                    // The 1-arg constructor wraps the copy read-only (rpos=0, wpos=length):
+                    // writeBuffer() sends buffer.available() bytes, so a writable/empty
+                    // buffer (the 4-arg ctor's readOnly=false, e.g. `new ByteArrayBuffer(buf, 0,
+                    // n, false)`) would report zero available bytes and silently no-op.
+                    ByteArrayBuffer packet = new ByteArrayBuffer(Arrays.copyOf(buf, n));
+                    out.writeBuffer(packet).verify();
                 }
             } catch (Exception e) {
                 close(false);
