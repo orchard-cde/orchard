@@ -17,5 +17,6 @@ include(
     "trellis",
     "trowel",
     "fence",
+    "gateway",
     "integration-tests"
 )
