@@ -9,6 +9,7 @@ import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.common.Closeable;
 import org.apache.sshd.common.SshConstants;
 import org.apache.sshd.common.channel.ChannelAsyncOutputStream;
+import org.apache.sshd.common.channel.LocalWindow;
 import org.apache.sshd.common.channel.StreamingChannel;
 import org.apache.sshd.common.util.buffer.Buffer;
 import org.apache.sshd.common.util.buffer.ByteArrayBuffer;
@@ -120,6 +121,14 @@ public class RelayDirectTcpipChannel extends AbstractServerChannel {
             var outStream = tunnel.getInvertedIn();
             outStream.write(data, off, (int) len);
             outStream.flush();
+        }
+        // AbstractChannel.handleData() already consumed the local window for this packet
+        // before calling us; mirror TcpipServerChannel's ChannelToPortHandler.checkWindow()
+        // and replenish it now that the bytes are forwarded, or the client -> gateway window
+        // only ever shrinks and the forward stalls once it hits zero (~2MB default).
+        LocalWindow localWindow = getLocalWindow();
+        if (localWindow.isOpen()) {
+            localWindow.release(len);
         }
     }
 

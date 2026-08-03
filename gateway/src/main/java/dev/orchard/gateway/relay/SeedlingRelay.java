@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
@@ -55,11 +54,6 @@ public class SeedlingRelay {
         sshClient.setServerKeyVerifier(AcceptAllServerKeyVerifier.INSTANCE);
         sshClient.start();
         log.info("SeedlingRelay up; internal key from {}", internalKeyPath);
-    }
-
-    @PreDestroy
-    void stop() {
-        sshClient.stop();
     }
 
     KeyPair loadInternalKey() {

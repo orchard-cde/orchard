@@ -5,6 +5,9 @@ import org.apache.sshd.common.session.SessionContext;
 import org.apache.sshd.common.util.security.SecurityUtils;
 import org.apache.sshd.server.keyprovider.SimpleGeneratorHostKeyProvider;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 
@@ -14,7 +17,20 @@ public class HostKeyProvider implements KeyPairProvider {
     private final SimpleGeneratorHostKeyProvider delegate;
 
     public HostKeyProvider(String path) {
-        this.delegate = new SimpleGeneratorHostKeyProvider(Path.of(path));
+        Path keyPath = Path.of(path);
+        // SimpleGeneratorHostKeyProvider.doWriteKeyPair opens the file via
+        // Files.newOutputStream without creating parent directories first. The default
+        // path (~/.orchard/gateway-host-key) doesn't exist on a clean host, so first-run
+        // @PostConstruct generation throws NoSuchFileException unless we create it here.
+        Path parent = keyPath.toAbsolutePath().getParent();
+        if (parent != null && !Files.isDirectory(parent)) {
+            try {
+                Files.createDirectories(parent);
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to create host key directory " + parent, e);
+            }
+        }
+        this.delegate = new SimpleGeneratorHostKeyProvider(keyPath);
         // AbstractGeneratorHostKeyProvider.generateKeyPair(algorithm) passes this
         // string straight to SecurityUtils.getKeyPairGenerator(algorithm), i.e. a
         // JCA KeyPairGenerator algorithm name ("EdDSA") — not the SSH wire key-type

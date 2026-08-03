@@ -31,6 +31,21 @@ class HostKeyProviderTest {
         assertThat(secondKeys.next().getPublic()).isEqualTo(firstKeysHasPublic(first));
     }
 
+    @Test
+    void createsMissingParentDirectoriesOnFirstRun() throws Exception {
+        // Mirrors the real default (~/.orchard/gateway-host-key): the parent directory
+        // doesn't exist yet on a clean host, so the provider must create it rather than
+        // let SimpleGeneratorHostKeyProvider fail with NoSuchFileException.
+        Path keyFile = tempDir.resolve("nested").resolve("orchard").resolve("gateway-host-key");
+        assertThat(Files.exists(keyFile.getParent())).isFalse();
+
+        HostKeyProvider provider = new HostKeyProvider(keyFile.toString());
+        Iterator<KeyPair> keys = provider.loadKeys(null).iterator();
+
+        assertThat(keys.hasNext()).isTrue();
+        assertThat(Files.exists(keyFile)).isTrue();
+    }
+
     private java.security.PublicKey firstKeysHasPublic(HostKeyProvider provider) throws Exception {
         return provider.loadKeys(null).iterator().next().getPublic();
     }

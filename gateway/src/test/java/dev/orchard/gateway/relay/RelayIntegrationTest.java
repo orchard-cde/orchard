@@ -58,14 +58,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * the gateway to a plain TCP echo target the seedling connects to.
  *
  * <p>Deliberately lives in the same package as {@link SeedlingRelay} so it can
- * call its package-private {@code start()}/{@code stop()} lifecycle methods
- * directly, the same way Spring's {@code @PostConstruct}/{@code @PreDestroy}
- * would, without needing a Spring context.
+ * call its package-private {@code start()} lifecycle method directly, the
+ * same way Spring's {@code @PostConstruct} would, without needing a Spring
+ * context.
  */
 class RelayIntegrationTest {
 
     private static final byte[] EXEC_PAYLOAD = deterministicPayload(200_000, (byte) 7);
-    private static final int FORWARD_PAYLOAD_SIZE = 300_000; // several times RelayDirectTcpipChannel's 32768-byte pump buffer
+    // Comfortably past the ~2MB default SSH channel window: without
+    // RelayDirectTcpipChannel.doWriteData releasing the local window after each forwarded
+    // chunk, the client -> gateway window is consumed but never replenished and the forward
+    // hangs once it hits zero, failing this test via @Timeout instead of completing.
+    private static final int FORWARD_PAYLOAD_SIZE = 3_000_000;
 
     @TempDir
     Path tempDir;
