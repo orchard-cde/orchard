@@ -58,6 +58,7 @@ public class RegisteredClientRepositoryConfig {
                 .clientSecret("{noop}" + gatewayClientProperties.getClientSecret())
                 .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
                 .scope("openid")
+                .scope("gateway")
                 .clientSettings(ClientSettings.builder()
                         .requireAuthorizationConsent(false)
                         .build())

@@ -57,7 +57,7 @@ That means (a) seedlings must expose sshd on a routable address, (b) every clien
 
 | Component | Responsibility |
 |-----------|----------------|
-| `GatewayGroveController` | `GET /api/gateway/groves/{id}` → `{cultivatorId, seedlingIp, seedlingPort, state}` (404 unknown; reject when the seedling is not running — no IP/port or seedling state != SAPLING); `GET /api/gateway/cultivators/{id}/keys` → registered `{fingerprint, publicKey}`; `POST /api/gateway/authorize-owner {groveId, email}` → route or 403. All under `/api/gateway/**`, protected by the existing `oauth2ResourceServer` chain (service token passes; dev chain passes). |
+| `GatewayGroveController` | `GET /api/gateway/groves/{id}` → `{cultivatorId, seedlingIp, seedlingPort, state}` (404 unknown; reject when the seedling is not running — no IP/port or seedling state != SAPLING); `GET /api/gateway/cultivators/{id}/keys` → registered `{fingerprint, publicKey}`; `POST /api/gateway/authorize-owner {groveId, email}` → route or 403. All under `/api/gateway/**`, protected by the `oauth2ResourceServer` chain and (Phase 2 hardening, finding I1) requiring `SCOPE_gateway` — only the confidential `orchard-gateway` client's service token qualifies, not any authenticated user JWT; the dev chain still permits all. |
 | `CultivatorAuthFilter` fix | In `doFilterInternal`, **skip cultivator resolution when the JWT has no `email` claim** (debug log + pass through). `client_credentials` tokens have sub = client id and no email; today the filter would fail or create a garbage cultivator. User tokens always carry email (openid scope). |
 | `CultivatorService.findByEmail` | New `Optional<Cultivator> findByEmail(String email)` lookup for `authorize-owner`. |
 
@@ -160,6 +160,7 @@ trowel ssh-key remove <id>
 
 ## Out of Scope
 
+- The original wording above ("protected by the existing chain") assumed any authenticated JWT could call `/api/gateway/**`; the `SCOPE_gateway` requirement is a deliberate Phase 2 tightening beyond that baseline, not a re-scope of this spec. Phase 3's gateway `FenceTokenClient` must request `scope=gateway` when minting its client_credentials token or trellis will 403 it.
 - The `sshConnectionString` format change (drops `-i` + retargets `cultivator@ip` → `groveId@gateway-host`) is a **breaking change to an externally-consumed API field**: `GroveResponse.sshConnectionString` is serialized from `Grove.getSshConnectionString()` (GroveResponse.java:84) and is consumed by `orchard-vscode-extension`'s `connectGrove.ts` (paired issue **orchard-vscode-extension#47**) and likely Canopy/orchard-ui. This spec does not modify that contract directly, but the format change must land in coordination with #47 (or the field kept stable/versioned) or the extension breaks silently the moment this merges.
 - Retiring the shared trellis key as a client-facing credential (spec follow-up; the key remains the internal gateway→seedling credential here).
 - Per-grove delegated credentials for the gateway (noted as a future option; same-host colocation keeps the single internal key safe).

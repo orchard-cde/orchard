@@ -68,6 +68,7 @@ class RegisteredClientRepositoryConfigTest {
             assertThat(client.getAuthorizationGrantTypes()).contains(AuthorizationGrantType.CLIENT_CREDENTIALS);
             assertThat(client.getClientSecret()).startsWith("{noop}");
             assertThat(client.getClientSecret()).endsWith("dev-secret");
+            assertThat(client.getScopes()).contains("gateway");
         });
     }
 }
