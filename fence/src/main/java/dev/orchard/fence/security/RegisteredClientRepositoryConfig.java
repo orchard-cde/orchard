@@ -16,7 +16,8 @@ public class RegisteredClientRepositoryConfig {
 
     @Bean
     RegisteredClientRepository registeredClientRepository(
-            FenceClientProperties clientProperties) {
+            FenceClientProperties clientProperties,
+            FenceGatewayClientProperties gatewayClientProperties) {
 
         // Both clients are public (no client secret): trowel-cli is a CLI that can't
         // safely hold a secret, and orchard-ui runs entirely in the browser. Neither
@@ -47,6 +48,21 @@ public class RegisteredClientRepositoryConfig {
                         .build())
                 .build();
 
-        return new InMemoryRegisteredClientRepository(trowelCli, orchardUi);
+        // Confidential client: the SSH gateway authenticates with client_id +
+        // client_secret (CLIENT_SECRET_BASIC) to mint its own client_credentials
+        // service token for trellis /api/gateway/** calls. The secret must equal
+        // the gateway's own GATEWAY_OAUTH2_CLIENT_SECRET in deployment.
+        RegisteredClient orchardGateway = RegisteredClient.withId(UUID.randomUUID().toString())
+                .clientId(gatewayClientProperties.getClientId())
+                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .clientSecret("{noop}" + gatewayClientProperties.getClientSecret())
+                .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
+                .scope("openid")
+                .clientSettings(ClientSettings.builder()
+                        .requireAuthorizationConsent(false)
+                        .build())
+                .build();
+
+        return new InMemoryRegisteredClientRepository(trowelCli, orchardUi, orchardGateway);
     }
 }

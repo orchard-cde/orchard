@@ -20,10 +20,12 @@ class RegisteredClientRepositoryConfigTest {
                 props.setRedirectUri("http://localhost:3000/callback");
                 return props;
             })
-            .withPropertyValues(
-                    "fence.client.client-id=orchard-ui",
-                    "fence.client.redirect-uri=http://localhost:3000/callback"
-            );
+            .withBean(FenceGatewayClientProperties.class, () -> {
+                FenceGatewayClientProperties props = new FenceGatewayClientProperties();
+                props.setClientId("orchard-gateway");
+                props.setClientSecret("dev-secret");
+                return props;
+            });
 
     @Test
     void trowelCliIsRegisteredForDeviceFlow() {
@@ -52,6 +54,20 @@ class RegisteredClientRepositoryConfigTest {
                     AuthorizationGrantType.AUTHORIZATION_CODE,
                     AuthorizationGrantType.REFRESH_TOKEN);
             assertThat(client.getScopes()).contains("openid", "profile", "email");
+        });
+    }
+
+    @Test
+    void orchardGatewayIsRegisteredForClientCredentials() {
+        contextRunner.run(context -> {
+            RegisteredClientRepository repo = context.getBean(RegisteredClientRepository.class);
+            RegisteredClient client = repo.findByClientId("orchard-gateway");
+
+            assertThat(client).isNotNull();
+            assertThat(client.getClientAuthenticationMethods()).contains(ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
+            assertThat(client.getAuthorizationGrantTypes()).contains(AuthorizationGrantType.CLIENT_CREDENTIALS);
+            assertThat(client.getClientSecret()).startsWith("{noop}");
+            assertThat(client.getClientSecret()).endsWith("dev-secret");
         });
     }
 }
