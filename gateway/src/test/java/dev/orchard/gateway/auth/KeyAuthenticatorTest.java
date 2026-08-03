@@ -10,7 +10,6 @@ import org.apache.sshd.server.session.ServerSession;
 import org.junit.jupiter.api.Test;
 
 import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.PublicKey;
 import java.util.List;
 import java.util.Optional;
@@ -26,12 +25,16 @@ import static org.mockito.Mockito.when;
 
 class KeyAuthenticatorTest {
 
-    // RSA, not Ed25519: MINA's PublicKeyEntry.toString(PublicKey) can't encode a JDK-native
-    // Ed25519 key (java.security.interfaces.EdECPublicKey) without a BouncyCastle or
-    // net.i2p.crypto.eddsa security-provider registrar on the classpath, and the gateway
-    // module has neither. RSA round-trips through the same MINA API with no extra dependency.
-    private static KeyPair testKeyPair() throws Exception {
-        return KeyPairGenerator.getInstance("RSA").generateKeyPair();
+    // Uses net.i2p.crypto.eddsa's own KeyPairGenerator (not the JDK's built-in "Ed25519"
+    // algorithm): MINA's decoder registry for ssh-ed25519 wire encoding only recognizes
+    // net.i2p.crypto.eddsa.EdDSAPublicKey, not the JDK-native java.security.interfaces.EdECPublicKey
+    // produced by KeyPairGenerator.getInstance("Ed25519"). Requesting "EdDSA" via the standard JCA
+    // lookup also resolves to the JDK's own SunEC provider (same problem) because MINA's
+    // EdDSASecurityProviderRegistrar keeps its net.i2p.crypto.eddsa Provider instance private and
+    // never calls Security.addProvider. Going straight to net.i2p.crypto.eddsa's generator is the
+    // one path that reliably yields a key MINA can encode.
+    private static KeyPair ed25519KeyPair() {
+        return new net.i2p.crypto.eddsa.KeyPairGenerator().generateKeyPair();
     }
 
     @Test
@@ -45,7 +48,7 @@ class KeyAuthenticatorTest {
         GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "127.0.0.1", 22, "FLOURISHING");
         when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
 
-        KeyPair pair = testKeyPair();
+        KeyPair pair = ed25519KeyPair();
         String wireLine = PublicKeyEntry.toString(pair.getPublic());
         String fingerprint = SshPublicKey.fingerprint(wireLine);
         when(trellis.listKeys(cultivatorId))
@@ -68,13 +71,13 @@ class KeyAuthenticatorTest {
         GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "127.0.0.1", 22, "FLOURISHING");
         when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
 
-        KeyPair registered = testKeyPair();
+        KeyPair registered = ed25519KeyPair();
         String wireLine = PublicKeyEntry.toString(registered.getPublic());
         when(trellis.listKeys(cultivatorId))
                 .thenReturn(List.of(new GatewayKey(UUID.randomUUID(), "laptop", wireLine,
                         SshPublicKey.fingerprint(wireLine))));
 
-        KeyPair attacker = testKeyPair();
+        KeyPair attacker = ed25519KeyPair();
         KeyAuthenticator authenticator = new KeyAuthenticator(resolver, trellis);
 
         assertThat(authenticator.authenticate(groveId.toString(), attacker.getPublic(), session)).isFalse();
