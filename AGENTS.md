@@ -34,7 +34,9 @@ orchard/
 ├── harvest/    # DevcontainerParser - parses .devcontainer/devcontainer.json
 ├── nursery/    # SeedlingProvider interface, QemuSeedlingProvider, FruitGrower
 ├── api/        # REST controllers, services, DTOs
+├── fence/      # Authentication subsystem - OAuth2/OIDC device flow + token issuance
 ├── trellis/    # Spring Boot app entry point (port 8080)
+├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to seedlings
 └── trowel/     # Picocli CLI application
 ```
 

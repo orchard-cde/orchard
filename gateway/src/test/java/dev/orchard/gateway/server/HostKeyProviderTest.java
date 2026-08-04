@@ -5,10 +5,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyPair;
 import java.util.Iterator;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class HostKeyProviderTest {
 
@@ -44,6 +46,19 @@ class HostKeyProviderTest {
 
         assertThat(keys.hasNext()).isTrue();
         assertThat(Files.exists(keyFile)).isTrue();
+    }
+
+    @Test
+    void generatedHostKeyFileIsOwnerOnly() throws Exception {
+        Path keyFile = tempDir.resolve("gateway-host-key");
+        assumeTrue(keyFile.getFileSystem().supportedFileAttributeViews().contains("posix"),
+                "POSIX permissions not supported on this filesystem");
+
+        HostKeyProvider provider = new HostKeyProvider(keyFile.toString());
+        provider.loadKeys(null).iterator().next();
+
+        assertThat(Files.getPosixFilePermissions(keyFile))
+                .isEqualTo(PosixFilePermissions.fromString("rw-------"));
     }
 
     private java.security.PublicKey firstKeysHasPublic(HostKeyProvider provider) throws Exception {

@@ -78,15 +78,28 @@ public class SeedlingRelay {
         if (cached != null && !cached.isClosed()) {
             return cached;
         }
-        ClientSession client = sshClient.connect(DEFAULT_SSH_USER, route.seedlingIp(), route.seedlingPort())
-                .verify(10, TimeUnit.SECONDS)
-                .getSession();
-        client.addPublicKeyIdentity(internalKey);
-        client.auth().verify(10, TimeUnit.SECONDS);
-        serverSession.setAttribute(RELAY_SESSION_KEY, client);
-        serverSession.addCloseFutureListener(future -> client.close(false));
-        log.debug("Opened relay session to {}:{}", route.seedlingIp(), route.seedlingPort());
-        return client;
+        // Check-then-act on the cached attribute is otherwise racy: two channels opening
+        // concurrently on the same ServerSession (e.g. a shell plus a direct-tcpip forward)
+        // can both observe a null cache, both connect+auth their own ClientSession, and both
+        // setAttribute — the second clobbers the first, leaking a duplicate outbound
+        // connection and breaking the "one client session per server session" contract.
+        // Synchronizing on the serverSession monitor serializes only the channels of that
+        // one session; unrelated ServerSessions use distinct monitors and never contend.
+        synchronized (serverSession) {
+            cached = serverSession.getAttribute(RELAY_SESSION_KEY);
+            if (cached != null && !cached.isClosed()) {
+                return cached;
+            }
+            ClientSession client = sshClient.connect(DEFAULT_SSH_USER, route.seedlingIp(), route.seedlingPort())
+                    .verify(10, TimeUnit.SECONDS)
+                    .getSession();
+            client.addPublicKeyIdentity(internalKey);
+            client.auth().verify(10, TimeUnit.SECONDS);
+            serverSession.setAttribute(RELAY_SESSION_KEY, client);
+            serverSession.addCloseFutureListener(future -> client.close(false));
+            log.debug("Opened relay session to {}:{}", route.seedlingIp(), route.seedlingPort());
+            return client;
+        }
     }
 
     public CommandFactory commandFactory() {
