@@ -24,6 +24,10 @@ dependencies {
     "integrationTestImplementation"("org.springframework.boot:spring-boot-restclient")
     "integrationTestImplementation"("org.springframework.boot:spring-boot-resttestclient")
     "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-test")
+
+    "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-webmvc-test")
+    "integrationTestImplementation"("org.springframework.security:spring-security-oauth2-core")
+    "integrationTestImplementation"("org.springframework.security:spring-security-test")
     "integrationTestImplementation"("org.testcontainers:testcontainers:2.0.5")
     "integrationTestImplementation"("org.testcontainers:testcontainers-junit-jupiter:2.0.5")
     "integrationTestImplementation"("org.testcontainers:testcontainers-localstack:2.0.5")
@@ -36,10 +40,6 @@ dependencies {
     implementation(project(":nursery"))
     implementation(project(":fence"))
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
-
-    "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-webmvc-test")
-    "integrationTestImplementation"("org.springframework.security:spring-security-test")
-    "integrationTestImplementation"("org.springframework.security:spring-security-oauth2-core")
 }
 
 val integrationTest by tasks.registering(Test::class) {

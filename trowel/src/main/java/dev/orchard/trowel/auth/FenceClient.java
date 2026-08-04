@@ -124,7 +124,9 @@ public class FenceClient {
     private static String encodeForm(Map<String, String> params) {
         var sb = new StringBuilder();
         for (var entry : params.entrySet()) {
-            if (!sb.isEmpty()) sb.append('&');
+            if (!sb.isEmpty()) {
+                sb.append('&');
+            }
             sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8));
             sb.append('=');
             sb.append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));

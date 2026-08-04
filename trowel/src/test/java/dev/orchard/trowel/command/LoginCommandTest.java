@@ -43,7 +43,9 @@ class LoginCommandTest {
 
     @AfterAll
     static void stopFenceServer() {
-        if (fenceServer != null) fenceServer.stop(0);
+        if (fenceServer != null) {
+            fenceServer.stop(0);
+        }
     }
 
     @BeforeEach
@@ -81,7 +83,7 @@ class LoginCommandTest {
 
     @Test
     void login_displaysUserCodeAndVerificationUri() throws Exception {
-        fenceServer.createContext("/oauth2/device_authorization", exchange -> {
+        fenceServer.createContext("/oauth2/device_authorization", exchange ->
             respond(exchange, 200, """
                 {
                     "device_code": "dc-test-123",
@@ -90,8 +92,7 @@ class LoginCommandTest {
                     "expires_in": 600,
                     "interval": 1
                 }
-                """);
-        });
+                """));
 
         var pollCount = new AtomicInteger(0);
         fenceServer.createContext("/oauth2/token", exchange -> {
@@ -105,9 +106,8 @@ class LoginCommandTest {
             }
         });
 
-        fenceServer.createContext("/api/me", exchange -> {
-            respond(exchange, 200, "{\"id\": \"c-1\", \"displayName\": \"Display User\", \"email\": \"d@example.com\"}");
-        });
+        fenceServer.createContext("/api/me", exchange ->
+            respond(exchange, 200, "{\"id\": \"c-1\", \"displayName\": \"Display User\", \"email\": \"d@example.com\"}"));
 
         int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort);
 
@@ -118,7 +118,7 @@ class LoginCommandTest {
 
     @Test
     void login_persistsTokensAndCultivatorToConfig() throws Exception {
-        fenceServer.createContext("/oauth2/device_authorization", exchange -> {
+        fenceServer.createContext("/oauth2/device_authorization", exchange ->
             respond(exchange, 200, """
                 {
                     "device_code": "dc-test-456",
@@ -127,10 +127,9 @@ class LoginCommandTest {
                     "expires_in": 600,
                     "interval": 1
                 }
-                """);
-        });
+                """));
 
-        fenceServer.createContext("/oauth2/token", exchange -> {
+        fenceServer.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, """
                 {
                     "access_token": "access-from-login",
@@ -138,18 +137,16 @@ class LoginCommandTest {
                     "token_type": "Bearer",
                     "expires_in": 3600
                 }
-                """);
-        });
+                """));
 
-        fenceServer.createContext("/api/me", exchange -> {
+        fenceServer.createContext("/api/me", exchange ->
             respond(exchange, 200, """
                 {
                     "id": "cultivator-login-uuid",
                     "displayName": "Test Cultivator",
                     "email": "test@example.com"
                 }
-                """);
-        });
+                """));
 
         int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort);
 
@@ -167,7 +164,7 @@ class LoginCommandTest {
 
     @Test
     void login_showsSuccessMessage() throws Exception {
-        fenceServer.createContext("/oauth2/device_authorization", exchange -> {
+        fenceServer.createContext("/oauth2/device_authorization", exchange ->
             respond(exchange, 200, """
                 {
                     "device_code": "dc-test-789",
@@ -176,10 +173,9 @@ class LoginCommandTest {
                     "expires_in": 600,
                     "interval": 1
                 }
-                """);
-        });
+                """));
 
-        fenceServer.createContext("/oauth2/token", exchange -> {
+        fenceServer.createContext("/oauth2/token", exchange ->
             respond(exchange, 200, """
                 {
                     "access_token": "at-success",
@@ -187,18 +183,16 @@ class LoginCommandTest {
                     "token_type": "Bearer",
                     "expires_in": 3600
                 }
-                """);
-        });
+                """));
 
-        fenceServer.createContext("/api/me", exchange -> {
+        fenceServer.createContext("/api/me", exchange ->
             respond(exchange, 200, """
                 {
                     "id": "cult-success",
                     "displayName": "Success User",
                     "email": "success@example.com"
                 }
-                """);
-        });
+                """));
 
         int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort);
 
