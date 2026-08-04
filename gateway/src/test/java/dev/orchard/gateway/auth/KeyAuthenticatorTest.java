@@ -104,4 +104,21 @@ class KeyAuthenticatorTest {
         assertThat(new KeyAuthenticator(resolver, trellis)
                 .authenticate("not-a-uuid", mock(PublicKey.class), session)).isFalse();
     }
+
+    @Test
+    void authenticate_returnsFalseWhenTrellisCallThrows() {
+        TrellisApiClient trellis = mock(TrellisApiClient.class);
+        GroveResolver resolver = mock(GroveResolver.class);
+        ServerSession session = mock(ServerSession.class);
+
+        UUID groveId = UUID.randomUUID();
+        UUID cultivatorId = UUID.randomUUID();
+        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "127.0.0.1", 22, "FLOURISHING");
+        when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
+        when(trellis.listKeys(cultivatorId)).thenThrow(new IllegalStateException("trellis unreachable"));
+
+        assertThat(new KeyAuthenticator(resolver, trellis)
+                .authenticate(groveId.toString(), ed25519KeyPair().getPublic(), session)).isFalse();
+        verify(session, never()).setAttribute(any(), any());
+    }
 }

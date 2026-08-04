@@ -76,7 +76,13 @@ public class OwnerTokenAuthenticator implements PasswordAuthenticator {
             return false;
         }
 
-        Optional<GatewayRoute> route = trellisApiClient.authorizeOwner(groveId, email);
+        Optional<GatewayRoute> route;
+        try {
+            route = trellisApiClient.authorizeOwner(groveId, email);
+        } catch (Exception e) {
+            log.debug("Owner token rejected: trellis authorize-owner call failed: {}", e.getMessage());
+            return false;
+        }
         if (route.isEmpty()) {
             log.debug("Owner token rejected: {} is not an authorized owner of grove {}", email, groveId);
             return false;

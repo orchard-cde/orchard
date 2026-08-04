@@ -8,6 +8,8 @@ import org.apache.sshd.common.AttributeRepository;
 import org.apache.sshd.common.config.keys.PublicKeyEntry;
 import org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator;
 import org.apache.sshd.server.session.ServerSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.security.PublicKey;
@@ -19,6 +21,8 @@ import java.security.PublicKey;
  */
 @Component
 public class KeyAuthenticator implements PublickeyAuthenticator {
+
+    private static final Logger log = LoggerFactory.getLogger(KeyAuthenticator.class);
 
     public static final AttributeRepository.AttributeKey<GatewayRoute> ROUTE_KEY = new AttributeRepository.AttributeKey<>();
 
@@ -32,16 +36,21 @@ public class KeyAuthenticator implements PublickeyAuthenticator {
 
     @Override
     public boolean authenticate(String username, PublicKey key, ServerSession session) {
-        var route = groveResolver.resolve(username);
-        if (route.isEmpty()) {
+        try {
+            var route = groveResolver.resolve(username);
+            if (route.isEmpty()) {
+                return false;
+            }
+            String offeredFingerprint = SshPublicKey.fingerprint(PublicKeyEntry.toString(key));
+            boolean matched = trellisApiClient.listKeys(route.get().cultivatorId()).stream()
+                    .anyMatch(k -> k.fingerprint().equals(offeredFingerprint));
+            if (matched) {
+                session.setAttribute(ROUTE_KEY, route.get());
+            }
+            return matched;
+        } catch (Exception e) {
+            log.debug("Publickey auth rejected: trellis call failed: {}", e.getMessage());
             return false;
         }
-        String offeredFingerprint = SshPublicKey.fingerprint(PublicKeyEntry.toString(key));
-        boolean matched = trellisApiClient.listKeys(route.get().cultivatorId()).stream()
-                .anyMatch(k -> k.fingerprint().equals(offeredFingerprint));
-        if (matched) {
-            session.setAttribute(ROUTE_KEY, route.get());
-        }
-        return matched;
     }
 }

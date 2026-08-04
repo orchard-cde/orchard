@@ -142,4 +142,16 @@ class OwnerTokenAuthenticatorTest {
         assertThat(authenticator.authenticate(UUID.randomUUID().toString(), "", mock(ServerSession.class))).isFalse();
         assertThat(authenticator.authenticate(UUID.randomUUID().toString(), null, mock(ServerSession.class))).isFalse();
     }
+
+    @Test
+    void authenticate_returnsFalseWhenTrellisCallThrows() throws Exception {
+        RSAKey key = rsaKey();
+        String token = sign(key, validClaims());
+        TrellisApiClient trellis = mock(TrellisApiClient.class);
+        when(trellis.authorizeOwner(any(), eq("alice@example.com")))
+                .thenThrow(new IllegalStateException("trellis unreachable"));
+
+        assertThat(authenticator(key, trellis)
+                .authenticate(UUID.randomUUID().toString(), token, mock(ServerSession.class))).isFalse();
+    }
 }
