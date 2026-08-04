@@ -65,4 +65,42 @@ class SshKeyStoreTest {
 
         assertThat(dev.orchard.core.model.SshPublicKey.fingerprint(publicLine)).startsWith("SHA256:");
     }
+
+    @Test
+    void publicLine_hasCommentAndFingerprintIsUnaffectedByIt() throws Exception {
+        SshKeyStore.loadOrCreate("default");
+        String publicLine = Files.readString(SshKeyPaths.publicKey("default")).trim();
+
+        assertThat(publicLine).endsWith(" default@orchard");
+
+        String[] parts = publicLine.split("\\s+");
+        assertThat(parts).hasSize(3);
+        String bareKey = parts[0] + " " + parts[1];
+
+        assertThat(dev.orchard.core.model.SshPublicKey.fingerprint(publicLine))
+                .isEqualTo(dev.orchard.core.model.SshPublicKey.fingerprint(bareKey));
+    }
+
+    @Test
+    void loadOrCreate_selfHealsWhenPublicKeyFileIsMissing() throws Exception {
+        KeyPair created = SshKeyStore.loadOrCreate("default");
+        Files.delete(SshKeyPaths.publicKey("default"));
+        assertThat(SshKeyPaths.publicKey("default")).doesNotExist();
+
+        KeyPair healed = SshKeyStore.loadOrCreate("default");
+
+        assertThat(SshKeyPaths.privateKey("default")).exists();
+        assertThat(SshKeyPaths.publicKey("default")).exists();
+        assertThat(healed.getPublic()).isEqualTo(created.getPublic());
+        assertThat(Files.readString(SshKeyPaths.publicKey("default")).trim()).endsWith(" default@orchard");
+    }
+
+    @Test
+    void write_leavesNoOrphanedTempFilesBehind() throws Exception {
+        SshKeyStore.loadOrCreate("default");
+
+        try (var entries = Files.list(SshKeyPaths.keysDir())) {
+            assertThat(entries).noneMatch(p -> p.getFileName().toString().contains(".tmp-"));
+        }
+    }
 }
