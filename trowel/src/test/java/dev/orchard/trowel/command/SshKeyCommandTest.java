@@ -9,7 +9,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -122,9 +124,41 @@ class SshKeyCommandTest {
     @Test
     void remove_deletesKey() {
         UUID keyId = UUID.randomUUID();
-        String out = run("--server", serverUrl(), "ssh-key", "remove", keyId.toString());
+        String out = run("--server", serverUrl(), "ssh-key", "remove", "--force", keyId.toString());
 
         assertThat(out).contains("Removed SSH key " + keyId);
         assertThat(hits).contains("DELETE /api/ssh-keys/" + keyId);
+    }
+
+    @Test
+    void remove_withoutForce_deletesOnAffirmativeConfirmation() {
+        UUID keyId = UUID.randomUUID();
+        InputStream originalIn = System.in;
+        System.setIn(new ByteArrayInputStream("y\n".getBytes(StandardCharsets.UTF_8)));
+        try {
+            String out = run("--server", serverUrl(), "ssh-key", "remove", keyId.toString());
+
+            assertThat(out).contains("Are you sure you want to remove SSH key " + keyId);
+            assertThat(out).contains("Removed SSH key " + keyId);
+            assertThat(hits).contains("DELETE /api/ssh-keys/" + keyId);
+        } finally {
+            System.setIn(originalIn);
+        }
+    }
+
+    @Test
+    void remove_withoutForce_abortsOnDecline() {
+        UUID keyId = UUID.randomUUID();
+        InputStream originalIn = System.in;
+        System.setIn(new ByteArrayInputStream("n\n".getBytes(StandardCharsets.UTF_8)));
+        try {
+            String out = run("--server", serverUrl(), "ssh-key", "remove", keyId.toString());
+
+            assertThat(out).contains("Are you sure you want to remove SSH key " + keyId);
+            assertThat(out).contains("Cancelled.");
+            assertThat(hits).doesNotContain("DELETE /api/ssh-keys/" + keyId);
+        } finally {
+            System.setIn(originalIn);
+        }
     }
 }

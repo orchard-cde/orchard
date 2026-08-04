@@ -106,9 +106,21 @@ public class SshKeyCommand implements Callable<Integer> {
         @CommandLine.Parameters(index = "0", description = "Key id to remove")
         UUID keyId;
 
+        @CommandLine.Option(names = {"-f", "--force"}, description = "Force removal without confirmation")
+        boolean force;
+
         @Override
         public Integer call() {
             try {
+                if (!force) {
+                    System.out.print("Are you sure you want to remove SSH key " + keyId + "? [y/N] ");
+                    int response = System.in.read();
+                    if (response != 'y' && response != 'Y') {
+                        System.out.println("Cancelled.");
+                        return 0;
+                    }
+                }
+
                 OrchardClient client = new OrchardClient(parent.parent.getServerUrl(), parent.parent.getAuthProvider());
                 client.deleteSshPublicKey(keyId);
                 System.out.println("Removed SSH key " + keyId);
