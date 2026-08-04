@@ -6,6 +6,7 @@ import dev.orchard.trowel.auth.NoAuthProvider;
 import dev.orchard.trowel.client.OrchardClient.BeeResponse;
 import dev.orchard.trowel.client.OrchardClient.GroveResponse;
 import dev.orchard.trowel.client.OrchardClient.HealthResponse;
+import dev.orchard.trowel.client.OrchardClient.SshPublicKeyResponse;
 import dev.orchard.trowel.client.OrchardClient.SwarmStatusResponse;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -50,6 +51,7 @@ class OrchardClientTest {
         try { server.removeContext("/api/groves"); } catch (IllegalArgumentException ignored) {}
         try { server.removeContext("/api/health"); } catch (IllegalArgumentException ignored) {}
         try { server.removeContext("/api/me"); } catch (IllegalArgumentException ignored) {}
+        try { server.removeContext("/api/ssh-keys"); } catch (IllegalArgumentException ignored) {}
     }
 
     // -- plantGrove tests --
@@ -460,6 +462,89 @@ class OrchardClientTest {
             .hasMessageContaining("401");
     }
 
+    // -- registerSshPublicKey tests --
+
+    @Test
+    void registerSshPublicKey_sendsPostWithCorrectBodyAndHeaders() throws Exception {
+        server.createContext("/api/ssh-keys", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isEqualTo("application/json");
+
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(body).contains("\"name\":\"laptop\"");
+            assertThat(body).contains("\"publicKey\":\"ssh-ed25519 AAAA\"");
+
+            respond(exchange, 201, SSH_KEY_JSON);
+        });
+
+        SshPublicKeyResponse key = client.registerSshPublicKey("laptop", "ssh-ed25519 AAAA");
+
+        assertThat(key.id()).isEqualTo(UUID.fromString("55555555-5555-5555-5555-555555555555"));
+        assertThat(key.name()).isEqualTo("laptop");
+        assertThat(key.fingerprint()).isEqualTo("SHA256:abc");
+    }
+
+    @Test
+    void registerSshPublicKey_throwsOnValidationError() {
+        server.createContext("/api/ssh-keys", exchange -> respond(exchange, 400, "{\"error\":\"bad request\"}"));
+
+        assertThatThrownBy(() -> client.registerSshPublicKey("", ""))
+            .isInstanceOf(IOException.class)
+            .hasMessageContaining("400");
+    }
+
+    // -- listSshPublicKeys tests --
+
+    @Test
+    void listSshPublicKeys_sendsGetToCorrectPath() throws Exception {
+        server.createContext("/api/ssh-keys", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/ssh-keys");
+
+            respond(exchange, 200, "[" + SSH_KEY_JSON + "]");
+        });
+
+        List<SshPublicKeyResponse> keys = client.listSshPublicKeys();
+
+        assertThat(keys).hasSize(1);
+        assertThat(keys.getFirst().name()).isEqualTo("laptop");
+    }
+
+    @Test
+    void listSshPublicKeys_handlesEmptyList() throws Exception {
+        server.createContext("/api/ssh-keys", exchange -> respond(exchange, 200, "[]"));
+
+        List<SshPublicKeyResponse> keys = client.listSshPublicKeys();
+
+        assertThat(keys).isEmpty();
+    }
+
+    // -- deleteSshPublicKey tests --
+
+    @Test
+    void deleteSshPublicKey_sendsDeleteToCorrectPath() throws Exception {
+        UUID keyId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+
+        server.createContext("/api/ssh-keys", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("DELETE");
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/ssh-keys/" + keyId);
+
+            respond(exchange, 204, "");
+        });
+
+        client.deleteSshPublicKey(keyId);
+        // No exception = success for 204
+    }
+
+    @Test
+    void deleteSshPublicKey_throwsOnNotFound() {
+        server.createContext("/api/ssh-keys", exchange -> respond(exchange, 404, "{\"error\":\"not found\"}"));
+
+        assertThatThrownBy(() -> client.deleteSshPublicKey(UUID.randomUUID()))
+            .isInstanceOf(IOException.class)
+            .hasMessageContaining("404");
+    }
+
     // -- Helpers --
 
     private static void respond(HttpExchange exchange, int statusCode, String body) {
@@ -520,6 +605,16 @@ class OrchardClientTest {
           "hatchedAt": "2026-07-18T10:30:00Z",
           "startedAt": null,
           "stoppedAt": null
+        }
+        """;
+
+    static final String SSH_KEY_JSON = """
+        {
+          "id": "55555555-5555-5555-5555-555555555555",
+          "name": "laptop",
+          "publicKey": "ssh-ed25519 AAAA",
+          "fingerprint": "SHA256:abc",
+          "createdAt": "2026-08-03T00:00:00Z"
         }
         """;
 }
