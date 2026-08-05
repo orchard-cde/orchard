@@ -331,8 +331,10 @@ class DevServerCommandTest {
         Path ranMarker = tempDir.resolve("CORE_RAN");
         Files.writeString(core, "#!/bin/sh\ntouch '" + ranMarker + "'\nsleep 60\n");
         core.toFile().setExecutable(true, false);
-        // fence.jar must exist for auth mode (default) to pass the binary check
+        // fence.jar and gateway.jar must exist for auth mode (default) to pass the
+        // binary checks and reach the UI-resolve failure path being exercised here.
         Files.writeString(bin.resolve("fence.jar"), "");
+        Files.writeString(bin.resolve("gateway.jar"), "");
         System.setProperty("orchard.ui.releaseBase", "http://localhost:1");
         try {
             int exit = execute("dev-server", "start");
@@ -624,12 +626,23 @@ class DevServerCommandTest {
             "java",
             "-jar",
             "/bin/gateway.jar",
+            "--server.port=" + DevServerCommand.GATEWAY_ADMIN_PORT,
             "--orchard.gateway.ssh-port=2222",
             "--orchard.gateway.internal-ssh-key-path=" + DevServerCommand.internalSshKeyPath(),
             "--orchard.gateway.fence.issuer-uri=http://localhost:7779",
             "--orchard.gateway.trellis.base-url=http://localhost:7778",
             "--orchard.gateway.oauth2.client-secret=" + DevServerCommand.DEV_GATEWAY_CLIENT_SECRET
         );
+    }
+
+    @Test
+    void buildGatewayCommand_setsAdminPortExplicitly() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        java.util.List<String> cmd = start.buildGatewayCommand(Path.of("/bin/gateway.jar"));
+
+        assertThat(cmd).contains("--server.port=8081");
+        assertThat(DevServerCommand.GATEWAY_ADMIN_PORT).isEqualTo(8081);
     }
 
     @Test
@@ -704,6 +717,24 @@ class DevServerCommandTest {
         int exitCode = execute("dev-server", "start", "--no-auth", "--foreground");
 
         assertThat(exitCode).isZero();
+        assertThat(outContent.toString()).contains("Skipping gateway");
+    }
+
+    @Test
+    void start_noGatewayAlone_skipsGatewayAndSaysSo() throws Exception {
+        Path bin = tempDir.resolve(".orchard").resolve("bin");
+        Files.createDirectories(bin);
+        Path core = bin.resolve("orchard-server");
+        Files.writeString(core, "#!/bin/sh\necho fake\n");
+        core.toFile().setExecutable(true, false);
+        // fence.jar is still required: --no-gateway alone leaves auth enabled. It's a
+        // dummy (not a real jar), so fence startup fails fast after the skip message
+        // is printed - that failure isn't what this test is about.
+        Files.writeString(bin.resolve("fence.jar"), "");
+
+        int exitCode = execute("dev-server", "start", "--no-gateway", "--foreground");
+
+        assertThat(exitCode).isEqualTo(1);
         assertThat(outContent.toString()).contains("Skipping gateway");
     }
 

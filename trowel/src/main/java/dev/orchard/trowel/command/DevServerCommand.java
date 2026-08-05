@@ -224,6 +224,8 @@ public class DevServerCommand implements Callable<Integer> {
                         System.err.println("  cp gateway/build/libs/gateway-*.jar " + gatewayJar);
                         return 1;
                     }
+                } else if (!noAuth) {
+                    System.out.println("Skipping gateway: disabled via --no-gateway.");
                 }
 
                 // ADJ-1: resolve UI binary BEFORE launching anything (fail fast -> nothing started)
@@ -551,6 +553,7 @@ public class DevServerCommand implements Callable<Integer> {
             command.add("java");
             command.add("-jar");
             command.add(gatewayJar.toString());
+            command.add("--server.port=" + GATEWAY_ADMIN_PORT);
             command.add("--orchard.gateway.ssh-port=" + gatewaySshPort);
             command.add("--orchard.gateway.internal-ssh-key-path=" + internalSshKeyPath());
             command.add("--orchard.gateway.fence.issuer-uri=http://localhost:" + fencePort);
