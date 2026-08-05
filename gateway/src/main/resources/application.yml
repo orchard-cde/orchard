@@ -1,0 +1,25 @@
+server:
+  port: ${GATEWAY_ADMIN_PORT:8081}
+
+spring:
+  application:
+    name: gateway
+
+orchard:
+  gateway:
+    ssh-port: ${GATEWAY_SSH_PORT:2222}
+    host-key-path: ${GATEWAY_HOST_KEY_PATH:${user.home}/.orchard/gateway-host-key}
+    internal-ssh-key-path: ${GATEWAY_INTERNAL_SSH_KEY_PATH:${user.home}/.ssh/orchard_ed25519}
+    fence:
+      issuer-uri: ${GATEWAY_FENCE_ISSUER_URI:http://localhost:7779}
+    oauth2:
+      client-id: ${GATEWAY_OAUTH2_CLIENT_ID:orchard-gateway}
+      client-secret: ${GATEWAY_OAUTH2_CLIENT_SECRET:}
+    trellis:
+      base-url: ${GATEWAY_TRELLIS_BASE_URL:http://localhost:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

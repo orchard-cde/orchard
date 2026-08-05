@@ -20,6 +20,10 @@ dependencies {
 
     implementation("info.picocli:picocli:4.7.7")
     implementation("tools.jackson.dataformat:jackson-dataformat-toml")
+    implementation("org.apache.sshd:sshd-core:2.19.0")
+    // MINA sshd-core cannot generate/encode/parse ed25519 keys without eddsa on the
+    // classpath (SecurityUtils.getKeyPairGenerator(SecurityUtils.EDDSA) delegates to it).
+    implementation("net.i2p.crypto:eddsa:0.3.0")
 }
 
 application {

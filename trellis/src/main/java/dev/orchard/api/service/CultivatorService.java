@@ -109,4 +109,12 @@ public class CultivatorService {
         return cultivatorRepository.findByUsername(username)
             .map(CultivatorEntity::toModel);
     }
+
+    /**
+     * Find a cultivator by email.
+     */
+    public Optional<Cultivator> findByEmail(String email) {
+        return cultivatorRepository.findByEmail(email)
+            .map(CultivatorEntity::toModel);
+    }
 }

@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -92,7 +94,8 @@ public class QemuSeedlingProvider implements SeedlingProvider {
                     SeedlingState.SAPLING,
                     sprouting.spec(),
                     sprouting.plantedAt(),
-                    java.time.Instant.now()
+                    java.time.Instant.now(),
+                    sprouting.authorizedKeys()
                 );
 
             } catch (Exception e) {
@@ -191,6 +194,31 @@ public class QemuSeedlingProvider implements SeedlingProvider {
         }
     }
 
+    /**
+     * Builds the cloud-init {@code ssh_authorized_keys} block. Combines the trellis/server
+     * shared key (kept as-is) with the cultivator's registered public keys so both the server
+     * automation and the cultivator can SSH into the seedling.
+     */
+    static String buildSshAuthorizedKeysBlock(String configuredKey, List<String> registeredKeys) {
+        List<String> keys = new ArrayList<>();
+        if (configuredKey != null && !configuredKey.isBlank()) {
+            keys.add(configuredKey);
+        }
+        if (registeredKeys != null) {
+            registeredKeys.stream()
+                .filter(key -> key != null && !key.isBlank())
+                .forEach(keys::add);
+        }
+        if (keys.isEmpty()) {
+            return "";
+        }
+        StringBuilder block = new StringBuilder("    ssh_authorized_keys:\n");
+        for (String key : keys) {
+            block.append("      - ").append(key).append('\n');
+        }
+        return block.toString();
+    }
+
     private void createCloudInitIso(Path isoPath, Seedling seedling) throws IOException, InterruptedException {
         Path tempDir = Files.createTempDirectory("cloud-init-");
         try {
@@ -212,11 +240,8 @@ public class QemuSeedlingProvider implements SeedlingProvider {
 
             // Build user-data from the classpath template. The SSH block is conditional —
             // when no key is configured, ${ssh_authorized_keys_block} substitutes to empty.
-            String sshBlock;
-            if (sshPubKey != null && !sshPubKey.isBlank()) {
-                sshBlock = "    ssh_authorized_keys:\n      - " + sshPubKey + "\n";
-            } else {
-                sshBlock = "";
+            String sshBlock = buildSshAuthorizedKeysBlock(sshPubKey, seedling.authorizedKeys());
+            if (sshBlock.isEmpty()) {
                 log.warn("No SSH public key configured - VM will not be accessible via SSH key auth. " +
                     "Set orchard.qemu.ssh-public-key or place key at {}.pub", config.sshKeyPath());
             }

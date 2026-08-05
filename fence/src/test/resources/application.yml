@@ -8,6 +8,9 @@ fence:
     client-id: orchard-ui
     client-secret: test-secret
     redirect-uri: http://localhost:3000/callback
+  gateway-client:
+    client-id: orchard-gateway
+    client-secret: test-secret
   upstream:
     registration-id: google
     client-id: test-google-client-id

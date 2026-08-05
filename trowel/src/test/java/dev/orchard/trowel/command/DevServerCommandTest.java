@@ -331,8 +331,10 @@ class DevServerCommandTest {
         Path ranMarker = tempDir.resolve("CORE_RAN");
         Files.writeString(core, "#!/bin/sh\ntouch '" + ranMarker + "'\nsleep 60\n");
         core.toFile().setExecutable(true, false);
-        // fence.jar must exist for auth mode (default) to pass the binary check
+        // fence.jar and gateway.jar must exist for auth mode (default) to pass the
+        // binary checks and reach the UI-resolve failure path being exercised here.
         Files.writeString(bin.resolve("fence.jar"), "");
+        Files.writeString(bin.resolve("gateway.jar"), "");
         System.setProperty("orchard.ui.releaseBase", "http://localhost:1");
         try {
             int exit = execute("dev-server", "start");
@@ -535,6 +537,280 @@ class DevServerCommandTest {
             core.destroyForcibly();
             ui.destroyForcibly();
             fence.destroyForcibly();
+        }
+    }
+
+    // --- Gateway (Grove SSH Gateway) ---
+
+    @Test
+    void gatewayBinary_resolvesUnderOrchardBin() {
+        assertThat(DevServerCommand.gatewayBinary().toString())
+            .endsWith("/.orchard/bin/gateway.jar");
+    }
+
+    @Test
+    void gatewayPidFile_resolvesUnderRun() {
+        assertThat(DevServerCommand.gatewayPidFile().toString())
+            .endsWith("/.orchard/run/orchard-gateway.pid");
+    }
+
+    @Test
+    void gatewayLogFile_resolvesUnderLogs() {
+        assertThat(DevServerCommand.gatewayLogFile().toString())
+            .endsWith("/.orchard/logs/orchard-gateway.log");
+    }
+
+    @Test
+    void internalSshKeyPath_matchesTrellisQemuDefault() {
+        // Same default trellis/QEMU resolve (QemuPlatformDefaults.defaultSshKeyPath()):
+        // ~/.ssh/orchard_ed25519. The gateway MUST authenticate against this same key.
+        assertThat(DevServerCommand.internalSshKeyPath())
+            .isEqualTo(Path.of(tempDir.toString(), ".ssh", "orchard_ed25519").toString());
+    }
+
+    @Test
+    void readGatewayInfo_defaultsToGatewaySshPortWhenPortMissing() throws Exception {
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-gateway.pid"), "12345");
+
+        DevServerCommand.ServerInfo info = DevServerCommand.readGatewayInfo();
+
+        assertThat(info).isNotNull();
+        assertThat(info.pid()).isEqualTo(12345);
+        assertThat(info.port()).isEqualTo(2222);
+    }
+
+    @Test
+    void readGatewayInfo_readsPortFromFile() throws Exception {
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-gateway.pid"), "12345\n3333");
+
+        DevServerCommand.ServerInfo info = DevServerCommand.readGatewayInfo();
+
+        assertThat(info).isNotNull();
+        assertThat(info.pid()).isEqualTo(12345);
+        assertThat(info.port()).isEqualTo(3333);
+    }
+
+    @Test
+    void shouldStartGateway_trueByDefault() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        assertThat(start.shouldStartGateway()).isTrue();
+    }
+
+    @Test
+    void shouldStartGateway_falseWhenNoGatewaySet() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.noGateway = true;
+        assertThat(start.shouldStartGateway()).isFalse();
+    }
+
+    @Test
+    void shouldStartGateway_falseWhenNoAuthSet() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.noAuth = true;
+        assertThat(start.shouldStartGateway()).isFalse();
+    }
+
+    @Test
+    void buildGatewayCommand_includesRequiredArgsWithDefaults() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCorePortForTest(7778);
+        start.setFencePortForTest(7779);
+
+        java.util.List<String> cmd = start.buildGatewayCommand(Path.of("/bin/gateway.jar"));
+
+        assertThat(cmd).containsExactly(
+            "java",
+            "-jar",
+            "/bin/gateway.jar",
+            "--server.port=" + DevServerCommand.GATEWAY_ADMIN_PORT,
+            "--orchard.gateway.ssh-port=2222",
+            "--orchard.gateway.internal-ssh-key-path=" + DevServerCommand.internalSshKeyPath(),
+            "--orchard.gateway.fence.issuer-uri=http://localhost:7779",
+            "--orchard.gateway.trellis.base-url=http://localhost:7778",
+            "--orchard.gateway.oauth2.client-secret=" + DevServerCommand.DEV_GATEWAY_CLIENT_SECRET
+        );
+    }
+
+    @Test
+    void buildGatewayCommand_setsAdminPortExplicitly() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        java.util.List<String> cmd = start.buildGatewayCommand(Path.of("/bin/gateway.jar"));
+
+        assertThat(cmd).contains("--server.port=8081");
+        assertThat(DevServerCommand.GATEWAY_ADMIN_PORT).isEqualTo(8081);
+    }
+
+    @Test
+    void buildGatewayCommand_honorsGatewaySshPortOverride() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setGatewaySshPortForTest(3333);
+
+        java.util.List<String> cmd = start.buildGatewayCommand(Path.of("/bin/gateway.jar"));
+
+        assertThat(cmd).contains("--orchard.gateway.ssh-port=3333");
+    }
+
+    @Test
+    void buildFenceCommand_includesGatewayClientSecret() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setFencePortForTest(7779);
+
+        java.util.List<String> cmd = start.buildFenceCommand(Path.of("/bin/fence.jar"));
+
+        assertThat(cmd).contains(
+            "--fence.gateway-client.client-secret=" + DevServerCommand.DEV_GATEWAY_CLIENT_SECRET
+        );
+    }
+
+    @Test
+    void fenceAndGatewayClientSecrets_match() {
+        // Load-bearing: fence's registered gateway client secret and the gateway's
+        // oauth2.client-secret must be identical or the client_credentials exchange fails.
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        java.util.List<String> fenceCmd = start.buildFenceCommand(Path.of("/bin/fence.jar"));
+        java.util.List<String> gatewayCmd = start.buildGatewayCommand(Path.of("/bin/gateway.jar"));
+
+        String fenceSecret = fenceCmd.stream()
+            .filter(a -> a.startsWith("--fence.gateway-client.client-secret="))
+            .findFirst().orElseThrow()
+            .substring("--fence.gateway-client.client-secret=".length());
+        String gatewaySecret = gatewayCmd.stream()
+            .filter(a -> a.startsWith("--orchard.gateway.oauth2.client-secret="))
+            .findFirst().orElseThrow()
+            .substring("--orchard.gateway.oauth2.client-secret=".length());
+
+        assertThat(fenceSecret).isNotBlank().isEqualTo(gatewaySecret);
+    }
+
+    @Test
+    void start_failsWhenGatewayJarNotFound() throws Exception {
+        Path bin = tempDir.resolve(".orchard").resolve("bin");
+        Files.createDirectories(bin);
+        Path core = bin.resolve("orchard-server");
+        Files.writeString(core, "#!/bin/sh\necho fake\n");
+        core.toFile().setExecutable(true, false);
+        Files.writeString(bin.resolve("fence.jar"), ""); // fence jar present
+        // no gateway.jar present
+
+        int exitCode = execute("dev-server", "start");
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(errContent.toString()).contains("Gateway JAR not found");
+        assertThat(errContent.toString()).contains("./gradlew :gateway:bootJar");
+    }
+
+    @Test
+    void start_noAuth_skipsGatewayAndSaysSo() throws Exception {
+        Path bin = tempDir.resolve(".orchard").resolve("bin");
+        Files.createDirectories(bin);
+        Path core = bin.resolve("orchard-server");
+        Files.writeString(core, "#!/bin/sh\necho fake\n");
+        core.toFile().setExecutable(true, false);
+        // No fence.jar/gateway.jar needed: --no-auth skips both checks.
+
+        int exitCode = execute("dev-server", "start", "--no-auth", "--foreground");
+
+        assertThat(exitCode).isZero();
+        assertThat(outContent.toString()).contains("Skipping gateway");
+    }
+
+    @Test
+    void start_noGatewayAlone_skipsGatewayAndSaysSo() throws Exception {
+        Path bin = tempDir.resolve(".orchard").resolve("bin");
+        Files.createDirectories(bin);
+        Path core = bin.resolve("orchard-server");
+        Files.writeString(core, "#!/bin/sh\necho fake\n");
+        core.toFile().setExecutable(true, false);
+        // fence.jar is still required: --no-gateway alone leaves auth enabled. It's a
+        // dummy (not a real jar), so fence startup fails fast after the skip message
+        // is printed - that failure isn't what this test is about.
+        Files.writeString(bin.resolve("fence.jar"), "");
+
+        int exitCode = execute("dev-server", "start", "--no-gateway", "--foreground");
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(outContent.toString()).contains("Skipping gateway");
+    }
+
+    @Test
+    void start_noGatewayOption_parsesWithoutError() throws Exception {
+        Path bin = tempDir.resolve(".orchard").resolve("bin");
+        Files.createDirectories(bin);
+        Path core = bin.resolve("orchard-server");
+        Files.writeString(core, "#!/bin/sh\necho fake\n");
+        core.toFile().setExecutable(true, false);
+
+        int exitCode = execute("dev-server", "start", "--no-auth", "--no-gateway", "--foreground");
+
+        assertThat(exitCode).isZero();
+    }
+
+    @Test
+    void stop_killsGatewayProcessAndClearsPidFile() throws Exception {
+        Process gateway = new ProcessBuilder("sleep", "60").start();
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n2222");
+
+        int exitCode = execute("dev-server", "stop");
+
+        assertThat(exitCode).isZero();
+        assertThat(Files.exists(runDir.resolve("orchard-gateway.pid"))).isFalse();
+        assertThat(gateway.isAlive()).isFalse();
+    }
+
+    @Test
+    void stop_killsAllFourProcesses() throws Exception {
+        Process fence = new ProcessBuilder("sleep", "60").start();
+        Process core = new ProcessBuilder("sleep", "60").start();
+        Process ui = new ProcessBuilder("sleep", "60").start();
+        Process gateway = new ProcessBuilder("sleep", "60").start();
+        Path runDir = tempDir.resolve(".orchard").resolve("run");
+        Files.createDirectories(runDir);
+        Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n7779");
+        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
+        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
+        Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n2222");
+
+        int exitCode = execute("dev-server", "stop");
+
+        assertThat(exitCode).isZero();
+        assertThat(Files.exists(runDir.resolve("orchard-fence.pid"))).isFalse();
+        assertThat(Files.exists(runDir.resolve("orchard-server.pid"))).isFalse();
+        assertThat(Files.exists(runDir.resolve("orchard-ui.pid"))).isFalse();
+        assertThat(Files.exists(runDir.resolve("orchard-gateway.pid"))).isFalse();
+        assertThat(fence.isAlive()).isFalse();
+        assertThat(core.isAlive()).isFalse();
+        assertThat(ui.isAlive()).isFalse();
+        assertThat(gateway.isAlive()).isFalse();
+    }
+
+    @Test
+    void status_showsGatewayWhenRunning() throws Exception {
+        Process core = new ProcessBuilder("sleep", "60").start();
+        Process gateway = new ProcessBuilder("sleep", "60").start();
+        try {
+            Path runDir = tempDir.resolve(".orchard").resolve("run");
+            Files.createDirectories(runDir);
+            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
+            Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n2222");
+
+            int exitCode = execute("dev-server", "status");
+
+            assertThat(exitCode).isZero();
+            String out = outContent.toString();
+            assertThat(out).contains("running");
+            assertThat(out).contains(String.valueOf(gateway.pid()));
+            assertThat(out).contains("Gateway SSH port: 2222");
+        } finally {
+            core.destroyForcibly();
+            gateway.destroyForcibly();
         }
     }
 }

@@ -211,6 +211,45 @@ public class OrchardClient {
         return objectMapper.readValue(response.body(), CultivatorResponse.class);
     }
 
+    public SshPublicKeyResponse registerSshPublicKey(String name, String publicKey)
+            throws IOException, InterruptedException {
+        String body = objectMapper.writeValueAsString(new CreateSshPublicKeyRequest(name, publicKey));
+
+        HttpRequest httpRequest = authenticated(
+            HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/ssh-keys"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+        ).build();
+
+        HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), SshPublicKeyResponse.class);
+    }
+
+    public List<SshPublicKeyResponse> listSshPublicKeys() throws IOException, InterruptedException {
+        HttpRequest request = authenticated(
+            HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/ssh-keys"))
+                .GET()
+        ).build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), new TypeReference<List<SshPublicKeyResponse>>() {});
+    }
+
+    public void deleteSshPublicKey(UUID keyId) throws IOException, InterruptedException {
+        HttpRequest request = authenticated(
+            HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/ssh-keys/" + keyId))
+                .DELETE()
+        ).build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+    }
+
     public HealthResponse checkHealth() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(baseUrl + "/api/health"))
@@ -270,5 +309,15 @@ public class OrchardClient {
         UUID groveId,
         int totalBees,
         Map<String, Integer> byState
+    ) {}
+
+    public record CreateSshPublicKeyRequest(String name, String publicKey) {}
+
+    public record SshPublicKeyResponse(
+        UUID id,
+        String name,
+        String publicKey,
+        String fingerprint,
+        String createdAt
     ) {}
 }

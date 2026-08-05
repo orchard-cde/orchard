@@ -41,6 +41,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/health/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
+                .requestMatchers("/api/gateway/**").hasAuthority("SCOPE_gateway")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().permitAll()
             )

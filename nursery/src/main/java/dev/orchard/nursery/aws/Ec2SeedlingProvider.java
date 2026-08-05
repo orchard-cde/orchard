@@ -63,7 +63,7 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
                 String publicKey = readPublicKey();
 
                 String userDataBase64 = Ec2UserData.renderBase64(
-                    seedling.spec(), publicKey, devcontainerCliConfig.version());
+                    seedling.spec(), publicKey, seedling.authorizedKeys(), devcontainerCliConfig.version());
                 String instanceType = config.resolveInstanceType(seedling.spec().cpuCores());
 
                 Map<String, String> tags = Map.of(
@@ -101,7 +101,8 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
                     SeedlingState.SAPLING,
                     seedling.spec(),
                     seedling.plantedAt(),
-                    Instant.now()
+                    Instant.now(),
+                    seedling.authorizedKeys()
                 );
             // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
             // and surface as RuntimeException, caught below.

@@ -29,6 +29,14 @@ import java.util.concurrent.Callable;
 )
 public class DevServerCommand implements Callable<Integer> {
 
+    // Dev-only shared secret between fence's gateway OAuth2 client and the gateway's
+    // client_credentials login. Fence and gateway MUST be launched with the same value
+    // or the gateway's token exchange against fence will fail with invalid_client.
+    static final String DEV_GATEWAY_CLIENT_SECRET = "orchard-dev-gateway-secret";
+
+    // The gateway's admin/actuator port (server.port), separate from its SSH port.
+    static final int GATEWAY_ADMIN_PORT = 8081;
+
     @ParentCommand
     Trowel parent;
 
@@ -70,6 +78,25 @@ public class DevServerCommand implements Callable<Integer> {
 
     static Path fenceLogFile() {
         return orchardHome().resolve("logs").resolve("orchard-fence.log");
+    }
+
+    static Path gatewayBinary() {
+        return orchardHome().resolve("bin").resolve("gateway.jar");
+    }
+
+    static Path gatewayPidFile() {
+        return orchardHome().resolve("run").resolve("orchard-gateway.pid");
+    }
+
+    static Path gatewayLogFile() {
+        return orchardHome().resolve("logs").resolve("orchard-gateway.log");
+    }
+
+    // Same key path trellis/QEMU resolves by default (see QemuPlatformDefaults.defaultSshKeyPath()
+    // and GroveController.resolveSshKeyPath()): ~/.ssh/orchard_ed25519. The gateway's
+    // internal-ssh-key-path MUST match this, since it's the key authorized on seedlings.
+    static String internalSshKeyPath() {
+        return Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519").toString();
     }
 
     @Override
@@ -122,11 +149,26 @@ public class DevServerCommand implements Callable<Integer> {
         @Option(names = {"--no-auth"}, description = "Start without the fence auth server (disables OAuth2)")
         boolean noAuth;
 
+        @Option(names = {"--gateway-ssh-port"}, description = "SSH gateway port (default: 2222)", defaultValue = "2222")
+        int gatewaySshPort = 2222;
+
+        @Option(names = {"--no-gateway"}, description = "Start without the SSH gateway")
+        boolean noGateway;
+
         // Test seam: override the core port without picocli parsing.
         void setCorePortForTest(int p) { this.corePort = p; }
 
         // Test seam: override the fence port without picocli parsing.
         void setFencePortForTest(int p) { this.fencePort = p; }
+
+        // Test seam: override the gateway SSH port without picocli parsing.
+        void setGatewaySshPortForTest(int p) { this.gatewaySshPort = p; }
+
+        // The gateway requires client_credentials auth against fence, so it cannot run
+        // without fence up. --no-auth implies --no-gateway.
+        boolean shouldStartGateway() {
+            return !noAuth && !noGateway;
+        }
 
         @Override
         public Integer call() {
@@ -165,6 +207,25 @@ public class DevServerCommand implements Callable<Integer> {
                         System.err.println("  cp fence/build/libs/fence-*.jar " + fenceJar);
                         return 1;
                     }
+                } else {
+                    System.out.println("Skipping gateway: it requires the fence auth server (use without --no-auth to enable it).");
+                }
+
+                if (shouldStartGateway()) {
+                    Path gatewayJar = gatewayBinary();
+                    if (!Files.isRegularFile(gatewayJar) || !Files.isReadable(gatewayJar)) {
+                        System.err.println("Gateway JAR not found at: " + gatewayJar);
+                        System.err.println();
+                        System.err.println("Build it from source with:");
+                        System.err.println("  ./gradlew :gateway:bootJar");
+                        System.err.println();
+                        System.err.println("Then install it:");
+                        System.err.println("  mkdir -p " + gatewayJar.getParent());
+                        System.err.println("  cp gateway/build/libs/gateway-*.jar " + gatewayJar);
+                        return 1;
+                    }
+                } else if (!noAuth) {
+                    System.out.println("Skipping gateway: disabled via --no-gateway.");
                 }
 
                 // ADJ-1: resolve UI binary BEFORE launching anything (fail fast -> nothing started)
@@ -256,13 +317,24 @@ public class DevServerCommand implements Callable<Integer> {
             pb.inheritIO();
             Process process = pb.start();
 
+            // Foreground mode has no health-check gate on core, so best-effort start the
+            // gateway right away (it lazily contacts fence/trellis on first SSH session).
+            Process gatewayProcess = null;
+            if (shouldStartGateway()) {
+                gatewayProcess = startGateway();
+            }
+
             Process fenceFinal = fenceProcess;
+            Process gatewayFinal = gatewayProcess;
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 if (process.isAlive()) {
                     process.destroy();
                 }
                 if (fenceFinal != null && fenceFinal.isAlive()) {
                     fenceFinal.destroy();
+                }
+                if (gatewayFinal != null && gatewayFinal.isAlive()) {
+                    gatewayFinal.destroy();
                 }
             }));
 
@@ -272,6 +344,11 @@ public class DevServerCommand implements Callable<Integer> {
                 fenceFinal.destroy();
                 fenceFinal.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
                 Files.deleteIfExists(fencePidFile());
+            }
+            if (gatewayFinal != null && gatewayFinal.isAlive()) {
+                gatewayFinal.destroy();
+                gatewayFinal.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                Files.deleteIfExists(gatewayPidFile());
             }
             return exitCode;
         }
@@ -312,12 +389,32 @@ public class DevServerCommand implements Callable<Integer> {
             }
 
             System.out.println(" ready!");
+
+            // Gateway needs trellis (core) + fence up, so it only starts once core is healthy.
+            Process gatewayProcess = null;
+            if (shouldStartGateway()) {
+                gatewayProcess = startGateway();
+                if (gatewayProcess == null) {
+                    process.destroy();
+                    Files.deleteIfExists(pidFile());
+                    if (fenceProcess != null && fenceProcess.isAlive()) {
+                        fenceProcess.destroy();
+                        Files.deleteIfExists(fencePidFile());
+                    }
+                    return 1;
+                }
+            }
+
             if (uiBinary != null) {   // i.e. !noUi && !foreground
                 int r = startUiBackend(uiBinary, process);
                 if (r != 0) {
                     if (fenceProcess != null && fenceProcess.isAlive()) {
                         fenceProcess.destroy();
                         Files.deleteIfExists(fencePidFile());
+                    }
+                    if (gatewayProcess != null && gatewayProcess.isAlive()) {
+                        gatewayProcess.destroy();
+                        Files.deleteIfExists(gatewayPidFile());
                     }
                     return r;
                 }
@@ -401,18 +498,24 @@ public class DevServerCommand implements Callable<Integer> {
             return 0;
         }
 
-        private Process startFence() throws IOException {
-            var fenceJar = fenceBinary();
-            System.out.println("  Fence: starting on port " + fencePort);
-
+        // Fence's gateway-client secret MUST match the gateway's oauth2.client-secret
+        // (see buildGatewayCommand) or the gateway's client_credentials login to fence fails.
+        ArrayList<String> buildFenceCommand(Path fenceJar) {
             var command = new ArrayList<String>();
             command.add("java");
             command.add("-jar");
             command.add(fenceJar.toString());
             command.add("--server.port=" + fencePort);
             command.add("--spring.profiles.active=standalone");
+            command.add("--fence.gateway-client.client-secret=" + DEV_GATEWAY_CLIENT_SECRET);
+            return command;
+        }
 
-            ProcessBuilder pb = new ProcessBuilder(command);
+        private Process startFence() throws IOException {
+            var fenceJar = fenceBinary();
+            System.out.println("  Fence: starting on port " + fencePort);
+
+            ProcessBuilder pb = new ProcessBuilder(buildFenceCommand(fenceJar));
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(fenceLogFile().toFile()));
             pb.redirectErrorStream(true);
             Process process = pb.start();
@@ -433,6 +536,57 @@ public class DevServerCommand implements Callable<Integer> {
                 } else {
                     System.out.println(" timed out.");
                     System.err.println("fence did not become healthy in time - check " + fenceLogFile());
+                }
+                return null;
+            }
+            System.out.println(" ready!");
+            return process;
+        }
+
+        // Gateway's ssh-port is what cultivators connect to; its own admin/actuator
+        // endpoint (health checks) lives on GATEWAY_ADMIN_PORT (server.port), separate
+        // from the ssh-port. internal-ssh-key-path MUST match the key trellis/QEMU
+        // authorizes on seedlings (see DevServerCommand.internalSshKeyPath()), and
+        // oauth2.client-secret MUST match fence's gateway-client secret (buildFenceCommand).
+        ArrayList<String> buildGatewayCommand(Path gatewayJar) {
+            var command = new ArrayList<String>();
+            command.add("java");
+            command.add("-jar");
+            command.add(gatewayJar.toString());
+            command.add("--server.port=" + GATEWAY_ADMIN_PORT);
+            command.add("--orchard.gateway.ssh-port=" + gatewaySshPort);
+            command.add("--orchard.gateway.internal-ssh-key-path=" + internalSshKeyPath());
+            command.add("--orchard.gateway.fence.issuer-uri=http://localhost:" + fencePort);
+            command.add("--orchard.gateway.trellis.base-url=http://localhost:" + corePort);
+            command.add("--orchard.gateway.oauth2.client-secret=" + DEV_GATEWAY_CLIENT_SECRET);
+            return command;
+        }
+
+        private Process startGateway() throws IOException {
+            var gatewayJar = gatewayBinary();
+            System.out.println("  Gateway: starting on SSH port " + gatewaySshPort);
+
+            ProcessBuilder pb = new ProcessBuilder(buildGatewayCommand(gatewayJar));
+            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(gatewayLogFile().toFile()));
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            Files.writeString(gatewayPidFile(), process.pid() + "\n" + gatewaySshPort);
+
+            System.out.println("    PID: " + process.pid());
+            System.out.println("    Logs: " + gatewayLogFile());
+
+            System.out.print("  Waiting for gateway to start");
+            boolean healthy = waitForHealth(process, GATEWAY_ADMIN_PORT, "/actuator/health", 15);
+            if (!healthy) {
+                process.destroy();
+                Files.deleteIfExists(gatewayPidFile());
+                if (!process.isAlive()) {
+                    System.out.println(" exited.");
+                    System.err.println("gateway exited on startup - check " + gatewayLogFile());
+                } else {
+                    System.out.println(" timed out.");
+                    System.err.println("gateway did not become healthy in time - check " + gatewayLogFile());
                 }
                 return null;
             }
@@ -474,10 +628,12 @@ public class DevServerCommand implements Callable<Integer> {
         @Override
         public Integer call() {
             try {
-                if (!Files.exists(pidFile()) && !Files.exists(uiPidFile()) && !Files.exists(fencePidFile())) {
+                if (!Files.exists(pidFile()) && !Files.exists(uiPidFile())
+                        && !Files.exists(fencePidFile()) && !Files.exists(gatewayPidFile())) {
                     System.out.println("Orchard dev-server is not running (no PID file found).");
                     return 0;
                 }
+                stopOne(gatewayPidFile(), "orchard gateway"); // consumer of core+fence, stop first
                 stopOne(uiPidFile(), "orchard-ui");       // proxy first
                 stopOne(pidFile(), "orchard core");       // then upstream
                 stopOne(fencePidFile(), "orchard fence"); // fence last (core depends on it)
@@ -556,6 +712,14 @@ public class DevServerCommand implements Callable<Integer> {
                 } else if (fence != null) {
                     Files.deleteIfExists(fencePidFile());
                 }
+
+                ServerInfo gateway = readGatewayInfo();
+                if (gateway != null && ProcessHandle.of(gateway.pid()).map(ProcessHandle::isAlive).orElse(false)) {
+                    System.out.println("  Gateway PID: " + gateway.pid());
+                    System.out.println("  Gateway SSH port: " + gateway.port());
+                } else if (gateway != null) {
+                    Files.deleteIfExists(gatewayPidFile());
+                }
                 return 0;
 
             } catch (Exception e) {
@@ -584,6 +748,8 @@ public class DevServerCommand implements Callable<Integer> {
     static ServerInfo readUiInfo()     { return readInfo(uiPidFile(), 7777); }
 
     static ServerInfo readFenceInfo()  { return readInfo(fencePidFile(), 7779); }
+
+    static ServerInfo readGatewayInfo() { return readInfo(gatewayPidFile(), 2222); }
 
     private static boolean isServerRunning() {
         ServerInfo info = readServerInfo();

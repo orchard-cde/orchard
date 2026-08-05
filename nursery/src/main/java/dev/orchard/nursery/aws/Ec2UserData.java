@@ -4,13 +4,15 @@ import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.nursery.CloudInitTemplate;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 /**
  * Renders the cloud-init {@code #cloud-config} YAML used to bootstrap an EC2 instance.
  * Pure function — no SDK calls. Loads the YAML body from the classpath template
- * {@code /cloud-init/aws.yaml.tpl} and substitutes {@code ${ssh_public_key}} /
+ * {@code /cloud-init/aws.yaml.tpl} and substitutes {@code ${ssh_authorized_keys_block}} /
  * {@code ${cli_version}}. The QEMU provider uses a sibling template
  * ({@code qemu.yaml.tpl}) via {@link CloudInitTemplate}.
  */
@@ -31,6 +33,22 @@ public final class Ec2UserData {
      * @throws IllegalArgumentException if {@code publicKey} or {@code devcontainerCliVersion} is null or blank
      */
     public static String render(SeedlingSpec spec, String publicKey, String devcontainerCliVersion) {
+        return render(spec, publicKey, List.of(), devcontainerCliVersion);
+    }
+
+    /**
+     * Renders cloud-init YAML with the orchard SSH public key plus the cultivator's
+     * registered public keys baked into {@code ssh_authorized_keys}.
+     *
+     * @param spec               the seedling spec (currently unused by the template, accepted for future use)
+     * @param publicKey          the orchard SSH public key, e.g. {@code ssh-ed25519 AAAA... orchard@host}
+     * @param registeredKeys     the cultivator's registered public keys, may be null/empty
+     * @param devcontainerCliVersion the npm version of {@code @devcontainers/cli} to install
+     * @return raw YAML beginning with {@code #cloud-config\n}
+     * @throws IllegalArgumentException if {@code publicKey} or {@code devcontainerCliVersion} is null or blank
+     */
+    public static String render(SeedlingSpec spec, String publicKey, List<String> registeredKeys,
+                                String devcontainerCliVersion) {
         if (publicKey == null || publicKey.isBlank()) {
             throw new IllegalArgumentException("publicKey must not be null or blank");
         }
@@ -38,7 +56,7 @@ public final class Ec2UserData {
             throw new IllegalArgumentException("devcontainerCliVersion must not be null or blank");
         }
         return CloudInitTemplate.render(TEMPLATE_PATH, Map.of(
-            "ssh_public_key", publicKey,
+            "ssh_authorized_keys_block", buildSshAuthorizedKeysBlock(publicKey, registeredKeys),
             "cli_version", devcontainerCliVersion
         ));
     }
@@ -48,7 +66,35 @@ public final class Ec2UserData {
      * {@link software.amazon.awssdk.services.ec2.model.RunInstancesRequest#userData()}.
      */
     public static String renderBase64(SeedlingSpec spec, String publicKey, String devcontainerCliVersion) {
-        String yaml = render(spec, publicKey, devcontainerCliVersion);
+        return renderBase64(spec, publicKey, List.of(), devcontainerCliVersion);
+    }
+
+    /**
+     * Renders cloud-init YAML (with registered keys) and Base64-encodes it for use as
+     * {@link software.amazon.awssdk.services.ec2.model.RunInstancesRequest#userData()}.
+     */
+    public static String renderBase64(SeedlingSpec spec, String publicKey, List<String> registeredKeys,
+                                      String devcontainerCliVersion) {
+        String yaml = render(spec, publicKey, registeredKeys, devcontainerCliVersion);
         return Base64.getEncoder().encodeToString(yaml.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Builds the cloud-init {@code ssh_authorized_keys} block: the shared/orchard key plus
+     * the cultivator's registered keys.
+     */
+    static String buildSshAuthorizedKeysBlock(String publicKey, List<String> registeredKeys) {
+        List<String> keys = new ArrayList<>();
+        keys.add(publicKey);
+        if (registeredKeys != null) {
+            registeredKeys.stream()
+                .filter(key -> key != null && !key.isBlank())
+                .forEach(keys::add);
+        }
+        StringBuilder block = new StringBuilder("    ssh_authorized_keys:\n");
+        for (String key : keys) {
+            block.append("      - ").append(key).append('\n');
+        }
+        return block.toString();
     }
 }

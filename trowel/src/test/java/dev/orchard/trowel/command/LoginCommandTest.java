@@ -109,7 +109,7 @@ class LoginCommandTest {
         fenceServer.createContext("/api/me", exchange ->
             respond(exchange, 200, "{\"id\": \"c-1\", \"displayName\": \"Display User\", \"email\": \"d@example.com\"}"));
 
-        int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort);
+        int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort, "--no-browser");
 
         assertThat(exitCode).isZero();
         assertThat(outContent.toString()).contains("ABCD-1234");
@@ -148,7 +148,7 @@ class LoginCommandTest {
                 }
                 """));
 
-        int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort);
+        int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort, "--no-browser");
 
         assertThat(exitCode).isZero();
 
@@ -194,7 +194,7 @@ class LoginCommandTest {
                 }
                 """));
 
-        int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort);
+        int exitCode = execute("login", "--fence-server", "http://localhost:" + fencePort, "--no-browser");
 
         assertThat(exitCode).isZero();
         assertThat(outContent.toString()).containsIgnoringCase("logged in");

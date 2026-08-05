@@ -182,4 +182,28 @@ class CultivatorServiceTest {
 
         assertThat(cultivatorService.findByUsername("unknown")).isEmpty();
     }
+
+    @Test
+    void findByEmail_returnsMappedCultivator() {
+        CultivatorEntity entity = new CultivatorEntity(
+            UUID.randomUUID(), "alice", "alice@example.com", "google", "goog-1",
+            null, null, Instant.now(), Instant.now()
+        );
+        when(cultivatorRepository.findByEmail("alice@example.com"))
+            .thenReturn(Optional.of(entity));
+
+        Optional<Cultivator> result = cultivatorService.findByEmail("alice@example.com");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().id()).isEqualTo(entity.getId());
+        assertThat(result.get().email()).isEqualTo("alice@example.com");
+    }
+
+    @Test
+    void findByEmail_returnsEmptyWhenUnknown() {
+        when(cultivatorRepository.findByEmail("nobody@example.com"))
+            .thenReturn(Optional.empty());
+
+        assertThat(cultivatorService.findByEmail("nobody@example.com")).isEmpty();
+    }
 }

@@ -56,6 +56,7 @@ dependencies {
     runtimeOnly("com.h2database:h2")
     runtimeOnly("software.amazon.awssdk:sts")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+    testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-postgresql")
 }
