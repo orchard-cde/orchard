@@ -52,14 +52,20 @@ public class TokenAuthProvider implements AuthProvider {
 
     private void persistRefreshedTokens(FenceClient.TokenResponse tokenResponse) throws IOException {
         OrchardConfig config = ConfigLoader.load();
-        if (config == null) return;
+        if (config == null) {
+            return;
+        }
 
         String activeTargetName = config.active();
-        if (activeTargetName == null) return;
+        if (activeTargetName == null) {
+            return;
+        }
 
         var targets = new LinkedHashMap<>(config.targets());
         var oldTarget = targets.get(activeTargetName);
-        if (oldTarget == null) return;
+        if (oldTarget == null) {
+            return;
+        }
 
         long newExpiresAt = (System.currentTimeMillis() / 1000) + tokenResponse.expiresIn();
         targets.put(activeTargetName, new OrchardConfig.Target(

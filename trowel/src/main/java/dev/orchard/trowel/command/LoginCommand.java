@@ -150,7 +150,9 @@ public class LoginCommand implements Callable<Integer> {
 
     private String getOrchardServerUrl() {
         String env = System.getenv("ORCHARD_SERVER_URL");
-        if (env != null) return env;
+        if (env != null) {
+            return env;
+        }
 
         OrchardConfig config = ConfigLoader.load();
         if (config != null) {
