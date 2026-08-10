@@ -379,7 +379,7 @@ class RelayIntegrationTest {
             sendJson(exchange, 200, groveJson);
         });
 
-        String keysJson = ("[{\"id\":\"%s\",\"name\":\"laptop\",\"publicKey\":\"%s\",\"fingerprint\":\"%s\"}]")
+        String keysJson = "[{\"id\":\"%s\",\"name\":\"laptop\",\"publicKey\":\"%s\",\"fingerprint\":\"%s\"}]"
                 .formatted(UUID.randomUUID(), jsonEscape(clientWireLine), clientFingerprint);
         server.createContext("/api/gateway/cultivators/" + cultivatorId + "/keys", exchange -> {
             exchange.getRequestBody().readAllBytes();
