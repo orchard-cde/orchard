@@ -3,6 +3,7 @@ package dev.orchard.apiary.adapter;
 import dev.orchard.apiary.BeeKeeperRegistry;
 import dev.orchard.apiary.support.StubCommandRunner;
 import dev.orchard.core.model.Bee;
+import dev.orchard.core.model.BeeHealth;
 import dev.orchard.core.model.BeeSpec;
 import dev.orchard.core.model.BeeType;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -77,5 +78,25 @@ public class BeeKeeperAdapterBenchmark {
     @Benchmark
     public Bee install() {
         return keeper.install(headlessBee, spec, runner).join();
+    }
+
+    @Benchmark
+    public Bee releaseHeadless() {
+        return keeper.release(headlessBee, runner).join();
+    }
+
+    @Benchmark
+    public Bee releaseInteractive() {
+        return keeper.release(interactiveBee, runner).join();
+    }
+
+    @Benchmark
+    public Bee smoke() {
+        return keeper.smoke(runningBee, runner).join();
+    }
+
+    @Benchmark
+    public BeeHealth inspect() {
+        return keeper.inspect(runningBee, runner).join();
     }
 }
