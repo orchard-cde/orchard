@@ -151,4 +151,18 @@ class OpencodeBeeKeeperTest {
         assertThat(health.alive()).isFalse();
         assertThat(health.responsive()).isFalse();
     }
+
+    @Test
+    void renderConfig_isPackagePrivateAndEmbedsGroveAndBeeIds() throws Exception {
+        Bee bee = Bee.hatching(groveId, new BeeSpec(BeeType.OPENCODE, "1.0.0",
+            Map.of("theme", "dark")));
+
+        String json = keeper.renderConfig(bee, bee.spec());
+
+        assertThat(json)
+            .contains("\"workspace_root\" : \"/workspace\"")
+            .contains(bee.groveId().toString())
+            .contains(bee.id().toString())
+            .contains("\"theme\" : \"dark\"");
+    }
 }

@@ -68,4 +68,14 @@ public class BeeKeeperAdapterBenchmark {
     public Optional<?> registryGet() {
         return registry.get(BeeType.OPENCODE);
     }
+
+    @Benchmark
+    public String renderConfig() throws Exception {
+        return keeper.renderConfig(headlessBee, spec);
+    }
+
+    @Benchmark
+    public Bee install() {
+        return keeper.install(headlessBee, spec, runner).join();
+    }
 }
