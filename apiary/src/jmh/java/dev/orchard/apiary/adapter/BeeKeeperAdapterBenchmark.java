@@ -27,8 +27,8 @@ import java.util.concurrent.TimeUnit;
  * scores reflect orchard's own code rather than SSH.
  *
  * <p>Every BeeKeeper method returns a CompletableFuture from a virtual-thread executor, so the
- * whole-method benchmarks include dispatch overhead — measured at roughly 3x the config-render
- * signal. {@link #renderConfig()} exists to measure that signal in isolation.
+ * whole-method benchmarks are dominated by dispatch overhead — measured at roughly 22x the
+ * config-render signal. {@link #renderConfig()} exists to measure that signal in isolation.
  */
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.AverageTime)
