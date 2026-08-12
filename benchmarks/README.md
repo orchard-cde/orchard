@@ -7,7 +7,7 @@ modules that own them. Complements the end-to-end suite in `orchard-gauge`.
 
 ```bash
 # all modules
-./gradlew :harvest:jmh :nursery:jmh :api:jmh
+./gradlew :harvest:jmh :nursery:jmh :api:jmh :apiary:jmh
 
 # one module
 ./gradlew :harvest:jmh
@@ -42,6 +42,16 @@ Results are written as JSON to each module's `build/results/jmh/results.json`
 > host: `renderConfig` ~0.36 µs, `install` ~7.85 µs — a ~22x gap that is almost
 > entirely virtual-thread dispatch. Don't compare these against the pure-CPU
 > `SeedSerializerBenchmark` numbers.
+
+> The same ceiling applies to `releaseHeadless`, `releaseInteractive`, `smoke`, and `inspect` —
+> more severely, since unlike `install` none of them has an isolated non-future benchmark for the
+> logic they wrap. Evidence: `releaseInteractive` skips the `runner.execute()` call that
+> `releaseHeadless` makes, yet the two are statistically indistinguishable (~6.94 µs vs. ~6.87 µs,
+> overlapping error bars) — the release logic itself contributes nothing measurable next to ~7 µs
+> of dispatch. Treat `install`, `releaseHeadless`, `releaseInteractive`, `smoke`, and `inspect` as
+> one group: useful for catching a shared regression in the virtual-thread executor or
+> `CompletableFuture` wiring, since that would move all five together, but none of them can detect
+> a regression confined to release/smoke/inspect logic specifically.
 
 ## Deferred (tracked separately)
 
