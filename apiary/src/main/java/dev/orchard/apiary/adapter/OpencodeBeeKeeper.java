@@ -134,7 +134,10 @@ public class OpencodeBeeKeeper implements BeeKeeper {
         runner.execute("mkdir -p " + CONFIG_DIR + " && echo " + encoded + " | base64 -d > " + CONFIG_PATH);
     }
 
-    private String renderConfig(Bee bee, BeeSpec spec) throws IOException {
+    // Package-private, not private: BeeKeeperAdapterBenchmark measures this in isolation.
+    // Virtual-thread dispatch dominates the whole-method install() score, so a direct call is
+    // the only way to get a signal that tracks changes to the config path.
+    String renderConfig(Bee bee, BeeSpec spec) throws IOException {
         ObjectNode root = mapper.createObjectNode();
         root.put("workspace_root", WORKSPACE_ROOT);
 
