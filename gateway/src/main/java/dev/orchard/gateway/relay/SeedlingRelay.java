@@ -2,6 +2,7 @@ package dev.orchard.gateway.relay;
 
 import dev.orchard.gateway.api.GatewayRoute;
 import dev.orchard.gateway.config.GatewayProperties;
+import jakarta.annotation.PostConstruct;
 import org.apache.sshd.client.SshClient;
 import org.apache.sshd.client.keyverifier.AcceptAllServerKeyVerifier;
 import org.apache.sshd.client.session.ClientSession;
@@ -16,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import jakarta.annotation.PostConstruct;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;

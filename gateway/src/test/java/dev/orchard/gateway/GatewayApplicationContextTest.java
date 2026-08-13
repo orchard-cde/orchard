@@ -4,8 +4,8 @@ import dev.orchard.gateway.api.TrellisApiClient;
 import dev.orchard.gateway.auth.FenceTokenClient;
 import org.apache.sshd.common.config.keys.writer.openssh.OpenSSHKeyPairResourceWriter;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
