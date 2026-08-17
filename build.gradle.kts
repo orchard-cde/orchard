@@ -66,7 +66,7 @@ subprojects {
 
     dependencies {
         testImplementation("org.assertj:assertj-core:3.27.7")
-        testImplementation(platform("org.junit:junit-bom:6.1.2"))
+        testImplementation(platform("org.junit:junit-bom:6.1.3"))
         testImplementation("org.junit.jupiter:junit-jupiter")
         testImplementation("org.mockito:mockito-core:5.23.0")
         testImplementation("org.mockito:mockito-junit-jupiter:5.23.0")
