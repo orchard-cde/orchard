@@ -40,6 +40,11 @@ public abstract class AbstractSeedlingProvider<L> implements SeedlingProvider {
      * <p>A substrate that genuinely cannot express itself as these steps should implement
      * {@link SeedlingProvider} directly rather than extending this class — that is the escape hatch,
      * and it keeps the guarantee intact for every provider that does extend.
+     *
+     * <p>A returned {@code SAPLING} means the substrate is reachable (e.g. SSH accepts connections);
+     * it does not mean the devcontainer CLI is installed yet, since cloud-init may still be running.
+     * Verifying the CLI is the caller's responsibility, performed after cloud-init completes — see
+     * {@link SeedlingProvider#verifyDevcontainerCli}.
      */
     @Override
     public final CompletableFuture<Seedling> plant(Seedling seedling) {

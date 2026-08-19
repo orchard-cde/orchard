@@ -232,4 +232,154 @@ class AbstractSeedlingProviderTest {
 
         assertThat(provider.failureContext("i-abc123")).contains("i-abc123");
     }
+
+    /** Captures the thread name a step ran on, to prove {@code plant()} dispatches onto the executor. */
+    private static class ThreadNameCapturingProvider extends AbstractSeedlingProvider<FakeLaunch> {
+        volatile String capturedThreadName;
+
+        ThreadNameCapturingProvider(ExecutorService executor) {
+            super(executor);
+        }
+
+        @Override
+        protected FakeLaunch launch(Seedling seedling) {
+            capturedThreadName = Thread.currentThread().getName();
+            return new FakeLaunch("fake-instance-thread-check", 2200);
+        }
+
+        @Override
+        protected PlantedSeedling resolveEndpoint(Seedling seedling, FakeLaunch launched) {
+            return new PlantedSeedling(launched.instanceId(), "192.168.1.51", launched.port());
+        }
+
+        @Override
+        protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+        }
+
+        @Override
+        public String getProviderId() {
+            return "thread-name-capture";
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public CompletableFuture<Seedling> water(Seedling seedling) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Seedling> dormant(Seedling seedling) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Void> uproot(Seedling seedling) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Seedling> inspect(Seedling seedling) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    @Test
+    void plant_dispatchesOnSuppliedExecutorRatherThanCommonPool() throws Exception {
+        ExecutorService pinnedExecutor =
+            Executors.newSingleThreadExecutor(r -> new Thread(r, "sdd-pinned-executor"));
+        try {
+            ThreadNameCapturingProvider provider = new ThreadNameCapturingProvider(pinnedExecutor);
+
+            provider.plant(germinated()).join();
+
+            assertThat(provider.capturedThreadName)
+                .as("plant() must run its work on the executor supplied to the constructor, not the "
+                    + "ForkJoinPool common pool, since providers block for minutes inside awaitReachable")
+                .isEqualTo("sdd-pinned-executor");
+        } finally {
+            pinnedExecutor.shutdownNow();
+        }
+    }
+
+    /**
+     * Fails after {@link #launch} succeeds and records what {@code failureContext} was invoked
+     * with, to prove the launch result reaches the failure log rather than just being reachable
+     * via a direct call.
+     */
+    private static class PostLaunchFailureProvider extends AbstractSeedlingProvider<FakeLaunch> {
+        private static final FakeLaunch NOT_CAPTURED = new FakeLaunch("not-captured", -1);
+        volatile FakeLaunch capturedFailureContextArg = NOT_CAPTURED;
+
+        PostLaunchFailureProvider(ExecutorService executor) {
+            super(executor);
+        }
+
+        @Override
+        protected FakeLaunch launch(Seedling seedling) {
+            return new FakeLaunch("i-orphaned-instance", 2200);
+        }
+
+        @Override
+        protected PlantedSeedling resolveEndpoint(Seedling seedling, FakeLaunch launched) throws Exception {
+            throw new IllegalStateException("boom after launch succeeded");
+        }
+
+        @Override
+        protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+        }
+
+        @Override
+        protected String failureContext(FakeLaunch launched) {
+            capturedFailureContextArg = launched;
+            return super.failureContext(launched);
+        }
+
+        @Override
+        public String getProviderId() {
+            return "post-launch-failure";
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public CompletableFuture<Seedling> water(Seedling seedling) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Seedling> dormant(Seedling seedling) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Void> uproot(Seedling seedling) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CompletableFuture<Seedling> inspect(Seedling seedling) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    @Test
+    void plant_failsAfterLaunchSucceeded_passesLaunchResultToFailureContextForOperatorCleanup() {
+        PostLaunchFailureProvider provider = new PostLaunchFailureProvider(executor);
+
+        Seedling result = provider.plant(germinated()).join();
+
+        assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
+        assertThat(provider.capturedFailureContextArg)
+            .as("failureContext must be invoked with the non-null launch result during the real "
+                + "plant() failure path so an operator can identify and terminate an orphaned "
+                + "billable instance from the failure log")
+            .isEqualTo(new FakeLaunch("i-orphaned-instance", 2200));
+    }
 }

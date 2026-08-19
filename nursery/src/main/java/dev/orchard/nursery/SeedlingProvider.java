@@ -17,7 +17,11 @@ public interface SeedlingProvider {
 
     /**
      * Verifies the devcontainer CLI is installed and matches the expected version on the seedling.
-     * Called by each provider before transitioning a Seedling to {@code SAPLING} (READY).
+     *
+     * <p>Called by the orchestrating caller (e.g. {@code GroveService}) after the seedling has
+     * already reached {@code SAPLING} and cloud-init has finished — not by the provider during
+     * {@link #plant}. Cloud-init may still be installing the CLI when {@code plant()} returns a
+     * SAPLING, so verifying any earlier would race a legitimate in-progress install. See issue #148.
      *
      * <p>The default impl uses {@link SshExecutor}. The package-private overload accepting an
      * explicit {@link CommandRunner} is the test seam — matches the Lane B
