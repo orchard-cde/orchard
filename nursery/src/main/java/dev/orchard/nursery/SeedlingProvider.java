@@ -51,7 +51,7 @@ public interface SeedlingProvider {
 
     /**
      * Plants a seedling (provisions a VM).
-     * The seedling transitions from GERMINATING -> SPROUTING -> SAPLING
+     * The returned seedling is SAPLING on success, or BLIGHTED if provisioning failed.
      */
     CompletableFuture<Seedling> plant(Seedling seedling);
 
