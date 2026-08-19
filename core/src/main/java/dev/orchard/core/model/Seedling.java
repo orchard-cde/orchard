@@ -83,6 +83,11 @@ public record Seedling(
         return new Seedling(id, groveId, instanceId, ip, sshPort, state, spec, plantedAt, readyAt, authorizedKeys);
     }
 
+    public Seedling withEndpoint(String instanceId, String host, int port) {
+        return new Seedling(id, groveId, instanceId, host, port,
+            state, spec, plantedAt, readyAt, authorizedKeys);
+    }
+
     public boolean isReady() {
         return state == SeedlingState.SAPLING;
     }

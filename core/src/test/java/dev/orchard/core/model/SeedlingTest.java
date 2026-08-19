@@ -180,4 +180,24 @@ class SeedlingTest {
         Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
         assertThat(seedling.isReady()).isFalse();
     }
+
+    @Test
+    void withEndpoint_setsInstanceIdHostAndPort_preservingEverythingElse() {
+        Seedling germinated = Seedling
+            .germinate(groveId, Seedling.SeedlingSpec.small())
+            .withAuthorizedKeys(List.of("ssh-ed25519 AAAAC3Nz key-one", "ssh-ed25519 AAAAC3Nz key-two"));
+
+        Seedling located = germinated.withEndpoint("i-abc123", "10.1.2.3", 2222);
+
+        assertThat(located.providerInstanceId()).isEqualTo("i-abc123");
+        assertThat(located.ipAddress()).isEqualTo("10.1.2.3");
+        assertThat(located.sshPort()).isEqualTo(2222);
+        assertThat(located.id()).isEqualTo(germinated.id());
+        assertThat(located.groveId()).isEqualTo(germinated.groveId());
+        assertThat(located.state()).isEqualTo(germinated.state());
+        assertThat(located.spec()).isEqualTo(germinated.spec());
+        assertThat(located.plantedAt()).isEqualTo(germinated.plantedAt());
+        assertThat(located.readyAt()).isEqualTo(germinated.readyAt());
+        assertThat(located.authorizedKeys()).isEqualTo(germinated.authorizedKeys());
+    }
 }
