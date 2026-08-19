@@ -2,9 +2,10 @@ package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.AbstractSeedlingProvider;
 import dev.orchard.nursery.CloudInitTemplate;
 import dev.orchard.nursery.DevcontainerCliConfig;
-import dev.orchard.nursery.SeedlingProvider;
+import dev.orchard.nursery.PlantedSeedling;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,27 +18,31 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
  * QEMU-based seedling provider for local VM provisioning.
  * Uses QEMU/KVM to run VMs with cloud-init for initial configuration.
  */
-public class QemuSeedlingProvider implements SeedlingProvider {
+public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingProvider.QemuLaunch> {
 
     private static final Logger log = LoggerFactory.getLogger(QemuSeedlingProvider.class);
     private static final String PROVIDER_ID = "qemu-local";
 
     private final QemuConfig config;
     private final DevcontainerCliConfig devcontainerCliConfig;
-    private final ExecutorService executor;
     private final ConcurrentHashMap<UUID, ProcessHandle> runningVms;
 
+    /**
+     * Launch state QEMU must carry from {@code launch} to the later planting steps: the SSH port is
+     * chosen before the process starts (it is a QEMU argument) so it cannot be rediscovered later.
+     */
+    public record QemuLaunch(int sshPort) {}
+
     public QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig) {
+        super(Executors.newVirtualThreadPerTaskExecutor());
         this.config = config;
         this.devcontainerCliConfig = devcontainerCliConfig;
-        this.executor = Executors.newVirtualThreadPerTaskExecutor();
         this.runningVms = new ConcurrentHashMap<>();
     }
 
@@ -47,62 +52,35 @@ public class QemuSeedlingProvider implements SeedlingProvider {
     }
 
     @Override
-    public CompletableFuture<Seedling> plant(Seedling seedling) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                log.info("Planting seedling {} with spec: {}", seedling.id(), seedling.spec());
+    protected QemuLaunch launch(Seedling seedling) throws IOException, InterruptedException {
+        log.info("Planting seedling {} with spec: {}", seedling.id(), seedling.spec());
 
-                // Create VM directory
-                Path vmDir = config.vmStoragePath().resolve(seedling.id().toString());
-                Files.createDirectories(vmDir);
+        Path vmDir = config.vmStoragePath().resolve(seedling.id().toString());
+        Files.createDirectories(vmDir);
 
-                // Create disk image (copy-on-write from base)
-                Path diskImage = vmDir.resolve("disk.qcow2");
-                createDiskImage(diskImage, seedling.spec().diskGb());
+        Path diskImage = vmDir.resolve("disk.qcow2");
+        createDiskImage(diskImage, seedling.spec().diskGb());
 
-                // Generate cloud-init ISO
-                Path cloudInitIso = vmDir.resolve("cloud-init.iso");
-                createCloudInitIso(cloudInitIso, seedling);
+        Path cloudInitIso = vmDir.resolve("cloud-init.iso");
+        createCloudInitIso(cloudInitIso, seedling);
 
-                // Allocate SSH port
-                int sshPort = allocateSshPort();
+        int sshPort = allocateSshPort();
 
-                // Build and start QEMU process
-                Process vmProcess = startQemuProcess(seedling, diskImage, cloudInitIso, sshPort);
-                Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(vmProcess.pid()));
-                runningVms.put(seedling.id(), vmProcess.toHandle());
+        Process vmProcess = startQemuProcess(seedling, diskImage, cloudInitIso, sshPort);
+        Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(vmProcess.pid()));
+        runningVms.put(seedling.id(), vmProcess.toHandle());
 
-                // Update seedling with provider details
-                Seedling sprouting = seedling
-                    .withProviderDetails(seedling.id().toString(), "127.0.0.1")
-                    .withState(SeedlingState.SPROUTING);
+        return new QemuLaunch(sshPort);
+    }
 
-                // Wait for VM to be ready (SSH accessible)
-                waitForSsh("127.0.0.1", sshPort);
+    @Override
+    protected PlantedSeedling resolveEndpoint(Seedling seedling, QemuLaunch launched) {
+        return new PlantedSeedling(seedling.id().toString(), "127.0.0.1", launched.sshPort());
+    }
 
-                // A SAPLING that passes these checks has a running VM with SSH access.
-                // Cloud-init may still be installing the devcontainer CLI via its runcmd
-                // block (Node.js + @devcontainers/cli). CLI version verification is deferred
-                // to the caller (GroveService.provisionGrove) so it runs after cloud-init
-                // finishes — see SeedlingProvider.verifyDevcontainerCli.
-                return new Seedling(
-                    sprouting.id(),
-                    sprouting.groveId(),
-                    sprouting.providerInstanceId(),
-                    "127.0.0.1",
-                    sshPort,
-                    SeedlingState.SAPLING,
-                    sprouting.spec(),
-                    sprouting.plantedAt(),
-                    java.time.Instant.now(),
-                    sprouting.authorizedKeys()
-                );
-
-            } catch (Exception e) {
-                log.error("Failed to plant seedling {}", seedling.id(), e);
-                return seedling.withState(SeedlingState.BLIGHTED);
-            }
-        }, executor);
+    @Override
+    protected void awaitReachable(Seedling seedling, PlantedSeedling planted) throws IOException {
+        waitForSsh(planted.host(), planted.sshPort());
     }
 
     @Override
