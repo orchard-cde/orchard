@@ -2,7 +2,9 @@ package dev.orchard.nursery.aws;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.nursery.AbstractSeedlingProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
+import dev.orchard.nursery.PlantedSeedling;
 import dev.orchard.nursery.SeedlingProvider;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceNotFoundException;
@@ -15,7 +17,6 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
@@ -29,7 +30,7 @@ import java.util.concurrent.Executors;
  * <i>not</i> terminated (matches QEMU's leak-and-return-BLIGHTED behavior;
  * operators are expected to clean up via the AWS console).
  */
-public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
+public class Ec2SeedlingProvider extends AbstractSeedlingProvider<String> implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Ec2SeedlingProvider.class);
     private static final String PROVIDER_ID = "aws-ec2";
@@ -39,15 +40,14 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
     private final Ec2Operations operations;
     private final Ec2InstanceWaiter waiter;
     private final DevcontainerCliConfig devcontainerCliConfig;
-    private final ExecutorService executor;
 
     public Ec2SeedlingProvider(Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
                                DevcontainerCliConfig devcontainerCliConfig) {
+        super(Executors.newVirtualThreadPerTaskExecutor());
         this.config = config;
         this.operations = operations;
         this.waiter = waiter;
         this.devcontainerCliConfig = devcontainerCliConfig;
-        this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @Override
@@ -56,62 +56,47 @@ public class Ec2SeedlingProvider implements SeedlingProvider, AutoCloseable {
     }
 
     @Override
-    public CompletableFuture<Seedling> plant(Seedling seedling) {
-        return CompletableFuture.supplyAsync(() -> {
-            String instanceId = null;
-            try {
-                String publicKey = readPublicKey();
+    protected String launch(Seedling seedling) {
+        String publicKey = readPublicKey();
 
-                String userDataBase64 = Ec2UserData.renderBase64(
-                    seedling.spec(), publicKey, seedling.authorizedKeys(), devcontainerCliConfig.version());
-                String instanceType = config.resolveInstanceType(seedling.spec().cpuCores());
+        String userDataBase64 = Ec2UserData.renderBase64(
+            seedling.spec(), publicKey, seedling.authorizedKeys(), devcontainerCliConfig.version());
+        String instanceType = config.resolveInstanceType(seedling.spec().cpuCores());
 
-                Map<String, String> tags = Map.of(
-                    "Name", "orchard-" + seedling.id(),
-                    "orchard:grove-id", seedling.groveId().toString(),
-                    "orchard:seedling-id", seedling.id().toString()
-                );
+        Map<String, String> tags = Map.of(
+            "Name", "orchard-" + seedling.id(),
+            "orchard:grove-id", seedling.groveId().toString(),
+            "orchard:seedling-id", seedling.id().toString()
+        );
 
-                RunInstanceParams params = new RunInstanceParams(
-                    config.amiId(), instanceType, config.keyPairName(),
-                    config.securityGroupId(), config.subnetId(), userDataBase64, tags);
+        RunInstanceParams params = new RunInstanceParams(
+            config.amiId(), instanceType, config.keyPairName(),
+            config.securityGroupId(), config.subnetId(), userDataBase64, tags);
 
-                instanceId = operations.runInstance(params);
-                log.info("Launched EC2 instance {} for seedling {}", instanceId, seedling.id());
+        String instanceId = operations.runInstance(params);
+        log.info("Launched EC2 instance {} for seedling {}", instanceId, seedling.id());
+        return instanceId;
+    }
 
-                waiter.awaitRunning(instanceId);
+    @Override
+    protected void awaitRunning(Seedling seedling, String instanceId) {
+        waiter.awaitRunning(instanceId);
+    }
 
-                InstanceDescription desc = operations.describeInstance(instanceId);
-                String ip = selectIp(desc);
+    @Override
+    protected PlantedSeedling resolveEndpoint(Seedling seedling, String instanceId) {
+        InstanceDescription desc = operations.describeInstance(instanceId);
+        return new PlantedSeedling(instanceId, selectIp(desc), SSH_PORT);
+    }
 
-                waiter.awaitSshReady(ip, SSH_PORT);
+    @Override
+    protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+        waiter.awaitSshReady(planted.host(), planted.sshPort());
+    }
 
-                // A SAPLING that reaches here has a running instance with SSH access. Cloud-init
-                // may still be installing the devcontainer CLI via its runcmd block (Node.js +
-                // @devcontainers/cli). CLI version verification is deferred to the caller
-                // (GroveService.provisionGrove) so it runs after cloud-init finishes — see
-                // SeedlingProvider.verifyDevcontainerCli. Verifying inline here (before cloud-init
-                // completes) was the premature-verify race PR #114 fixed for QEMU; issue #148.
-                return new Seedling(
-                    seedling.id(),
-                    seedling.groveId(),
-                    instanceId,
-                    ip,
-                    SSH_PORT,
-                    SeedlingState.SAPLING,
-                    seedling.spec(),
-                    seedling.plantedAt(),
-                    Instant.now(),
-                    seedling.authorizedKeys()
-                );
-            // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
-            // and surface as RuntimeException, caught below.
-            } catch (Exception e) {
-                log.error("Failed to plant seedling {} (instance={}): {}",
-                    seedling.id(), instanceId, e.getMessage(), e);
-                return seedling.withState(SeedlingState.BLIGHTED);
-            }
-        }, executor);
+    @Override
+    protected String failureContext(String instanceId) {
+        return instanceId == null ? "" : " (instance=" + instanceId + ")";
     }
 
     @Override
