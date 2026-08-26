@@ -400,7 +400,7 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
         int maxAuthAttempts = 30;
         for (int i = 0; i < maxAuthAttempts; i++) {
             try {
-                var cmd = new dev.orchard.nursery.SshCommandBuilder()
+                var cmd = new dev.orchard.vine.SshCommandBuilder()
                     .host(host)
                     .port(port)
                     .identityKey(orchardKey)

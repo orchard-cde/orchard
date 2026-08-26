@@ -124,7 +124,7 @@ public class Ec2InstanceWaiter {
     public static SshProbe shellSshProbe(Path privateKeyPath) {
         return (host, port) -> {
             try {
-                List<String> cmd = new dev.orchard.nursery.SshCommandBuilder()
+                List<String> cmd = new dev.orchard.vine.SshCommandBuilder()
                     .host(host)
                     .port(port)
                     .identityKey(privateKeyPath)

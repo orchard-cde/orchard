@@ -1,7 +1,6 @@
-package dev.orchard.nursery;
+package dev.orchard.vine;
 
 import dev.orchard.core.model.Seedling;
-import dev.orchard.vine.CommandRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -11,7 +11,7 @@ import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.SeedlingProvider;
-import dev.orchard.nursery.SshExecutor;
+import dev.orchard.vine.SshExecutor;
 import dev.orchard.trellis.OrchardApplication;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;

@@ -9,6 +9,7 @@ import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
+import dev.orchard.vine.SshExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;

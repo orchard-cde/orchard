@@ -2,6 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.SshExecutor;
 
 import java.util.concurrent.CompletableFuture;
 

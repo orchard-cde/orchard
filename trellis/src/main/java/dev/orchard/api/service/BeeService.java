@@ -6,7 +6,7 @@ import dev.orchard.apiary.BeeKeeper;
 import dev.orchard.apiary.BeeKeeperRegistry;
 import dev.orchard.core.model.*;
 import dev.orchard.vine.CommandRunner;
-import dev.orchard.nursery.SshExecutor;
+import dev.orchard.vine.SshExecutor;
 import dev.orchard.roots.entity.BeeEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.BeeRepository;

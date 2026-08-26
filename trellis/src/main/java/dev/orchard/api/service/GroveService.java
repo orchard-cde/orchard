@@ -11,7 +11,7 @@ import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.SeedlingProvider;
 import dev.orchard.nursery.SeedlingProvisioningException;
-import dev.orchard.nursery.SshExecutor;
+import dev.orchard.vine.SshExecutor;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.FruitRepository;
