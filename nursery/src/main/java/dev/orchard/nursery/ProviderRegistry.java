@@ -6,18 +6,18 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Registry that manages available SeedlingProviders (VM providers).
+ * Registry that manages available GroveProviders, one per substrate.
  * Allows lookup by provider ID and designates a default provider.
  */
 public class ProviderRegistry {
 
-    private final Map<String, SeedlingProvider> providers = new ConcurrentHashMap<>();
+    private final Map<String, GroveProvider> providers = new ConcurrentHashMap<>();
     private String defaultProviderId;
 
     /**
-     * Registers a SeedlingProvider in the registry.
+     * Registers a GroveProvider in the registry.
      */
-    public void register(SeedlingProvider provider) {
+    public void register(GroveProvider provider) {
         providers.put(provider.getProviderId(), provider);
         if (defaultProviderId == null) {
             defaultProviderId = provider.getProviderId();
@@ -37,11 +37,11 @@ public class ProviderRegistry {
     }
 
     /**
-     * Returns the default SeedlingProvider.
+     * Returns the default GroveProvider.
      *
      * @throws IllegalStateException if no providers are registered
      */
-    public SeedlingProvider getDefault() {
+    public GroveProvider getDefault() {
         if (defaultProviderId == null || !providers.containsKey(defaultProviderId)) {
             throw new IllegalStateException("No default seedling provider configured");
         }
@@ -51,7 +51,7 @@ public class ProviderRegistry {
     /**
      * Returns a provider by its ID.
      */
-    public Optional<SeedlingProvider> get(String providerId) {
+    public Optional<GroveProvider> get(String providerId) {
         return Optional.ofNullable(providers.get(providerId));
     }
 

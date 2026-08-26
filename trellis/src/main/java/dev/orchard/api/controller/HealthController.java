@@ -1,7 +1,7 @@
 package dev.orchard.api.controller;
 
+import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.SeedlingProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.http.ResponseEntity;
@@ -35,7 +35,7 @@ public class HealthController {
 
     @GetMapping("/ready")
     public ResponseEntity<Map<String, Object>> ready() {
-        SeedlingProvider seedlingProvider = providerRegistry.getDefault();
+        GroveProvider seedlingProvider = providerRegistry.getDefault();
         boolean providerReady = seedlingProvider.isAvailable();
 
         if (providerReady) {

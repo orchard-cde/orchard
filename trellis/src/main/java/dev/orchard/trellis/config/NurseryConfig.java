@@ -4,6 +4,7 @@ import dev.orchard.nursery.DevcontainerCli;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
+import dev.orchard.nursery.VmGroveProvider;
 import dev.orchard.nursery.aws.DefaultEc2Operations;
 import dev.orchard.nursery.aws.Ec2Config;
 import dev.orchard.nursery.aws.Ec2InstanceWaiter;
@@ -170,6 +171,7 @@ public class NurseryConfig {
             @Value("${orchard.nursery.provider:qemu}") String defaultProvider,
             QemuConfig qemuConfig,
             DevcontainerCliConfig devcontainerCliConfig,
+            FruitGrower fruitGrower,
             org.springframework.beans.factory.ObjectProvider<Ec2SeedlingProvider> ec2SeedlingProvider,
             org.springframework.beans.factory.ObjectProvider<ComputeConfig> computeConfig,
             org.springframework.beans.factory.ObjectProvider<AzureConfig> azureConfig) {
@@ -179,26 +181,26 @@ public class NurseryConfig {
         // Always register QEMU; reattach any VMs that survived the previous server run
         QemuSeedlingProvider qemuProvider = new QemuSeedlingProvider(qemuConfig, devcontainerCliConfig);
         qemuProvider.reattachSurvivingVms();
-        registry.register(qemuProvider);
+        registry.register(new VmGroveProvider(qemuProvider, fruitGrower, devcontainerCliConfig));
         log.info("Registered seedling provider: {}", qemuProvider.getProviderId());
 
         // Conditionally register AWS EC2 — Spring instantiates and manages the bean lifecycle.
         ec2SeedlingProvider.ifAvailable(provider -> {
-            registry.register(provider);
+            registry.register(new VmGroveProvider(provider, fruitGrower, devcontainerCliConfig));
             log.info("Registered seedling provider: {}", provider.getProviderId());
         });
 
         // Conditionally register GCP Compute
         computeConfig.ifAvailable(config -> {
             ComputeSeedlingProvider gcpProvider = new ComputeSeedlingProvider(config);
-            registry.register(gcpProvider);
+            registry.register(new VmGroveProvider(gcpProvider, fruitGrower, devcontainerCliConfig));
             log.info("Registered seedling provider: {}", gcpProvider.getProviderId());
         });
 
         // Conditionally register Azure VM
         azureConfig.ifAvailable(config -> {
             AzureVmSeedlingProvider azureProvider = new AzureVmSeedlingProvider(config);
-            registry.register(azureProvider);
+            registry.register(new VmGroveProvider(azureProvider, fruitGrower, devcontainerCliConfig));
             log.info("Registered seedling provider: {}", azureProvider.getProviderId());
         });
 
