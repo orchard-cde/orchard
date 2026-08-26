@@ -1,25 +1,15 @@
 package dev.orchard.vine;
 
 import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
 import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class SshVineTest {
 
-    private static Seedling seedling() {
-        return new Seedling(
-            UUID.randomUUID(), UUID.randomUUID(), "i-fake", "10.0.0.1", 2222,
-            SeedlingState.SAPLING, Seedling.SeedlingSpec.small(), Instant.now(), Instant.now());
-    }
-
     @Test
     void commands_returnsAnSshExecutorForThatSeedling() {
-        Seedling s = seedling();
+        Seedling s = VineTestSeedlings.fake(2222);
 
         CommandRunner runner = new SshVine(s).commands();
 
@@ -28,7 +18,7 @@ class SshVineTest {
 
     @Test
     void commands_returnsTheSameRunnerOnRepeatedCalls() {
-        SshVine vine = new SshVine(seedling());
+        SshVine vine = new SshVine(VineTestSeedlings.fake(2222));
 
         assertThat(vine.commands()).isSameAs(vine.commands());
     }
