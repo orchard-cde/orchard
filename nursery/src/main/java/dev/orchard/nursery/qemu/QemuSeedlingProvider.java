@@ -3,7 +3,6 @@ package dev.orchard.nursery.qemu;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.AbstractSeedlingProvider;
-import dev.orchard.nursery.CloudInitTemplate;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.PlantedSeedling;
 import org.slf4j.Logger;
@@ -14,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,6 +30,7 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
     private final QemuConfig config;
     private final DevcontainerCliConfig devcontainerCliConfig;
     private final ConcurrentHashMap<UUID, ProcessHandle> runningVms;
+    private final QemuCommands commands;
 
     /**
      * Launch state QEMU must carry from {@code launch} to the later planting steps: the SSH port is
@@ -40,10 +39,16 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
     public record QemuLaunch(int sshPort) {}
 
     public QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig) {
+        this(config, devcontainerCliConfig, new DefaultQemuCommands(config, devcontainerCliConfig));
+    }
+
+    /** Test seam. Production callers use the two-arg constructor. */
+    QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig, QemuCommands commands) {
         super(Executors.newVirtualThreadPerTaskExecutor());
         this.config = config;
         this.devcontainerCliConfig = devcontainerCliConfig;
         this.runningVms = new ConcurrentHashMap<>();
+        this.commands = commands;
     }
 
     @Override
@@ -59,14 +64,14 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
         Files.createDirectories(vmDir);
 
         Path diskImage = vmDir.resolve("disk.qcow2");
-        createDiskImage(diskImage, seedling.spec().diskGb());
+        commands.createDiskImage(diskImage, seedling.spec().diskGb());
 
         Path cloudInitIso = vmDir.resolve("cloud-init.iso");
-        createCloudInitIso(cloudInitIso, seedling);
+        commands.createCloudInitIso(cloudInitIso, seedling);
 
-        int sshPort = allocateSshPort();
+        int sshPort = commands.allocateSshPort();
 
-        Process vmProcess = startQemuProcess(seedling, diskImage, cloudInitIso, sshPort);
+        Process vmProcess = commands.startQemu(seedling, diskImage, cloudInitIso, sshPort);
         Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(vmProcess.pid()));
         runningVms.put(seedling.id(), vmProcess.toHandle());
 
@@ -154,24 +159,6 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
         return qemuOk && qemuImgOk && baseImageOk;
     }
 
-    private void createDiskImage(Path diskImage, int sizeGb) throws IOException, InterruptedException {
-        ProcessBuilder pb = new ProcessBuilder(
-            config.qemuImgBinary().toString(),
-            "create",
-            "-f", "qcow2",
-            "-b", config.baseImagePath().toString(),
-            "-F", "qcow2",
-            diskImage.toString(),
-            sizeGb + "G"
-        );
-        pb.inheritIO();
-        Process process = pb.start();
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new IOException("Failed to create disk image, exit code: " + exitCode);
-        }
-    }
-
     /**
      * Builds the cloud-init {@code ssh_authorized_keys} block. Combines the trellis/server
      * shared key (kept as-is) with the cultivator's registered public keys so both the server
@@ -195,179 +182,6 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
             block.append("      - ").append(key).append('\n');
         }
         return block.toString();
-    }
-
-    private void createCloudInitIso(Path isoPath, Seedling seedling) throws IOException, InterruptedException {
-        Path tempDir = Files.createTempDirectory("cloud-init-");
-        try {
-            // Create meta-data
-            Files.writeString(tempDir.resolve("meta-data"),
-                "instance-id: " + seedling.id() + "\n" +
-                "local-hostname: orchard-" + seedling.id().toString().substring(0, 8) + "\n"
-            );
-
-            // Resolve SSH public key: config property, then fallback to well-known file
-            String sshPubKey = config.sshPublicKey();
-            if (sshPubKey == null || sshPubKey.isBlank()) {
-                Path defaultKeyPath = Path.of(config.sshKeyPath() + ".pub");
-                if (Files.exists(defaultKeyPath)) {
-                    sshPubKey = Files.readString(defaultKeyPath).trim();
-                    log.info("Using SSH public key from {}", defaultKeyPath);
-                }
-            }
-
-            // Build user-data from the classpath template. The SSH block is conditional —
-            // when no key is configured, ${ssh_authorized_keys_block} substitutes to empty.
-            String sshBlock = buildSshAuthorizedKeysBlock(sshPubKey, seedling.authorizedKeys());
-            if (sshBlock.isEmpty()) {
-                log.warn("No SSH public key configured - VM will not be accessible via SSH key auth. " +
-                    "Set orchard.qemu.ssh-public-key or place key at {}.pub", config.sshKeyPath());
-            }
-            String userData = CloudInitTemplate.render("/cloud-init/qemu.yaml.tpl", Map.of(
-                "ssh_authorized_keys_block", sshBlock,
-                "cli_version", devcontainerCliConfig.version()
-            ));
-
-            Files.writeString(tempDir.resolve("user-data"), userData);
-
-            // Generate ISO - try genisoimage first, then mkisofs (macOS via cdrtools)
-            if (!tryGenerateIso(isoPath, tempDir, "genisoimage") &&
-                !tryGenerateIso(isoPath, tempDir, "mkisofs")) {
-                throw new IOException(
-                    "Failed to create cloud-init ISO: neither genisoimage nor mkisofs found. " +
-                    "Install via: apt install genisoimage (Linux) or brew install cdrtools (macOS)");
-            }
-        } finally {
-            // Cleanup temp directory
-            Files.walk(tempDir)
-                .sorted((a, b) -> b.compareTo(a))
-                .forEach(path -> {
-                    try {
-                        Files.delete(path);
-                    } catch (IOException e) {
-                        log.warn("Failed to delete temp file {}", path, e);
-                    }
-                });
-        }
-    }
-
-    private boolean tryGenerateIso(Path isoPath, Path tempDir, String isoBinary) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                isoBinary,
-                "-output", isoPath.toString(),
-                "-volid", "cidata",
-                "-joliet",
-                "-rock",
-                tempDir.resolve("meta-data").toString(),
-                tempDir.resolve("user-data").toString()
-            );
-            pb.inheritIO();
-            Process process = pb.start();
-            int exitCode = process.waitFor();
-            if (exitCode == 0) {
-                log.debug("Generated cloud-init ISO using {}", isoBinary);
-                return true;
-            }
-        } catch (IOException e) {
-            log.debug("{} not available: {}", isoBinary, e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        return false;
-    }
-
-    private boolean isAarch64() {
-        return config.qemuBinary().toString().contains("aarch64");
-    }
-
-    private boolean isKvmAccessible() {
-        var kvm = java.nio.file.Paths.get("/dev/kvm");
-        return Files.exists(kvm) && Files.isReadable(kvm) && Files.isWritable(kvm);
-    }
-
-    private Process startQemuProcess(Seedling seedling, Path diskImage, Path cloudInitIso, int sshPort)
-            throws IOException {
-        var spec = seedling.spec();
-        var cmd = new java.util.ArrayList<String>();
-        cmd.add(config.qemuBinary().toString());
-        cmd.add("-name"); cmd.add("orchard-" + seedling.id().toString().substring(0, 8));
-        cmd.add("-m"); cmd.add(spec.memoryMb() + "M");
-        cmd.add("-smp"); cmd.add(String.valueOf(spec.cpuCores()));
-
-        if (isAarch64()) {
-            cmd.add("-machine"); cmd.add("virt");
-            cmd.add("-cpu"); cmd.add("host");
-            if (QemuPlatformDefaults.isMacOS()) {
-                cmd.add("-accel"); cmd.add("hvf");
-            }
-            // UEFI firmware required for aarch64
-            Path efiCode = config.qemuBinary().getParent().getParent()
-                .resolve("share/qemu/edk2-aarch64-code.fd");
-            if (Files.exists(efiCode)) {
-                cmd.add("-bios"); cmd.add(efiCode.toString());
-            }
-            cmd.add("-drive"); cmd.add("if=virtio,file=" + diskImage + ",format=qcow2");
-            cmd.add("-drive"); cmd.add("file=" + cloudInitIso + ",format=raw,if=virtio");
-        } else {
-            cmd.add("-drive"); cmd.add("file=" + diskImage + ",format=qcow2");
-            cmd.add("-cdrom"); cmd.add(cloudInitIso.toString());
-        }
-
-        cmd.add("-netdev"); cmd.add("user,id=net0,hostfwd=tcp::" + sshPort + "-:22");
-        cmd.add("-device"); cmd.add("virtio-net-pci,netdev=net0");
-        cmd.add("-nographic");
-
-        Path vmDir = diskImage.getParent();
-        String serialOutput = spec.serialOutput() != null ? spec.serialOutput() : config.serialOutput();
-        if ("file".equalsIgnoreCase(serialOutput)) {
-            cmd.add("-serial"); cmd.add("file:" + vmDir.resolve("serial.log"));
-        } else {
-            cmd.add("-serial"); cmd.add("mon:stdio");
-        }
-
-        if (config.enableKvm()) {
-            if (isKvmAccessible()) {
-                cmd.add("-enable-kvm");
-            } else {
-                log.warn("KVM enabled in config but /dev/kvm is not accessible — falling back to TCG (software emulation). " +
-                    "Add user to the kvm group for hardware acceleration.");
-            }
-        }
-
-        // Detach from the JVM's session so the VM survives a server restart or Ctrl+C
-        Path setsid = Path.of("/usr/bin/setsid");
-        if (Files.exists(setsid)) {
-            cmd.add(0, setsid.toString());
-        }
-
-        Path qemuLog = vmDir.resolve("qemu.log");
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectInput(new java.io.File("/dev/null"));
-        pb.redirectOutput(qemuLog.toFile());
-        pb.redirectErrorStream(true);
-        log.info("Starting QEMU: {}", String.join(" ", pb.command()));
-        return pb.start();
-    }
-
-    private int allocateSshPort() throws IOException {
-        int start = config.sshPortRangeStart();
-        int end = config.sshPortRangeEnd();
-        int range = end - start + 1;
-        var random = java.util.concurrent.ThreadLocalRandom.current();
-
-        for (int attempt = 0; attempt < range; attempt++) {
-            int port = start + random.nextInt(range);
-            try (var serverSocket = new java.net.ServerSocket()) {
-                serverSocket.setReuseAddress(false);
-                serverSocket.bind(new java.net.InetSocketAddress("127.0.0.1", port));
-                log.info("Allocated SSH port {}", port);
-                return port;
-            } catch (IOException e) {
-                log.debug("Port {} in use, trying another", port);
-            }
-        }
-        throw new IOException("No available SSH ports in range " + start + "-" + end);
     }
 
     private void waitForSsh(String host, int port) throws IOException {
