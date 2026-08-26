@@ -5,9 +5,8 @@ import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
 import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
-import dev.orchard.nursery.FruitGrower;
+import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.SeedlingProvider;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.FruitRepository;
@@ -38,7 +37,6 @@ class GroveServiceTest {
     @Mock private GroveRepository groveRepository;
     @Mock private FruitRepository fruitRepository;
     @Mock private ProviderRegistry providerRegistry;
-    @Mock private FruitGrower fruitGrower;
     @Mock private CultivatorService cultivatorService;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private SshPublicKeyService sshPublicKeyService;
@@ -50,7 +48,7 @@ class GroveServiceTest {
         groveService = new GroveService(
             groveRepository, fruitRepository, providerRegistry,
             new DevcontainerCliConfig("0.87.0", 0, 0),
-            fruitGrower, cultivatorService, eventPublisher, sshPublicKeyService
+            cultivatorService, eventPublisher, sshPublicKeyService
         );
     }
 
@@ -339,10 +337,10 @@ class GroveServiceTest {
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINu3uCEBEcYqqjErEWRewbGZw8qrfWt/0inp+HfZR7MR test@orchard.dev");
         when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of(registered));
 
-        SeedlingProvider provider = mock(SeedlingProvider.class);
+        GroveProvider provider = mock(GroveProvider.class);
         when(providerRegistry.getDefault()).thenReturn(provider);
         ArgumentCaptor<Seedling> seedlingCaptor = ArgumentCaptor.forClass(Seedling.class);
-        when(provider.plant(seedlingCaptor.capture()))
+        when(provider.plantSubstrate(seedlingCaptor.capture()))
             .thenReturn(CompletableFuture.completedFuture(
                 grove.seedling().withState(SeedlingState.BLIGHTED)));
 
@@ -360,10 +358,10 @@ class GroveServiceTest {
 
         when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of());
 
-        SeedlingProvider provider = mock(SeedlingProvider.class);
+        GroveProvider provider = mock(GroveProvider.class);
         when(providerRegistry.getDefault()).thenReturn(provider);
         ArgumentCaptor<Seedling> seedlingCaptor = ArgumentCaptor.forClass(Seedling.class);
-        when(provider.plant(seedlingCaptor.capture()))
+        when(provider.plantSubstrate(seedlingCaptor.capture()))
             .thenReturn(CompletableFuture.completedFuture(
                 grove.seedling().withState(SeedlingState.BLIGHTED)));
 

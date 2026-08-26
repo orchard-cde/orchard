@@ -7,11 +7,10 @@ import dev.orchard.harvest.DevcontainerParser;
 import dev.orchard.harvest.DevfileParser;
 import dev.orchard.harvest.SeedSerializer;
 import dev.orchard.nursery.DevcontainerCliConfig;
-import dev.orchard.nursery.FruitGrower;
+import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.SeedlingProvider;
 import dev.orchard.nursery.SeedlingProvisioningException;
-import dev.orchard.vine.SshExecutor;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.FruitRepository;
@@ -50,7 +49,6 @@ public class GroveService {
     private final FruitRepository fruitRepository;
     private final ProviderRegistry providerRegistry;
     private final DevcontainerCliConfig devcontainerCliConfig;
-    private final FruitGrower fruitGrower;
     private final CultivatorService cultivatorService;
     private final SshPublicKeyService sshPublicKeyService;
     private final DevcontainerParser devcontainerParser;
@@ -63,7 +61,6 @@ public class GroveService {
             FruitRepository fruitRepository,
             ProviderRegistry providerRegistry,
             DevcontainerCliConfig devcontainerCliConfig,
-            FruitGrower fruitGrower,
             CultivatorService cultivatorService,
             ApplicationEventPublisher eventPublisher,
             SshPublicKeyService sshPublicKeyService) {
@@ -71,7 +68,6 @@ public class GroveService {
         this.fruitRepository = fruitRepository;
         this.providerRegistry = providerRegistry;
         this.devcontainerCliConfig = devcontainerCliConfig;
-        this.fruitGrower = fruitGrower;
         this.cultivatorService = cultivatorService;
         this.sshPublicKeyService = sshPublicKeyService;
         this.devcontainerParser = new DevcontainerParser();
@@ -139,8 +135,8 @@ public class GroveService {
             Seedling seedlingToPlant = grove.seedling().withAuthorizedKeys(registeredKeys);
 
             // Plant seedling (start VM)
-            SeedlingProvider seedlingProvider = providerRegistry.getDefault();
-            Seedling plantedSeedling = seedlingProvider.plant(seedlingToPlant).join();
+            GroveProvider provider = providerRegistry.getDefault();
+            Seedling plantedSeedling = provider.plantSubstrate(seedlingToPlant).join();
             grove = grove.withSeedling(plantedSeedling);
             grove = grove.withState(GroveState.GROWING);
             updateGroveState(grove);
@@ -155,7 +151,7 @@ public class GroveService {
             waitForCloudInit(plantedSeedling);
 
             // Verify devcontainer CLI was installed by cloud-init's runcmd block
-            seedlingProvider.verifyDevcontainerCli(plantedSeedling, devcontainerCliConfig.version());
+            provider.verifyDevcontainerCli(plantedSeedling, devcontainerCliConfig.version());
 
             // Clone repository to VM
             String commitSha = cloneRepository(plantedSeedling, grove.repositoryUrl(), grove.branch());
@@ -205,7 +201,7 @@ public class GroveService {
         saveFruits(grove.fruits());
         updateGroveState(grove);
 
-        Fruit grownFruit = fruitGrower.grow(seedling, fruit).join();
+        Fruit grownFruit = providerRegistry.getDefault().growFruit(seedling, fruit).join();
         grove = grove.withFruit(grownFruit);
         saveFruits(grove.fruits());
 
@@ -233,7 +229,7 @@ public class GroveService {
      * {@code devcontainer: command not found} (issue #113).
      *
      * <p>{@code "degraded done"} (cloud-init finished with recoverable errors) counts as DONE — the
-     * authoritative check is {@link SeedlingProvider#verifyDevcontainerCli}, which directly probes
+     * authoritative check is {@link GroveProvider#verifyDevcontainerCli}, which directly probes
      * the CLI rather than trusting cloud-init's self-report.
      */
     static CloudInitStatus classifyCloudInitStatus(String raw) {
@@ -256,12 +252,12 @@ public class GroveService {
 
     private void waitForCloudInit(Seedling seedling) {
         log.info("Waiting for cloud-init to complete on seedling {}", seedling.id());
-        SshExecutor ssh = new SshExecutor(seedling);
+        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
         int maxAttempts = 60; // up to ~5 minutes
         for (int i = 0; i < maxAttempts; i++) {
             try {
                 // `|| true` keeps the snapshot readable even when cloud-init reports a non-zero
-                // (error/degraded) exit, which SshExecutor would otherwise raise — we classify the
+                // (error/degraded) exit, which CommandRunner would otherwise raise — we classify the
                 // state ourselves so a failed cloud-init is never mistaken for completion.
                 String raw = ssh.execute("cloud-init status 2>/dev/null || true").trim();
                 CloudInitStatus status = classifyCloudInitStatus(raw);
@@ -293,7 +289,7 @@ public class GroveService {
     }
 
     /** Best-effort tail of the remote cloud-init log, for diagnosing a failed boot. */
-    private String cloudInitLogTail(SshExecutor ssh) {
+    private String cloudInitLogTail(CommandRunner ssh) {
         try {
             return ssh.execute("sudo tail -n 40 /var/log/cloud-init-output.log 2>/dev/null || true").trim();
         } catch (IOException e) {
@@ -307,7 +303,7 @@ public class GroveService {
     private String cloneRepository(Seedling seedling, String repoUrl, String branch) {
         log.info("Cloning {} branch {} to seedling {}", repoUrl, branch, seedling.id());
         try {
-            SshExecutor ssh = new SshExecutor(seedling);
+            CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
             ssh.execute("mkdir -p /workspace");
             ssh.execute("git clone --branch %s --depth 1 %s /workspace".formatted(branch, repoUrl));
             String commitSha = ssh.execute("git -C /workspace rev-parse HEAD").trim();
@@ -340,7 +336,7 @@ public class GroveService {
     private static final List<String> DEFAULT_SEED_PORTS = List.of("8080", "3000");
 
     private Seed discoverSeed(Seedling seedling, SeedSpec spec) {
-        SshExecutor ssh = new SshExecutor(seedling);
+        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
         return resolveSeed(spec, ssh::readFile, devcontainerParser, devfileParser);
     }
 
@@ -448,7 +444,7 @@ public class GroveService {
      * does not fail with "Config not found".
      */
     private void ensureDevcontainerConfig(Seedling seedling, DevcontainerSeed seed) {
-        SshExecutor ssh = new SshExecutor(seedling);
+        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
         try {
             if (ssh.execute("test -f /workspace/.devcontainer/devcontainer.json && echo yes || echo no")
                     .trim().equals("yes")) {
@@ -572,7 +568,7 @@ public class GroveService {
                                 for (Fruit fruit : grove.fruits()) {
                                     if (fruit.containerId() != null) {
                                         log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                                        fruitGrower.compost(grove.seedling(), fruit).join();
+                                        providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
                                     }
                                 }
                             }
@@ -638,7 +634,7 @@ public class GroveService {
                                 for (Fruit fruit : grove.fruits()) {
                                     if (fruit.containerId() != null) {
                                         log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                                        fruitGrower.compost(grove.seedling(), fruit).join();
+                                        providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
                                     }
                                 }
                             }

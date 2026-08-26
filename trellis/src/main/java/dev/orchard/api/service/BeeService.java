@@ -5,8 +5,8 @@ import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
 import dev.orchard.apiary.BeeKeeperRegistry;
 import dev.orchard.core.model.*;
+import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.vine.CommandRunner;
-import dev.orchard.vine.SshExecutor;
 import dev.orchard.roots.entity.BeeEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.BeeRepository;
@@ -32,15 +32,17 @@ public class BeeService {
     private final GroveRepository groveRepository;
     private final CredentialResolver credentialResolver;
     private final ApplicationEventPublisher eventPublisher;
+    private final ProviderRegistry providerRegistry;
 
     public BeeService(BeeKeeperRegistry beeKeeperRegistry, BeeRepository beeRepository,
             GroveRepository groveRepository, CredentialResolver credentialResolver,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher, ProviderRegistry providerRegistry) {
         this.beeKeeperRegistry = beeKeeperRegistry;
         this.beeRepository = beeRepository;
         this.groveRepository = groveRepository;
         this.credentialResolver = credentialResolver;
         this.eventPublisher = eventPublisher;
+        this.providerRegistry = providerRegistry;
     }
 
     @Transactional
@@ -226,6 +228,6 @@ public class BeeService {
             groveEntity.getPlantedAt(),
             null
         );
-        return new SshExecutor(seedling);
+        return providerRegistry.getDefault().vine(seedling).commands();
     }
 }

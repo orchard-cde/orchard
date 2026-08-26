@@ -36,6 +36,7 @@ dependencies {
     implementation(project(":roots"))
     implementation(project(":harvest"))
     implementation(project(":nursery"))
+    implementation(project(":vine"))
     implementation(project(":greenhouse"))
     implementation(project(":apiary"))
     implementation("org.flywaydb:flyway-database-postgresql")

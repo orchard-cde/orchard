@@ -9,8 +9,8 @@ import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
+import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.SeedlingProvider;
 import dev.orchard.vine.SshExecutor;
 import dev.orchard.trellis.OrchardApplication;
 import org.junit.jupiter.api.AfterAll;
@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>This test deliberately mirrors {@link GroveLifecycleE2ETest}'s shape — Spring
  * Boot context against the {@code e2etest} profile, {@link QemuPrerequisiteExtension}
  * gates execution to environments that actually have QEMU / cloud-init / SSH keys.
- * Unlike that test, we bypass the HTTP API and drive the {@link SeedlingProvider}
+ * Unlike that test, we bypass the HTTP API and drive the {@link GroveProvider}
  * and {@link FruitGrower} beans directly so the assertions land squarely on the
  * regression-critical surfaces (CLI invocation, containerName preservation,
  * feature application).
@@ -72,7 +72,7 @@ class FruitGrowerIT {
     @Autowired
     private DevcontainerCliConfig devcontainerCliConfig;
 
-    private SeedlingProvider provider;
+    private GroveProvider provider;
     private Seedling seedling;
     private Fruit grown;
 
@@ -86,7 +86,7 @@ class FruitGrowerIT {
         UUID groveId = UUID.randomUUID();
         Seedling germinated = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
 
-        seedling = provider.plant(germinated).join();
+        seedling = provider.plantSubstrate(germinated).join();
 
         assertThat(seedling.state())
             .as("Seedling must reach SAPLING — plant() returned %s", seedling.state())
