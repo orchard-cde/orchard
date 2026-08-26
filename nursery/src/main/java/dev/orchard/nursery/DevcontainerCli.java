@@ -1,6 +1,7 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.Seedling;
+import dev.orchard.vine.CommandRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;

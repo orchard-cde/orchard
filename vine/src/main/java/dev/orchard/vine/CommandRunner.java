@@ -1,4 +1,4 @@
-package dev.orchard.nursery;
+package dev.orchard.vine;
 
 import java.io.IOException;
 import java.util.Optional;

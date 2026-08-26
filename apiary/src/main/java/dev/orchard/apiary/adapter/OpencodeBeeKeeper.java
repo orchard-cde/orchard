@@ -8,7 +8,7 @@ import dev.orchard.core.model.Bee;
 import dev.orchard.core.model.BeeHealth;
 import dev.orchard.core.model.BeeSpec;
 import dev.orchard.core.model.BeeType;
-import dev.orchard.nursery.CommandRunner;
+import dev.orchard.vine.CommandRunner;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

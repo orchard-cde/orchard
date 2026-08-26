@@ -9,6 +9,7 @@ pluginManagement {
 
 include(
     "core",
+    "vine",
     "roots",
     "harvest",
     "nursery",

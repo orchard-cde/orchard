@@ -1,6 +1,7 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.Seedling;
+import dev.orchard.vine.CommandRunner;
 
 import java.util.concurrent.CompletableFuture;
 
