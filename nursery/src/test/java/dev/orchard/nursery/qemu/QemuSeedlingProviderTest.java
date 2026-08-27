@@ -4,6 +4,7 @@ import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.DevcontainerCliConfig;
+import dev.orchard.nursery.FruitGrower;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,7 +41,7 @@ class QemuSeedlingProviderTest {
             .build();
 
         DevcontainerCliConfig cliConfig = new DevcontainerCliConfig("0.75.0", 600, 60);
-        provider = new QemuSeedlingProvider(config, cliConfig);
+        provider = new QemuSeedlingProvider(config, cliConfig, new FruitGrower());
     }
 
     @AfterEach
@@ -77,14 +78,15 @@ class QemuSeedlingProviderTest {
             .sshPortRangeEnd(49999)
             .sshKeyPath(tempDir.resolve("orchard_ed25519"))
             .build();
-        QemuSeedlingProvider p = new QemuSeedlingProvider(config, new DevcontainerCliConfig("0.75.0", 600, 60));
+        QemuSeedlingProvider p = new QemuSeedlingProvider(
+            config, new DevcontainerCliConfig("0.75.0", 600, 60), new FruitGrower());
 
         p.reattachSurvivingVms(); // must not throw
     }
 
     @Test
     void reattachSurvivingVms_alivePidMatchingVm_seedlingBecomesInspectable() throws IOException {
-        // Directory must be named after seedling.id(), matching what plant() writes
+        // Directory must be named after seedling.id(), matching what plantSubstrate() writes
         Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
         Path vmDir = tempDir.resolve(seedling.id().toString());
         Files.createDirectories(vmDir);

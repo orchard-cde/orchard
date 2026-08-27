@@ -2,8 +2,9 @@ package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
-import dev.orchard.nursery.AbstractSeedlingProvider;
+import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
+import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.PlantedSeedling;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,10 +20,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 
 /**
- * QEMU-based seedling provider for local VM provisioning.
+ * QEMU-based grove provider for local VM provisioning.
  * Uses QEMU/KVM to run VMs with cloud-init for initial configuration.
  */
-public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingProvider.QemuLaunch> {
+public class QemuSeedlingProvider extends AbstractGroveProvider<QemuSeedlingProvider.QemuLaunch> {
 
     private static final Logger log = LoggerFactory.getLogger(QemuSeedlingProvider.class);
     private static final String PROVIDER_ID = "qemu-local";
@@ -37,13 +38,16 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
      */
     public record QemuLaunch(int sshPort) {}
 
-    public QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig) {
-        this(config, devcontainerCliConfig, new DefaultQemuCommands(config, devcontainerCliConfig));
+    public QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig,
+                                FruitGrower fruitGrower) {
+        this(config, devcontainerCliConfig, fruitGrower,
+            new DefaultQemuCommands(config, devcontainerCliConfig));
     }
 
-    /** Test seam. Production callers use the two-arg constructor. */
-    QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig, QemuCommands commands) {
-        super(Executors.newVirtualThreadPerTaskExecutor());
+    /** Test seam. Production callers use the three-arg constructor. */
+    QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig,
+                         FruitGrower fruitGrower, QemuCommands commands) {
+        super(Executors.newVirtualThreadPerTaskExecutor(), fruitGrower);
         this.config = config;
         this.runningVms = new ConcurrentHashMap<>();
         this.commands = commands;

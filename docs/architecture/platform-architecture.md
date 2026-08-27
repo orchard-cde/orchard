@@ -172,30 +172,41 @@ The platform supports two authentication modes, controlled by `orchard.security.
 
 ---
 
-## 2. Seedling Provider Architecture
+## 2. Grove Provider Architecture
 
-### 2.1 SeedlingProvider Interface
+### 2.1 GroveProvider Interface
 
-Defined in `nursery/src/main/java/dev/orchard/nursery/SeedlingProvider.java`:
+Defined in `nursery/src/main/java/dev/orchard/nursery/GroveProvider.java` — the single substrate
+abstraction (issue #86). Every nursery implementation implements it directly; there is no second
+provider hierarchy.
 
 ```java
-public interface SeedlingProvider {
+public interface GroveProvider {
     String getProviderId();
-    CompletableFuture<Seedling> plant(Seedling seedling);    // Provision VM
-    CompletableFuture<Seedling> water(Seedling seedling);    // Resume stopped VM
-    CompletableFuture<Seedling> dormant(Seedling seedling);  // Suspend VM
-    CompletableFuture<Void> uproot(Seedling seedling);       // Destroy VM
-    CompletableFuture<Seedling> inspect(Seedling seedling);  // Check status
-    boolean isAvailable();                                    // Health check
+    boolean isAvailable();                                          // Health check
+    CompletableFuture<Seedling> plantSubstrate(Seedling seedling);  // Acquire substrate
+    CompletableFuture<Seedling> water(Seedling seedling);           // Resume stopped VM
+    CompletableFuture<Seedling> dormant(Seedling seedling);         // Suspend VM
+    CompletableFuture<Void> uproot(Seedling seedling);              // Destroy VM
+    CompletableFuture<Seedling> inspect(Seedling seedling);         // Check status
+    CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit);
+    CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit);
+    Vine vine(Seedling seedling);                                   // How to reach in
+    void verifyDevcontainerCli(Seedling seedling, String expectedVersion);
 }
 ```
 
 All operations return `CompletableFuture` for non-blocking async provisioning.
 
+`AbstractGroveProvider<L>` holds the shared VM behaviour: the `plantSubstrate` template (`launch`
+→ `awaitRunning` → `resolveEndpoint` → `awaitReachable`, mapped to `SAPLING` or `BLIGHTED`), fruit
+forwarding to the shared `FruitGrower`, and an SSH-backed `Vine`. `plantSubstrate` is `final`; a
+substrate that cannot express itself as those steps implements `GroveProvider` directly instead.
+
 ### 2.2 ProviderRegistry
 
 `nursery/src/main/java/dev/orchard/nursery/ProviderRegistry.java`:
-- Stores providers in a `ConcurrentHashMap<String, SeedlingProvider>` keyed by provider ID
+- Stores providers in a `ConcurrentHashMap<String, GroveProvider>` keyed by provider ID
 - Configurable default provider via `orchard.nursery.provider` property
 - Short name mapping (e.g., `"qemu"` → `"qemu-local"`, `"aws"` → `"aws-ec2"`) handled in `NurseryConfig.resolveProviderId()`
 
@@ -221,7 +232,7 @@ sequenceDiagram
     participant FS as Filesystem
     participant VM as QEMU Process
 
-    GS->>QP: plant(seedling)
+    GS->>QP: plantSubstrate(seedling)
     QP->>FS: Create VM directory
     QP->>FS: Create COW disk image (qemu-img create)
     QP->>FS: Generate cloud-init ISO
@@ -260,7 +271,7 @@ sequenceDiagram
 sequenceDiagram
     participant GS as GroveService
     participant PR as ProviderRegistry
-    participant SP as SeedlingProvider
+    participant SP as GroveProvider
     participant CR as CommandRunner
     participant SSH as SshExecutor
     participant DP as DevcontainerParser
@@ -269,8 +280,8 @@ sequenceDiagram
     participant EP as EventPublisher
 
     GS->>PR: getDefault()
-    PR-->>GS: SeedlingProvider
-    GS->>SP: plant(seedling)
+    PR-->>GS: GroveProvider
+    GS->>SP: plantSubstrate(seedling)
     SP-->>GS: Seedling (SAPLING)
     GS->>DB: updateGroveState(GROWING)
     GS->>EP: GroveStateChangedEvent
@@ -360,7 +371,7 @@ stateDiagram-v2
 2. **After commit**: Check VM reachability via TCP socket probe (3s timeout)
 3. If reachable: stop and remove all containers via `FruitGrower.compost()`
 4. Delete fruit entities from database
-5. Terminate VM via `SeedlingProvider.uproot()`
+5. Terminate VM via `GroveProvider.uproot()`
 6. Set grove state to `CLEARED`
 
 ---

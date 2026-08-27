@@ -19,7 +19,8 @@ Everything in this project uses orchard/gardening terminology:
 | **Seed** | A devcontainer.json spec | Blueprint for growing fruit |
 | **Trowel** | The CLI tool | Hand tool for planting |
 | **Canopy** | The web UI (separate repo: `orchard-cde/orchard-ui`) | Next.js / React / MUI app |
-| **Nursery** | VM provider management | Where seedlings are grown |
+| **Nursery** | Substrate provider management | Where seedlings are grown |
+| **Grove Provider** | The one substrate abstraction | `GroveProvider` — acquire a substrate, grow/compost fruit on it, reach into it; one impl per substrate |
 | **Harvest** | Container/image building | Preparing fruit |
 | **Roots** | Persistence layer | Database/storage |
 | **Trellis** | The Spring Boot application server | Support structure wiring all modules together |
@@ -36,7 +37,7 @@ orchard/
 ├── core/       # Domain models (records, enums)
 ├── roots/      # JPA entities, Spring Data repos, Flyway migrations
 ├── harvest/    # DevcontainerParser - parses .devcontainer/devcontainer.json
-├── nursery/    # GroveProvider + SeedlingProvider, QemuSeedlingProvider, FruitGrower
+├── nursery/    # GroveProvider (the substrate seam), QemuSeedlingProvider, FruitGrower
 ├── vine/       # Substrate-agnostic exec abstraction - Vine, CommandRunner, SshVine
 ├── greenhouse/ # Prebuild service - ImageBuilder, PrebuildScheduler, PrebuildService
 ├── apiary/     # AI assistant integration - BeeKeeper extension point

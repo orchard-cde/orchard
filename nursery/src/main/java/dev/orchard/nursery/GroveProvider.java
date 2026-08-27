@@ -2,6 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 
 import java.util.concurrent.CompletableFuture;
@@ -54,4 +55,36 @@ public interface GroveProvider {
      * @throws SeedlingProvisioningException if the CLI is missing or the version mismatches
      */
     void verifyDevcontainerCli(Seedling seedling, String expectedVersion);
+
+    /**
+     * Verifies the devcontainer CLI is installed and matches the expected version on the seedling.
+     *
+     * <p>Called by the orchestrating caller (e.g. {@code GroveService}) after the seedling has
+     * already reached {@code SAPLING} and cloud-init has finished — not by the provider during
+     * {@link #plantSubstrate}. Cloud-init may still be installing the CLI when
+     * {@code plantSubstrate()} returns a SAPLING, so verifying any earlier would race a legitimate
+     * in-progress install. See issue #148.
+     *
+     * <p>{@link #verifyDevcontainerCli(Seedling, String)} delegates here with an explicit
+     * {@link CommandRunner} obtained from its {@link #vine}. This static is the sole production
+     * path — matches the Lane B {@code Function<Seedling, CommandRunner>} pattern used by
+     * {@link DevcontainerCli}.
+     *
+     * @throws SeedlingProvisioningException if the CLI is missing or the version mismatches.
+     */
+    static void verifyDevcontainerCli(Seedling seedling, String expectedVersion, CommandRunner runner) {
+        try {
+            String version = runner.execute("devcontainer --version").trim();
+            if (!expectedVersion.equals(version)) {
+                throw new SeedlingProvisioningException(
+                    "devcontainer CLI version mismatch on seedling " + seedling.id()
+                        + ": expected " + expectedVersion + ", got " + version);
+            }
+        } catch (SeedlingProvisioningException sse) {
+            throw sse;
+        } catch (Exception e) {
+            throw new SeedlingProvisioningException(
+                "Seedling " + seedling.id() + " missing devcontainer CLI — check cloud-init logs", e);
+        }
+    }
 }

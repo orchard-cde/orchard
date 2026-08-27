@@ -77,7 +77,7 @@ public interface BeeKeeper {
 }
 ```
 
-All operations return `CompletableFuture` for non-blocking async execution, following the `SeedlingProvider` pattern. The caller (`BeeService`) resolves the `CommandRunner` once per Grove via `GroveProvider.vine(seedling).commands()` and passes it into each call — `BeeKeeper` implementations never touch `Seedling` or `SshExecutor` directly.
+All operations return `CompletableFuture` for non-blocking async execution, following the `GroveProvider` pattern. The caller (`BeeService`) resolves the `CommandRunner` once per Grove via `GroveProvider.vine(seedling).commands()` and passes it into each call — `BeeKeeper` implementations never touch `Seedling` or `SshExecutor` directly.
 
 | Method | Purpose | State Transition |
 |--------|---------|-----------------|
@@ -398,7 +398,7 @@ sequenceDiagram
     participant GS as GroveService
     participant BS as BeeService
     participant BK as BeeKeeper
-    participant SP as SeedlingProvider
+    participant SP as GroveProvider
     participant EP as EventPublisher
 
     GS->>EP: GroveStateChangedEvent(CLEARING)

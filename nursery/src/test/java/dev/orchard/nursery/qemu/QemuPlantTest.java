@@ -3,6 +3,7 @@ package dev.orchard.nursery.qemu;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.DevcontainerCliConfig;
+import dev.orchard.nursery.FruitGrower;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -82,7 +83,8 @@ class QemuPlantTest {
 
     private QemuSeedlingProvider provider(QemuCommands commands) {
         QemuConfig config = QemuConfig.builder().vmStoragePath(vmStorage).build();
-        return new QemuSeedlingProvider(config, new DevcontainerCliConfig("0.80.0", 600, 60), commands);
+        return new QemuSeedlingProvider(config, new DevcontainerCliConfig("0.80.0", 600, 60),
+            new FruitGrower(), commands);
     }
 
     @Test
@@ -90,7 +92,7 @@ class QemuPlantTest {
         RecordingCommands commands = new RecordingCommands();
         Seedling seedling = germinated();
 
-        provider(commands).plant(seedling).join();
+        provider(commands).plantSubstrate(seedling).join();
 
         Path expectedDir = vmStorage.resolve(seedling.id().toString());
         assertThat(commands.diskImageArg).isEqualTo(expectedDir.resolve("disk.qcow2"));
@@ -104,7 +106,7 @@ class QemuPlantTest {
         RecordingCommands commands = new RecordingCommands();
         Seedling seedling = germinated();
 
-        provider(commands).plant(seedling).join();
+        provider(commands).plantSubstrate(seedling).join();
 
         assertThat(commands.startDiskArg).hasFileName("disk.qcow2");
         assertThat(commands.startIsoArg).hasFileName("cloud-init.iso");
@@ -117,7 +119,7 @@ class QemuPlantTest {
         // reach awaitReachable unchanged.
         RecordingCommands commands = new RecordingCommands();
 
-        provider(commands).plant(germinated()).join();
+        provider(commands).plantSubstrate(germinated()).join();
 
         assertThat(commands.awaitReachableHostArg).isEqualTo("127.0.0.1");
         assertThat(commands.awaitReachablePortArg).isEqualTo(2222);
@@ -127,7 +129,7 @@ class QemuPlantTest {
     void launch_runsStepsInOrder() throws Exception {
         RecordingCommands commands = new RecordingCommands();
 
-        provider(commands).plant(germinated()).join();
+        provider(commands).plantSubstrate(germinated()).join();
 
         assertThat(commands.order)
             .containsExactly("createDiskImage", "createCloudInitIso", "allocateSshPort", "startQemu", "awaitReachable");
@@ -138,7 +140,7 @@ class QemuPlantTest {
         RecordingCommands commands = new RecordingCommands();
         Seedling seedling = germinated();
 
-        provider(commands).plant(seedling).join();
+        provider(commands).plantSubstrate(seedling).join();
 
         Path pidFile = vmStorage.resolve(seedling.id().toString()).resolve("qemu.pid");
         assertThat(pidFile).exists();
@@ -146,7 +148,7 @@ class QemuPlantTest {
     }
 
     @Test
-    void plant_returnsBlightedWhenTheDiskImageCannotBeCreated() throws Exception {
+    void plantSubstrate_returnsBlightedWhenTheDiskImageCannotBeCreated() throws Exception {
         QemuCommands failing = new RecordingCommands() {
             @Override
             public void createDiskImage(Path image, int diskGb) throws IOException {
@@ -154,7 +156,7 @@ class QemuPlantTest {
             }
         };
 
-        Seedling result = provider(failing).plant(germinated()).join();
+        Seedling result = provider(failing).plantSubstrate(germinated()).join();
 
         assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
     }

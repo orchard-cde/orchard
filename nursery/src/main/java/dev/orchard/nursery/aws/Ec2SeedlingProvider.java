@@ -2,10 +2,11 @@ package dev.orchard.nursery.aws;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
-import dev.orchard.nursery.AbstractSeedlingProvider;
+import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
+import dev.orchard.nursery.FruitGrower;
+import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.PlantedSeedling;
-import dev.orchard.nursery.SeedlingProvider;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceNotFoundException;
 import dev.orchard.nursery.aws.Ec2Operations.RunInstanceParams;
@@ -19,17 +20,17 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 
 /**
- * AWS EC2 implementation of {@link SeedlingProvider}.
+ * AWS EC2 implementation of {@link GroveProvider}.
  *
  * <p>Provisions EC2 instances using cloud-init for initial bootstrap. Each method
  * runs on a virtual-thread executor matching {@code QemuSeedlingProvider}'s pattern.
  *
- * <p><b>Failure semantics:</b> on any exception during {@link #plant(Seedling)},
+ * <p><b>Failure semantics:</b> on any exception during {@link #plantSubstrate(Seedling)},
  * the seedling moves to {@link SeedlingState#BLIGHTED} and the instance is
  * <i>not</i> terminated (matches QEMU's leak-and-return-BLIGHTED behavior;
  * operators are expected to clean up via the AWS console).
  */
-public class Ec2SeedlingProvider extends AbstractSeedlingProvider<String> implements AutoCloseable {
+public class Ec2SeedlingProvider extends AbstractGroveProvider<String> implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Ec2SeedlingProvider.class);
     private static final String PROVIDER_ID = "aws-ec2";
@@ -41,8 +42,8 @@ public class Ec2SeedlingProvider extends AbstractSeedlingProvider<String> implem
     private final DevcontainerCliConfig devcontainerCliConfig;
 
     public Ec2SeedlingProvider(Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
-                               DevcontainerCliConfig devcontainerCliConfig) {
-        super(Executors.newVirtualThreadPerTaskExecutor());
+                               DevcontainerCliConfig devcontainerCliConfig, FruitGrower fruitGrower) {
+        super(Executors.newVirtualThreadPerTaskExecutor(), fruitGrower);
         this.config = config;
         this.operations = operations;
         this.waiter = waiter;

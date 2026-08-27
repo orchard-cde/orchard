@@ -4,7 +4,6 @@ import dev.orchard.nursery.DevcontainerCli;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.VmGroveProvider;
 import dev.orchard.nursery.aws.DefaultEc2Operations;
 import dev.orchard.nursery.aws.Ec2Config;
 import dev.orchard.nursery.aws.Ec2InstanceWaiter;
@@ -119,8 +118,8 @@ public class NurseryConfig {
     @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
     public Ec2SeedlingProvider ec2SeedlingProvider(
             Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
-            DevcontainerCliConfig devcontainerCliConfig) {
-        return new Ec2SeedlingProvider(config, operations, waiter, devcontainerCliConfig);
+            DevcontainerCliConfig devcontainerCliConfig, FruitGrower fruitGrower) {
+        return new Ec2SeedlingProvider(config, operations, waiter, devcontainerCliConfig, fruitGrower);
     }
 
     // --- GCP Compute ---
@@ -179,28 +178,29 @@ public class NurseryConfig {
         ProviderRegistry registry = new ProviderRegistry();
 
         // Always register QEMU; reattach any VMs that survived the previous server run
-        QemuSeedlingProvider qemuProvider = new QemuSeedlingProvider(qemuConfig, devcontainerCliConfig);
+        QemuSeedlingProvider qemuProvider =
+            new QemuSeedlingProvider(qemuConfig, devcontainerCliConfig, fruitGrower);
         qemuProvider.reattachSurvivingVms();
-        registry.register(new VmGroveProvider(qemuProvider, fruitGrower));
+        registry.register(qemuProvider);
         log.info("Registered grove provider: {}", qemuProvider.getProviderId());
 
         // Conditionally register AWS EC2 — Spring instantiates and manages the bean lifecycle.
         ec2SeedlingProvider.ifAvailable(provider -> {
-            registry.register(new VmGroveProvider(provider, fruitGrower));
+            registry.register(provider);
             log.info("Registered grove provider: {}", provider.getProviderId());
         });
 
         // Conditionally register GCP Compute
         computeConfig.ifAvailable(config -> {
-            ComputeSeedlingProvider gcpProvider = new ComputeSeedlingProvider(config);
-            registry.register(new VmGroveProvider(gcpProvider, fruitGrower));
+            ComputeSeedlingProvider gcpProvider = new ComputeSeedlingProvider(config, fruitGrower);
+            registry.register(gcpProvider);
             log.info("Registered grove provider: {}", gcpProvider.getProviderId());
         });
 
         // Conditionally register Azure VM
         azureConfig.ifAvailable(config -> {
-            AzureVmSeedlingProvider azureProvider = new AzureVmSeedlingProvider(config);
-            registry.register(new VmGroveProvider(azureProvider, fruitGrower));
+            AzureVmSeedlingProvider azureProvider = new AzureVmSeedlingProvider(config, fruitGrower);
+            registry.register(azureProvider);
             log.info("Registered grove provider: {}", azureProvider.getProviderId());
         });
 

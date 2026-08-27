@@ -4,6 +4,7 @@ import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.DevcontainerCliConfig;
+import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.aws.Ec2Operations.AwsInstanceState;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceNotFoundException;
@@ -61,7 +62,7 @@ class Ec2SeedlingProviderTest {
     }
 
     private Ec2SeedlingProvider providerWith(Ec2Config config) {
-        return new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG);
+        return new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower());
     }
 
     @Test
@@ -71,13 +72,13 @@ class Ec2SeedlingProviderTest {
     }
 
     @Test
-    void plant_happyPath_returnsSaplingWithProviderDetails() {
+    void plantSubstrate_happyPath_returnsSaplingWithProviderDetails() {
         when(ops.runInstance(any(RunInstanceParams.class))).thenReturn("i-abc");
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
 
         Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .plant(germinated).join();
+            .plantSubstrate(germinated).join();
 
         assertThat(result.state()).isEqualTo(SeedlingState.SAPLING);
         assertThat(result.providerInstanceId()).isEqualTo("i-abc");
@@ -88,32 +89,32 @@ class Ec2SeedlingProviderTest {
     }
 
     @Test
-    void plant_runInstanceThrows_returnsBlightedAndDoesNotTerminate() {
+    void plantSubstrate_runInstanceThrows_returnsBlightedAndDoesNotTerminate() {
         when(ops.runInstance(any(RunInstanceParams.class)))
             .thenThrow(new RuntimeException("auth failed"));
 
         Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .plant(germinated).join();
+            .plantSubstrate(germinated).join();
 
         assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
         verify(ops, never()).terminateInstance(anyString());
     }
 
     @Test
-    void plant_waitRunningTimesOut_returnsBlightedAndDoesNotTerminate() {
+    void plantSubstrate_waitRunningTimesOut_returnsBlightedAndDoesNotTerminate() {
         when(ops.runInstance(any(RunInstanceParams.class))).thenReturn("i-abc");
         doThrow(new Ec2InstanceWaiter.WaitTimeoutException("timeout"))
             .when(waiter).awaitRunning("i-abc");
 
         Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .plant(germinated).join();
+            .plantSubstrate(germinated).join();
 
         assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
         verify(ops, never()).terminateInstance(anyString());
     }
 
     @Test
-    void plant_sshTimesOut_returnsBlightedAndDoesNotTerminate() {
+    void plantSubstrate_sshTimesOut_returnsBlightedAndDoesNotTerminate() {
         when(ops.runInstance(any(RunInstanceParams.class))).thenReturn("i-abc");
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
@@ -121,56 +122,56 @@ class Ec2SeedlingProviderTest {
             .when(waiter).awaitSshReady(anyString(), org.mockito.ArgumentMatchers.eq(22));
 
         Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .plant(germinated).join();
+            .plantSubstrate(germinated).join();
 
         assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
         verify(ops, never()).terminateInstance(anyString());
     }
 
     @Test
-    void plant_ipModeAuto_prefersPublicOverPrivate() {
+    void plantSubstrate_ipModeAuto_prefersPublicOverPrivate() {
         when(ops.runInstance(any(RunInstanceParams.class))).thenReturn("i-abc");
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
 
         Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .plant(germinated).join();
+            .plantSubstrate(germinated).join();
 
         assertThat(result.ipAddress()).isEqualTo("1.2.3.4");
     }
 
     @Test
-    void plant_ipModeAuto_fallsBackToPrivateWhenNoPublic() {
+    void plantSubstrate_ipModeAuto_fallsBackToPrivateWhenNoPublic() {
         when(ops.runInstance(any(RunInstanceParams.class))).thenReturn("i-abc");
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, null, "10.0.0.4"));
 
         Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .plant(germinated).join();
+            .plantSubstrate(germinated).join();
 
         assertThat(result.ipAddress()).isEqualTo("10.0.0.4");
     }
 
     @Test
-    void plant_ipModePublic_blightsWhenNoPublicIp() {
+    void plantSubstrate_ipModePublic_blightsWhenNoPublicIp() {
         when(ops.runInstance(any(RunInstanceParams.class))).thenReturn("i-abc");
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, null, "10.0.0.4"));
 
         Seedling result = providerWith(configWith(Ec2Config.IpMode.PUBLIC))
-            .plant(germinated).join();
+            .plantSubstrate(germinated).join();
 
         assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
     }
 
     @Test
-    void plant_ipModePrivate_alwaysUsesPrivate() {
+    void plantSubstrate_ipModePrivate_alwaysUsesPrivate() {
         when(ops.runInstance(any(RunInstanceParams.class))).thenReturn("i-abc");
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
 
         Seedling result = providerWith(configWith(Ec2Config.IpMode.PRIVATE))
-            .plant(germinated).join();
+            .plantSubstrate(germinated).join();
 
         assertThat(result.ipAddress()).isEqualTo("10.0.0.4");
     }
@@ -317,7 +318,8 @@ class Ec2SeedlingProviderTest {
             tempDir.resolve("nonexistent-key")
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG).isAvailable()).isFalse();
+        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
+            .isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }
 
@@ -330,7 +332,8 @@ class Ec2SeedlingProviderTest {
             (Path) null  // explicitly null sshKeyPath
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG).isAvailable()).isFalse();
+        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
+            .isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }
 
@@ -343,7 +346,8 @@ class Ec2SeedlingProviderTest {
             keyPath
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG).isAvailable()).isFalse();
+        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
+            .isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }
 }
