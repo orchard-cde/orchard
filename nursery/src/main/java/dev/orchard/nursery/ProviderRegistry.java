@@ -43,7 +43,7 @@ public class ProviderRegistry {
      */
     public GroveProvider getDefault() {
         if (defaultProviderId == null || !providers.containsKey(defaultProviderId)) {
-            throw new IllegalStateException("No default seedling provider configured");
+            throw new IllegalStateException("No default grove provider configured");
         }
         return providers.get(defaultProviderId);
     }

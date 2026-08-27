@@ -33,6 +33,7 @@ orchard/
 ├── roots/      # JPA entities, Spring Data repos, Flyway migrations
 ├── harvest/    # DevcontainerParser - parses .devcontainer/devcontainer.json
 ├── nursery/    # SeedlingProvider interface, QemuSeedlingProvider, FruitGrower
+├── vine/       # Substrate-agnostic exec abstraction - Vine, CommandRunner, SshVine
 ├── api/        # REST controllers, services, DTOs
 ├── fence/      # Authentication subsystem - OAuth2/OIDC device flow + token issuance
 ├── trellis/    # Spring Boot app entry point (port 8080)

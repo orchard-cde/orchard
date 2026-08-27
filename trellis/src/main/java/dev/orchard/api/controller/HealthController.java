@@ -35,14 +35,14 @@ public class HealthController {
 
     @GetMapping("/ready")
     public ResponseEntity<Map<String, Object>> ready() {
-        GroveProvider seedlingProvider = providerRegistry.getDefault();
-        boolean providerReady = seedlingProvider.isAvailable();
+        GroveProvider groveProvider = providerRegistry.getDefault();
+        boolean providerReady = groveProvider.isAvailable();
 
         if (providerReady) {
             return ResponseEntity.ok(Map.of(
                 "status", "ready",
                 "seedlingProvider", Map.of(
-                    "id", seedlingProvider.getProviderId(),
+                    "id", groveProvider.getProviderId(),
                     "available", true
                 )
             ));
@@ -50,7 +50,7 @@ public class HealthController {
             return ResponseEntity.status(503).body(Map.of(
                 "status", "not_ready",
                 "seedlingProvider", Map.of(
-                    "id", seedlingProvider.getProviderId(),
+                    "id", groveProvider.getProviderId(),
                     "available", false
                 )
             ));
