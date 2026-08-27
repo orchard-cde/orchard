@@ -18,4 +18,6 @@ public interface QemuCommands {
     int allocateSshPort() throws IOException;
 
     Process startQemu(Seedling seedling, Path diskImage, Path cloudInitIso, int sshPort) throws IOException;
+
+    void awaitReachable(String host, int sshPort) throws IOException;
 }

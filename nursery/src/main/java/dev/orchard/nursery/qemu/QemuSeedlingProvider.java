@@ -85,7 +85,7 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
 
     @Override
     protected void awaitReachable(Seedling seedling, PlantedSeedling planted) throws IOException {
-        waitForSsh(planted.host(), planted.sshPort());
+        commands.awaitReachable(planted.host(), planted.sshPort());
     }
 
     @Override
@@ -182,66 +182,6 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
             block.append("      - ").append(key).append('\n');
         }
         return block.toString();
-    }
-
-    private void waitForSsh(String host, int port) throws IOException {
-        log.info("Waiting for SSH to be available at {}:{}", host, port);
-
-        // Phase 1: Wait for the TCP port to open
-        int maxPortAttempts = 60;
-        for (int i = 0; i < maxPortAttempts; i++) {
-            try {
-                java.net.Socket socket = new java.net.Socket();
-                socket.connect(new java.net.InetSocketAddress(host, port), 1000);
-                socket.close();
-                log.info("SSH port open at {}:{}, waiting for cloud-init to complete...", host, port);
-                break;
-            } catch (IOException e) {
-                if (i == maxPortAttempts - 1) {
-                    throw new IOException("Timeout waiting for SSH port at " + host + ":" + port);
-                }
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new IOException("Interrupted while waiting for SSH port at " + host + ":" + port, ie);
-                }
-            }
-        }
-
-        // Phase 2: Wait for actual SSH authentication to work (cloud-init must finish)
-        java.nio.file.Path orchardKey = config.sshKeyPath();
-        int maxAuthAttempts = 30;
-        for (int i = 0; i < maxAuthAttempts; i++) {
-            try {
-                var cmd = new dev.orchard.vine.SshCommandBuilder()
-                    .host(host)
-                    .port(port)
-                    .identityKey(orchardKey)
-                    .connectTimeoutSeconds(5)
-                    .batchMode(true)
-                    .remoteCommand("echo ready")
-                    .build();
-
-                ProcessBuilder pb = new ProcessBuilder(cmd);
-                pb.redirectErrorStream(true);
-                Process p = pb.start();
-                int exitCode = p.waitFor();
-                if (exitCode == 0) {
-                    log.info("SSH authentication successful at {}:{}", host, port);
-                    return;
-                }
-            } catch (Exception e) {
-                // ignore, retry
-            }
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Interrupted while waiting for SSH authentication at " + host + ":" + port, ie);
-            }
-        }
-        throw new IOException("Timeout waiting for SSH authentication at " + host + ":" + port);
     }
 
     public void reattachSurvivingVms() {
