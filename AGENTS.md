@@ -60,7 +60,7 @@ All domain objects are Java records with factory methods:
 ### State Machines
 Each entity has a state enum with gardening-themed states:
 - `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED)
-- `SeedlingState`: GERMINATING → SPROUTING → SAPLING (or BLIGHTED)
+- `SeedlingState`: GERMINATING → SPROUTING → SAPLING → WILTING → WITHERED (or BLIGHTED on provisioning failure). VM-specific: once a container substrate exists, container-backed groves populate no `SeedlingState` at all (see `GroveProvider`, issue #86).
 - `FruitState`: BUDDING → RIPENING → RIPE (or ROTTED)
 
 ### Async Provisioning
