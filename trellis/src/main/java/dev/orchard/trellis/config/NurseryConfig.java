@@ -181,34 +181,34 @@ public class NurseryConfig {
         // Always register QEMU; reattach any VMs that survived the previous server run
         QemuSeedlingProvider qemuProvider = new QemuSeedlingProvider(qemuConfig, devcontainerCliConfig);
         qemuProvider.reattachSurvivingVms();
-        registry.register(new VmGroveProvider(qemuProvider, fruitGrower, devcontainerCliConfig));
-        log.info("Registered seedling provider: {}", qemuProvider.getProviderId());
+        registry.register(new VmGroveProvider(qemuProvider, fruitGrower));
+        log.info("Registered grove provider: {}", qemuProvider.getProviderId());
 
         // Conditionally register AWS EC2 — Spring instantiates and manages the bean lifecycle.
         ec2SeedlingProvider.ifAvailable(provider -> {
-            registry.register(new VmGroveProvider(provider, fruitGrower, devcontainerCliConfig));
-            log.info("Registered seedling provider: {}", provider.getProviderId());
+            registry.register(new VmGroveProvider(provider, fruitGrower));
+            log.info("Registered grove provider: {}", provider.getProviderId());
         });
 
         // Conditionally register GCP Compute
         computeConfig.ifAvailable(config -> {
             ComputeSeedlingProvider gcpProvider = new ComputeSeedlingProvider(config);
-            registry.register(new VmGroveProvider(gcpProvider, fruitGrower, devcontainerCliConfig));
-            log.info("Registered seedling provider: {}", gcpProvider.getProviderId());
+            registry.register(new VmGroveProvider(gcpProvider, fruitGrower));
+            log.info("Registered grove provider: {}", gcpProvider.getProviderId());
         });
 
         // Conditionally register Azure VM
         azureConfig.ifAvailable(config -> {
             AzureVmSeedlingProvider azureProvider = new AzureVmSeedlingProvider(config);
-            registry.register(new VmGroveProvider(azureProvider, fruitGrower, devcontainerCliConfig));
-            log.info("Registered seedling provider: {}", azureProvider.getProviderId());
+            registry.register(new VmGroveProvider(azureProvider, fruitGrower));
+            log.info("Registered grove provider: {}", azureProvider.getProviderId());
         });
 
         // Set the default provider based on configuration
         String resolvedDefault = resolveProviderId(defaultProvider);
         if (registry.hasProvider(resolvedDefault)) {
             registry.setDefault(resolvedDefault);
-            log.info("Default seedling provider: {}", resolvedDefault);
+            log.info("Default grove provider: {}", resolvedDefault);
         } else {
             log.warn("Configured default provider '{}' not available, falling back to qemu-local", defaultProvider);
         }

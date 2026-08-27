@@ -16,14 +16,11 @@ public final class VmGroveProvider implements GroveProvider {
 
     private final SeedlingProvider seedlingProvider;
     private final FruitGrower fruitGrower;
-    private final DevcontainerCliConfig devcontainerCliConfig;
 
     public VmGroveProvider(SeedlingProvider seedlingProvider,
-                           FruitGrower fruitGrower,
-                           DevcontainerCliConfig devcontainerCliConfig) {
+                           FruitGrower fruitGrower) {
         this.seedlingProvider = seedlingProvider;
         this.fruitGrower = fruitGrower;
-        this.devcontainerCliConfig = devcontainerCliConfig;
     }
 
     @Override public String getProviderId() { return seedlingProvider.getProviderId(); }

@@ -28,7 +28,6 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
     private static final String PROVIDER_ID = "qemu-local";
 
     private final QemuConfig config;
-    private final DevcontainerCliConfig devcontainerCliConfig;
     private final ConcurrentHashMap<UUID, ProcessHandle> runningVms;
     private final QemuCommands commands;
 
@@ -46,7 +45,6 @@ public class QemuSeedlingProvider extends AbstractSeedlingProvider<QemuSeedlingP
     QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig, QemuCommands commands) {
         super(Executors.newVirtualThreadPerTaskExecutor());
         this.config = config;
-        this.devcontainerCliConfig = devcontainerCliConfig;
         this.runningVms = new ConcurrentHashMap<>();
         this.commands = commands;
     }
