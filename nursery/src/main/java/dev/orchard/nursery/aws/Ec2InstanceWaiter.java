@@ -2,6 +2,7 @@ package dev.orchard.nursery.aws;
 
 import dev.orchard.nursery.aws.Ec2Operations.AwsInstanceState;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
+import dev.orchard.vine.SshCommandBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,7 +125,7 @@ public class Ec2InstanceWaiter {
     public static SshProbe shellSshProbe(Path privateKeyPath) {
         return (host, port) -> {
             try {
-                List<String> cmd = new dev.orchard.vine.SshCommandBuilder()
+                List<String> cmd = new SshCommandBuilder()
                     .host(host)
                     .port(port)
                     .identityKey(privateKeyPath)

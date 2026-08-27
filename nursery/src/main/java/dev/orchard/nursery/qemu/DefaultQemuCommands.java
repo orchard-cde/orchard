@@ -3,6 +3,7 @@ package dev.orchard.nursery.qemu;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.nursery.CloudInitTemplate;
 import dev.orchard.nursery.DevcontainerCliConfig;
+import dev.orchard.vine.SshCommandBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -254,7 +255,7 @@ class DefaultQemuCommands implements QemuCommands {
         int maxAuthAttempts = 30;
         for (int i = 0; i < maxAuthAttempts; i++) {
             try {
-                var cmd = new dev.orchard.vine.SshCommandBuilder()
+                var cmd = new SshCommandBuilder()
                     .host(host)
                     .port(port)
                     .identityKey(orchardKey)
