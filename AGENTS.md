@@ -24,6 +24,10 @@ Everything in this project uses orchard/gardening terminology:
 | **Roots** | Persistence layer | Database/storage |
 | **Trellis** | The Spring Boot application server | Support structure wiring all modules together |
 | **Greenhouse** | Prebuild service | Pre-built images and caching |
+| **Vine** | Substrate-agnostic exec/attach seam | A conduit that carries commands into a grove; one impl per substrate (SSH today) |
+| **Apiary** | AI assistant integration | BeeKeeper extension point — OpenCode, Claude, Gemini, Codex |
+| **Fence** | Authentication subsystem | The boundary; OAuth2/OIDC device flow + token issuance |
+| **Gateway** | SSH jumphost relaying to groves | Not yet gardening-named — see #223 |
 
 ## Module Structure
 
@@ -32,14 +36,20 @@ orchard/
 ├── core/       # Domain models (records, enums)
 ├── roots/      # JPA entities, Spring Data repos, Flyway migrations
 ├── harvest/    # DevcontainerParser - parses .devcontainer/devcontainer.json
-├── nursery/    # SeedlingProvider interface, QemuSeedlingProvider, FruitGrower
+├── nursery/    # GroveProvider + SeedlingProvider, QemuSeedlingProvider, FruitGrower
 ├── vine/       # Substrate-agnostic exec abstraction - Vine, CommandRunner, SshVine
-├── api/        # REST controllers, services, DTOs
+├── greenhouse/ # Prebuild service - ImageBuilder, PrebuildScheduler, PrebuildService
+├── apiary/     # AI assistant integration - BeeKeeper extension point
 ├── fence/      # Authentication subsystem - OAuth2/OIDC device flow + token issuance
-├── trellis/    # Spring Boot app entry point (port 8080)
+├── trellis/    # Spring Boot app entry point (port 8080) + REST controllers, services, DTOs
 ├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to seedlings
 └── trowel/     # Picocli CLI application
 ```
+
+There is no `api/` module. Its controllers, services, and DTOs live under
+`trellis/src/main/java/dev/orchard/api/` — the package name survived the module merge, so the
+path looks like two modules but is one. `integration-tests/` also exists, holding the e2e
+`src/integrationTest` source set; note that `./gradlew build` does NOT compile it.
 
 ## Tech Stack
 
