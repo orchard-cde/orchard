@@ -1,8 +1,11 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.Seedling;
+import dev.orchard.vine.CommandRunner;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,10 +25,16 @@ class SeedlingProviderDefaultTest {
 
     @Test
     void theExplicitThreeArgOverloadSurvives() {
-        boolean hasStaticThreeArg = Arrays.stream(SeedlingProvider.class.getDeclaredMethods())
+        Method[] threeArgOverloads = Arrays.stream(SeedlingProvider.class.getDeclaredMethods())
             .filter(m -> m.getName().equals("verifyDevcontainerCli"))
-            .anyMatch(m -> m.getParameterCount() == 3);
+            .filter(m -> m.getParameterCount() == 3)
+            .toArray(Method[]::new);
 
-        assertThat(hasStaticThreeArg).isTrue();
+        assertThat(threeArgOverloads).hasSize(1);
+
+        Method survivor = threeArgOverloads[0];
+        assertThat(Modifier.isStatic(survivor.getModifiers())).isTrue();
+        assertThat(survivor.getParameterTypes())
+            .containsExactly(Seedling.class, String.class, CommandRunner.class);
     }
 }

@@ -106,29 +106,12 @@ class ProviderRegistryTest {
 
     @Test
     void register_acceptsGroveProviders() {
-        ProviderRegistry registry = new ProviderRegistry();
-        GroveProvider provider = stubProvider("qemu-local");
+        GroveProvider provider = new StubProvider("qemu-local");
 
         registry.register(provider);
 
         assertThat(registry.getDefault()).isSameAs(provider);
         assertThat(registry.get("qemu-local")).contains(provider);
-    }
-
-    private static GroveProvider stubProvider(String id) {
-        return new GroveProvider() {
-            @Override public String getProviderId() { return id; }
-            @Override public boolean isAvailable() { return true; }
-            @Override public CompletableFuture<Seedling> plantSubstrate(Seedling s) { throw new UnsupportedOperationException(); }
-            @Override public CompletableFuture<Seedling> water(Seedling s) { throw new UnsupportedOperationException(); }
-            @Override public CompletableFuture<Seedling> dormant(Seedling s) { throw new UnsupportedOperationException(); }
-            @Override public CompletableFuture<Void> uproot(Seedling s) { throw new UnsupportedOperationException(); }
-            @Override public CompletableFuture<Seedling> inspect(Seedling s) { throw new UnsupportedOperationException(); }
-            @Override public CompletableFuture<Fruit> growFruit(Seedling s, Fruit f) { throw new UnsupportedOperationException(); }
-            @Override public CompletableFuture<Void> compostFruit(Seedling s, Fruit f) { throw new UnsupportedOperationException(); }
-            @Override public Vine vine(Seedling s) { throw new UnsupportedOperationException(); }
-            @Override public void verifyDevcontainerCli(Seedling s, String expectedVersion) { throw new UnsupportedOperationException(); }
-        };
     }
 
     private static class StubProvider implements GroveProvider {

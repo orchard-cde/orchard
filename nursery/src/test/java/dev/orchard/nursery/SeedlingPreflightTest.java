@@ -13,12 +13,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Validates the +P1 provisioning preflight contract: before declaring a Seedling READY
- * (SAPLING), the provider must SSH in and confirm {@code devcontainer --version} matches
- * the pinned {@link DevcontainerCliConfig#version()}.
+ * (SAPLING), the caller must confirm {@code devcontainer --version} matches the pinned
+ * {@link DevcontainerCliConfig#version()}.
  *
- * <p>Exercises the package-private {@link SeedlingProvider#verifyDevcontainerCli(Seedling,
- * String, CommandRunner)} test seam — the production default impl uses {@link SshExecutor},
- * which is covered by the integration tests.
+ * <p>Exercises {@link SeedlingProvider#verifyDevcontainerCli(Seedling, String, CommandRunner)},
+ * the sole production path, against a canned {@link CommandRunner} rather than a real substrate
+ * connection — reaching the substrate is {@link GroveProvider}'s business (see
+ * {@link GroveProvider#vine}), which is covered by the integration tests.
  */
 class SeedlingPreflightTest {
 

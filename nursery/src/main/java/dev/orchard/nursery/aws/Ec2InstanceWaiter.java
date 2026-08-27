@@ -82,7 +82,7 @@ public class Ec2InstanceWaiter {
 
     /**
      * Waits until {@code host:port} is reachable AND the {@link SshProbe} reports success.
-     * Two phases mirror {@code QemuSeedlingProvider.waitForSsh}: TCP port openness, then
+     * Two phases mirror {@code DefaultQemuCommands.awaitReachable}: TCP port openness, then
      * authentication-level handshake.
      */
     public void awaitSshReady(String host, int port) {
@@ -118,7 +118,7 @@ public class Ec2InstanceWaiter {
 
     /**
      * Production SSH probe: shells out to {@code ssh} the same way
-     * {@code QemuSeedlingProvider} does. Returns true if {@code ssh ... echo ready}
+     * {@code DefaultQemuCommands} does. Returns true if {@code ssh ... echo ready}
      * exits 0.
      */
     public static SshProbe shellSshProbe(Path privateKeyPath) {

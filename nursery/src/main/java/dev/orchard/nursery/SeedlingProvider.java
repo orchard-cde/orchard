@@ -26,9 +26,9 @@ public interface SeedlingProvider {
      *
      * <p>Reaching the substrate is now {@link GroveProvider}'s business — see
      * {@link GroveProvider#verifyDevcontainerCli}, which delegates here with an explicit
-     * {@link CommandRunner} obtained from its {@link GroveProvider#vine}. This overload is the
-     * test seam — matches the Lane B {@code Function<Seedling, CommandRunner>} pattern used by
-     * {@link DevcontainerCli}.
+     * {@link CommandRunner} obtained from its {@link GroveProvider#vine}. This static is the sole
+     * production path — matches the Lane B {@code Function<Seedling, CommandRunner>} pattern used
+     * by {@link DevcontainerCli}.
      *
      * @throws SeedlingProvisioningException if the CLI is missing or the version mismatches.
      */
