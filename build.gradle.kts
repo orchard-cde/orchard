@@ -3,7 +3,11 @@ plugins {
     id("org.springframework.boot") version "4.1.1" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
     id("org.graalvm.buildtools.native") version "1.1.10" apply false
-    id("org.openrewrite.rewrite") version "latest.release"
+    // Pinned, not "latest.release": 7.41.0 depends on org.openrewrite:rewrite-bom:8.91.0, which was
+    // never published (latest on Maven Central is 8.90.4), so every Gradle invocation failed to
+    // resolve. A floating plugin version means an upstream mistake breaks this build with no commit
+    // of ours. Bump deliberately.
+    id("org.openrewrite.rewrite") version "7.39.0"
     id("me.champeau.jmh") version "0.7.3" apply false
 }
 
