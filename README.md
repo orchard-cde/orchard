@@ -137,25 +137,28 @@ sha256sum --check checksums-sha256.txt --ignore-missing
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                Canopy (UI) — separate repo                  │
-│          Next.js / React / MUI (orchard-cde/orchard-ui)     │
+│                 Canopy (UI) — separate repo                 │
+│        Next.js / React / MUI (orchard-cde/orchard-ui)       │
 ├─────────────────────────────────────────────────────────────┤
-│                        Trowel (CLI)                         │
-│                      Picocli Commands                       │
+│                         Trowel (CLI)                        │
+│                       Picocli Commands                      │
 ├─────────────────────────────────────────────────────────────┤
-│                     Trellis (REST API)                      │
-│                  Spring Boot Controllers                    │
-├──────────┬──────────┬──────────────────┬────────────────────┤
-│   API    │ Harvest  │     Nursery      │     Apiary         │
-│ Services │ Devcontainer│ VM Provisioning│  BeeKeeper (AI)    │
-│          │  Parsing │(QEMU, AWS, GCP,  │ OpenCode, Claude,  │
-│          │          │  Azure)          │  Gemini, Codex     │
-├──────────┴──────────┴──────────────────┴────────────────────┤
+│                      Trellis (REST API)                     │
+│              Spring Boot Controllers & Services             │
+├───────────────┬────────────────────────┬────────────────────┤
+│    Harvest    │        Nursery         │       Apiary       │
+│  Devcontainer │    VM Provisioning     │   BeeKeeper (AI)   │
+│    Parsing    │    (QEMU, AWS, GCP,    │ OpenCode, Claude,  │
+│               │         Azure)         │   Gemini, Codex    │
+├───────────────┴────────────────────────┴────────────────────┤
+│                    Vine (Substrate Exec)                    │
+│            CommandRunner / SshVine / SshExecutor            │
+├─────────────────────────────────────────────────────────────┤
 │                     Roots (Persistence)                     │
-│              JPA Entities, Spring Data Repos                │
+│               JPA Entities, Spring Data Repos               │
 ├─────────────────────────────────────────────────────────────┤
-│                    Core (Domain Models)                     │
-│       Grove, Seedling, Fruit, Seed, Bee, Cultivator         │
+│                     Core (Domain Models)                    │
+│        Grove, Seedling, Fruit, Seed, Bee, Cultivator        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -186,14 +189,19 @@ We use orchard/gardening terminology throughout the codebase:
 ```
 orchard/
 ├── core/       # Domain models (Java records)
+├── vine/       # Substrate-agnostic exec abstraction (Vine, CommandRunner, SshVine)
 ├── roots/      # Persistence layer (JPA, Flyway)
 ├── harvest/    # Devcontainer spec parsing
-├── nursery/    # VM lifecycle management
+├── nursery/    # VM lifecycle management (QEMU, AWS, GCP, Azure)
+├── greenhouse/ # Prebuild service (image caching)
 ├── apiary/     # AI assistant integration (BeeKeeper extension point)
-├── api/        # REST API and services
-├── trellis/    # Spring Boot application
+├── fence/      # Authentication subsystem (OAuth2/OIDC device flow)
+├── gateway/    # SSH gateway (MINA SSHD jumphost relaying to seedlings)
+├── trellis/    # Spring Boot application (REST API + services)
 └── trowel/     # Command-line interface
 ```
+
+`integration-tests/` (end-to-end tests spanning `trellis`, `trowel`, `fence`, `nursery`) is omitted above as a build-only module, not part of the shipped architecture.
 
 ## Documentation
 

@@ -8,44 +8,50 @@ For the themed naming glossary, see [README.md](../../README.md#themed-glossary)
 
 ```mermaid
 graph TD
-    trellis[trellis - Spring Boot app]
-    api[api - REST controllers & services]
+    trellis[trellis - Spring Boot app<br/>incl. dev.orchard.api REST layer]
     roots[roots - JPA entities & repos]
     nursery[nursery - VM provisioning]
+    vine[vine - substrate-agnostic exec abstraction]
     harvest[harvest - devcontainer parsing]
     greenhouse[greenhouse - prebuild service]
+    apiary[apiary - Bee provisioning]
     core[core - domain models]
     trowel[trowel - CLI]
+    fence[fence - auth subsystem]
+    gateway[gateway - SSH jumphost]
     canopy[canopy - web UI<br/>separate repo: orchard-cde/orchard-ui]
 
-    trellis --> api
+    trellis --> core
     trellis --> roots
     trellis --> nursery
+    trellis --> vine
     trellis --> harvest
     trellis --> greenhouse
-
-    api --> core
-    api --> roots
-    api --> harvest
-    api --> nursery
-    api --> greenhouse
+    trellis --> apiary
 
     roots --> core
     roots --> harvest
     nursery --> core
+    nursery --> vine
+    vine --> core
     harvest --> core
     greenhouse --> core
     greenhouse --> roots
     greenhouse --> harvest
-    greenhouse --> nursery
+    apiary --> core
+    apiary --> nursery
+    apiary --> vine
 
     trowel --> core
+    gateway --> core
 
     canopy -. "HTTP REST / SSE" .-> trellis
     trowel -. "HTTP REST" .-> trellis
+    gateway -. "HTTP" .-> trellis
+    gateway -. "HTTP" .-> fence
 ```
 
-**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. Canopy is a separate Next.js application in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository.
+**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. `api/` is not a separate module — its controllers/services/DTOs live at `trellis/src/main/java/dev/orchard/api/`. `fence` and `gateway` are standalone Spring Boot apps with no compile-time dependency from `trellis`; `gateway` reaches both over HTTP at runtime. Canopy is a separate Next.js application in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository.
 
 ---
 
@@ -106,7 +112,7 @@ Canopy is a **separate Next.js application** in the [`orchard-cde/orchard-ui`](h
 
 Canopy uses the browser `EventSource` API via a custom `useGroveEvents()` React hook to receive real-time grove state changes.
 
-Backend implementation in `api/src/main/java/dev/orchard/api/controller/GroveEventController.java`:
+Backend implementation in `trellis/src/main/java/dev/orchard/api/controller/GroveEventController.java`:
 - **Endpoint**: `GET /api/groves/{groveId}/events` (`text/event-stream`)
 - **Event name**: `grove-state-changed`
 - **Timeout**: 30 minutes
@@ -239,7 +245,7 @@ sequenceDiagram
 
 ### 3.1 End-to-End Sequence
 
-`api/src/main/java/dev/orchard/api/service/GroveService.java`:
+`trellis/src/main/java/dev/orchard/api/service/GroveService.java`:
 
 **Phase 1 — Synchronous (within transaction)**:
 1. Ensure cultivator exists
@@ -255,6 +261,7 @@ sequenceDiagram
     participant GS as GroveService
     participant PR as ProviderRegistry
     participant SP as SeedlingProvider
+    participant CR as CommandRunner
     participant SSH as SshExecutor
     participant DP as DevcontainerParser
     participant FG as FruitGrower
@@ -268,16 +275,18 @@ sequenceDiagram
     GS->>DB: updateGroveState(GROWING)
     GS->>EP: GroveStateChangedEvent
 
-    GS->>SSH: Poll cloud-init status (every 5s, max 60 attempts)
-    SSH-->>GS: "done"
+    Note over GS,CR: GroveService reaches the Grove via GroveProvider.vine(seedling).commands()
+    GS->>CR: Poll cloud-init status (every 5s, max 60 attempts)
+    CR-->>GS: "done"
 
-    GS->>SSH: git clone --depth 1 {repoUrl} /workspace
-    SSH-->>GS: commit SHA
+    GS->>CR: git clone --depth 1 {repoUrl} /workspace
+    CR-->>GS: commit SHA
 
-    GS->>SSH: Read /workspace/.devcontainer/devcontainer.json
+    GS->>CR: Read /workspace/.devcontainer/devcontainer.json
     GS->>DP: parseJson(content)
     DP-->>GS: Seed
 
+    Note over FG,SSH: FruitGrower still constructs SshExecutor directly (see #86)
     alt Single container
         GS->>FG: grow(seedling, fruit)
         FG->>SSH: docker pull/build + docker run
@@ -377,7 +386,9 @@ All container operations are executed remotely via SSH to the seedling VM.
 
 ### SSH Execution
 
-All remote commands go through `SshExecutor`:
+`FruitGrower`'s container-management commands (this section) still go through `SshExecutor` directly, constructed inline per call — deliberately out of scope for the `Vine`/`GroveProvider` seam introduced in #86. Control-plane exec elsewhere (e.g. `GroveService`'s cloud-init polling, git clone, and devcontainer.json read/write in [§3.1](#31-end-to-end-sequence)) instead goes through `GroveProvider.vine(seedling).commands()`, a `CommandRunner`, whose only implementation today (`SshVine`) is backed by `SshExecutor` for VM substrates.
+
+`SshExecutor` itself:
 - Invokes the local `ssh` binary via `ProcessBuilder`
 - Options: `StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`, `ConnectTimeout=10`
 - Key: `~/.ssh/orchard_ed25519`
