@@ -19,12 +19,12 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class QemuSeedlingProviderTest {
+class QemuGroveProviderTest {
 
     @TempDir
     Path tempDir;
 
-    private QemuSeedlingProvider provider;
+    private QemuGroveProvider provider;
     private final List<Process> spawnedProcesses = new ArrayList<>();
 
     @BeforeEach
@@ -41,7 +41,7 @@ class QemuSeedlingProviderTest {
             .build();
 
         DevcontainerCliConfig cliConfig = new DevcontainerCliConfig("0.75.0", 600, 60);
-        provider = new QemuSeedlingProvider(config, cliConfig, new FruitGrower());
+        provider = new QemuGroveProvider(config, cliConfig, new FruitGrower());
     }
 
     @AfterEach
@@ -54,7 +54,7 @@ class QemuSeedlingProviderTest {
 
     /**
      * Spawns a long-lived process whose own command line embeds {@code tag}, standing in for a
-     * QEMU VM that {@link QemuSeedlingProvider#isOurQemuVm} can positively identify. The two
+     * QEMU VM that {@link QemuGroveProvider#isOurQemuVm} can positively identify. The two
      * statements keep the shell from exec-replacing itself with {@code sleep}, so {@code tag}
      * stays visible in the process's argv.
      */
@@ -78,7 +78,7 @@ class QemuSeedlingProviderTest {
             .sshPortRangeEnd(49999)
             .sshKeyPath(tempDir.resolve("orchard_ed25519"))
             .build();
-        QemuSeedlingProvider p = new QemuSeedlingProvider(
+        QemuGroveProvider p = new QemuGroveProvider(
             config, new DevcontainerCliConfig("0.75.0", 600, 60), new FruitGrower());
 
         p.reattachSurvivingVms(); // must not throw

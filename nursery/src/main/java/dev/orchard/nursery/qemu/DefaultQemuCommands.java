@@ -15,7 +15,7 @@ import java.util.Map;
 /**
  * Production {@link QemuCommands}: shells out to {@code qemu-img}, {@code genisoimage}/{@code
  * mkisofs}, and {@code qemu-system-*} on the local host. Method bodies are moved verbatim from
- * {@code QemuSeedlingProvider} — see that class's git history for prior behaviour.
+ * {@code QemuGroveProvider} — see that class's git history for prior behaviour.
  */
 class DefaultQemuCommands implements QemuCommands {
 
@@ -70,7 +70,7 @@ class DefaultQemuCommands implements QemuCommands {
 
             // Build user-data from the classpath template. The SSH block is conditional —
             // when no key is configured, ${ssh_authorized_keys_block} substitutes to empty.
-            String sshBlock = QemuSeedlingProvider.buildSshAuthorizedKeysBlock(sshPubKey, seedling.authorizedKeys());
+            String sshBlock = QemuGroveProvider.buildSshAuthorizedKeysBlock(sshPubKey, seedling.authorizedKeys());
             if (sshBlock.isEmpty()) {
                 log.warn("No SSH public key configured - VM will not be accessible via SSH key auth. " +
                     "Set orchard.qemu.ssh-public-key or place key at {}.pub", config.sshKeyPath());

@@ -37,7 +37,7 @@ orchard/
 ├── core/       # Domain models (records, enums)
 ├── roots/      # JPA entities, Spring Data repos, Flyway migrations
 ├── harvest/    # DevcontainerParser - parses .devcontainer/devcontainer.json
-├── nursery/    # GroveProvider (the substrate seam), QemuSeedlingProvider, FruitGrower
+├── nursery/    # GroveProvider (the substrate seam), QemuGroveProvider, FruitGrower
 ├── vine/       # Substrate-agnostic exec abstraction - Vine, CommandRunner, SshVine
 ├── greenhouse/ # Prebuild service - ImageBuilder, PrebuildScheduler, PrebuildService
 ├── apiary/     # AI assistant integration - BeeKeeper extension point

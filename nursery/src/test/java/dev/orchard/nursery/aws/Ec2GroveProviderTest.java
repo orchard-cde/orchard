@@ -31,7 +31,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class Ec2SeedlingProviderTest {
+class Ec2GroveProviderTest {
 
     @Mock Ec2Operations ops;
     @Mock Ec2InstanceWaiter waiter;
@@ -61,8 +61,8 @@ class Ec2SeedlingProviderTest {
         );
     }
 
-    private Ec2SeedlingProvider providerWith(Ec2Config config) {
-        return new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower());
+    private Ec2GroveProvider providerWith(Ec2Config config) {
+        return new Ec2GroveProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower());
     }
 
     @Test
@@ -318,7 +318,7 @@ class Ec2SeedlingProviderTest {
             tempDir.resolve("nonexistent-key")
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
+        assertThat(new Ec2GroveProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
             .isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }
@@ -332,7 +332,7 @@ class Ec2SeedlingProviderTest {
             (Path) null  // explicitly null sshKeyPath
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
+        assertThat(new Ec2GroveProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
             .isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }
@@ -346,7 +346,7 @@ class Ec2SeedlingProviderTest {
             keyPath
         );
 
-        assertThat(new Ec2SeedlingProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
+        assertThat(new Ec2GroveProvider(config, ops, waiter, CLI_CONFIG, new FruitGrower())
             .isAvailable()).isFalse();
         verifyNoInteractions(ops);
     }

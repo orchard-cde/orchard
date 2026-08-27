@@ -14,7 +14,7 @@ class QemuSshAuthorizedKeysTest {
 
     @Test
     void block_includesConfiguredKeyAndRegisteredKeys() {
-        String block = QemuSeedlingProvider.buildSshAuthorizedKeysBlock(
+        String block = QemuGroveProvider.buildSshAuthorizedKeysBlock(
             SHARED_KEY, List.of(REGISTERED_KEY_1, REGISTERED_KEY_2));
 
         assertThat(block)
@@ -26,7 +26,7 @@ class QemuSshAuthorizedKeysTest {
 
     @Test
     void block_includesOnlyConfiguredKeyWhenNoRegisteredKeys() {
-        String block = QemuSeedlingProvider.buildSshAuthorizedKeysBlock(SHARED_KEY, List.of());
+        String block = QemuGroveProvider.buildSshAuthorizedKeysBlock(SHARED_KEY, List.of());
 
         assertThat(block)
             .contains("      - " + SHARED_KEY)
@@ -35,7 +35,7 @@ class QemuSshAuthorizedKeysTest {
 
     @Test
     void block_includesRegisteredKeysWhenNoConfiguredKey() {
-        String block = QemuSeedlingProvider.buildSshAuthorizedKeysBlock(null, List.of(REGISTERED_KEY_1));
+        String block = QemuGroveProvider.buildSshAuthorizedKeysBlock(null, List.of(REGISTERED_KEY_1));
 
         assertThat(block)
             .doesNotContain("trellis@orchard")
@@ -44,14 +44,14 @@ class QemuSshAuthorizedKeysTest {
 
     @Test
     void block_isEmptyWhenNoKeysAtAll() {
-        String block = QemuSeedlingProvider.buildSshAuthorizedKeysBlock(null, List.of());
+        String block = QemuGroveProvider.buildSshAuthorizedKeysBlock(null, List.of());
 
         assertThat(block).isEmpty();
     }
 
     @Test
     void block_ignoresBlankRegisteredKeys() {
-        String block = QemuSeedlingProvider.buildSshAuthorizedKeysBlock(SHARED_KEY, List.of("", "   "));
+        String block = QemuGroveProvider.buildSshAuthorizedKeysBlock(SHARED_KEY, List.of("", "   "));
 
         assertThat(block)
             .contains("      - " + SHARED_KEY)

@@ -7,9 +7,9 @@ import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.aws.DefaultEc2Operations;
 import dev.orchard.nursery.aws.Ec2Config;
+import dev.orchard.nursery.aws.Ec2GroveProvider;
 import dev.orchard.nursery.aws.Ec2InstanceWaiter;
 import dev.orchard.nursery.aws.Ec2Operations;
-import dev.orchard.nursery.aws.Ec2SeedlingProvider;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -51,7 +51,7 @@ class Ec2ProviderIntegrationTest {
     // class-scoped resources — created once in @BeforeAll, torn down in @AfterAll
     private static Ec2Client rawClient;
     private static Ec2Operations ops;
-    private static Ec2SeedlingProvider provider;
+    private static Ec2GroveProvider provider;
     private static String securityGroupId;
     private static String subnetId;
 
@@ -106,7 +106,7 @@ class Ec2ProviderIntegrationTest {
             keyPath
         );
 
-        provider = new Ec2SeedlingProvider(config, ops, waiter, new DevcontainerCliConfig("0.87.0", 0, 0),
+        provider = new Ec2GroveProvider(config, ops, waiter, new DevcontainerCliConfig("0.87.0", 0, 0),
             new FruitGrower());
     }
 

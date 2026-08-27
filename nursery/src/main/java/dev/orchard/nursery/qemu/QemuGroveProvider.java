@@ -23,9 +23,9 @@ import java.util.concurrent.Executors;
  * QEMU-based grove provider for local VM provisioning.
  * Uses QEMU/KVM to run VMs with cloud-init for initial configuration.
  */
-public class QemuSeedlingProvider extends AbstractGroveProvider<QemuSeedlingProvider.QemuLaunch> {
+public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.QemuLaunch> {
 
-    private static final Logger log = LoggerFactory.getLogger(QemuSeedlingProvider.class);
+    private static final Logger log = LoggerFactory.getLogger(QemuGroveProvider.class);
     private static final String PROVIDER_ID = "qemu-local";
 
     private final QemuConfig config;
@@ -38,14 +38,14 @@ public class QemuSeedlingProvider extends AbstractGroveProvider<QemuSeedlingProv
      */
     public record QemuLaunch(int sshPort) {}
 
-    public QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig,
+    public QemuGroveProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig,
                                 FruitGrower fruitGrower) {
         this(config, devcontainerCliConfig, fruitGrower,
             new DefaultQemuCommands(config, devcontainerCliConfig));
     }
 
     /** Test seam. Production callers use the three-arg constructor. */
-    QemuSeedlingProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig,
+    QemuGroveProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig,
                          FruitGrower fruitGrower, QemuCommands commands) {
         super(Executors.newVirtualThreadPerTaskExecutor(), fruitGrower);
         this.config = config;

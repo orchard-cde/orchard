@@ -6,16 +6,16 @@ import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.aws.DefaultEc2Operations;
 import dev.orchard.nursery.aws.Ec2Config;
+import dev.orchard.nursery.aws.Ec2GroveProvider;
 import dev.orchard.nursery.aws.Ec2InstanceWaiter;
 import dev.orchard.nursery.aws.Ec2Operations;
-import dev.orchard.nursery.aws.Ec2SeedlingProvider;
 import dev.orchard.nursery.azure.AzureConfig;
-import dev.orchard.nursery.azure.AzureVmSeedlingProvider;
+import dev.orchard.nursery.azure.AzureVmGroveProvider;
 import dev.orchard.nursery.gcp.ComputeConfig;
-import dev.orchard.nursery.gcp.ComputeSeedlingProvider;
+import dev.orchard.nursery.gcp.ComputeGroveProvider;
 import dev.orchard.nursery.qemu.QemuConfig;
+import dev.orchard.nursery.qemu.QemuGroveProvider;
 import dev.orchard.nursery.qemu.QemuPlatformDefaults;
-import dev.orchard.nursery.qemu.QemuSeedlingProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -116,10 +116,10 @@ public class NurseryConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
-    public Ec2SeedlingProvider ec2SeedlingProvider(
+    public Ec2GroveProvider ec2GroveProvider(
             Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
             DevcontainerCliConfig devcontainerCliConfig, FruitGrower fruitGrower) {
-        return new Ec2SeedlingProvider(config, operations, waiter, devcontainerCliConfig, fruitGrower);
+        return new Ec2GroveProvider(config, operations, waiter, devcontainerCliConfig, fruitGrower);
     }
 
     // --- GCP Compute ---
@@ -171,35 +171,35 @@ public class NurseryConfig {
             QemuConfig qemuConfig,
             DevcontainerCliConfig devcontainerCliConfig,
             FruitGrower fruitGrower,
-            org.springframework.beans.factory.ObjectProvider<Ec2SeedlingProvider> ec2SeedlingProvider,
+            org.springframework.beans.factory.ObjectProvider<Ec2GroveProvider> ec2GroveProvider,
             org.springframework.beans.factory.ObjectProvider<ComputeConfig> computeConfig,
             org.springframework.beans.factory.ObjectProvider<AzureConfig> azureConfig) {
 
         ProviderRegistry registry = new ProviderRegistry();
 
         // Always register QEMU; reattach any VMs that survived the previous server run
-        QemuSeedlingProvider qemuProvider =
-            new QemuSeedlingProvider(qemuConfig, devcontainerCliConfig, fruitGrower);
+        QemuGroveProvider qemuProvider =
+            new QemuGroveProvider(qemuConfig, devcontainerCliConfig, fruitGrower);
         qemuProvider.reattachSurvivingVms();
         registry.register(qemuProvider);
         log.info("Registered grove provider: {}", qemuProvider.getProviderId());
 
         // Conditionally register AWS EC2 — Spring instantiates and manages the bean lifecycle.
-        ec2SeedlingProvider.ifAvailable(provider -> {
+        ec2GroveProvider.ifAvailable(provider -> {
             registry.register(provider);
             log.info("Registered grove provider: {}", provider.getProviderId());
         });
 
         // Conditionally register GCP Compute
         computeConfig.ifAvailable(config -> {
-            ComputeSeedlingProvider gcpProvider = new ComputeSeedlingProvider(config, fruitGrower);
+            ComputeGroveProvider gcpProvider = new ComputeGroveProvider(config, fruitGrower);
             registry.register(gcpProvider);
             log.info("Registered grove provider: {}", gcpProvider.getProviderId());
         });
 
         // Conditionally register Azure VM
         azureConfig.ifAvailable(config -> {
-            AzureVmSeedlingProvider azureProvider = new AzureVmSeedlingProvider(config, fruitGrower);
+            AzureVmGroveProvider azureProvider = new AzureVmGroveProvider(config, fruitGrower);
             registry.register(azureProvider);
             log.info("Registered grove provider: {}", azureProvider.getProviderId());
         });

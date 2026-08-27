@@ -23,16 +23,16 @@ import java.util.concurrent.Executors;
  * AWS EC2 implementation of {@link GroveProvider}.
  *
  * <p>Provisions EC2 instances using cloud-init for initial bootstrap. Each method
- * runs on a virtual-thread executor matching {@code QemuSeedlingProvider}'s pattern.
+ * runs on a virtual-thread executor matching {@code QemuGroveProvider}'s pattern.
  *
  * <p><b>Failure semantics:</b> on any exception during {@link #plantSubstrate(Seedling)},
  * the seedling moves to {@link SeedlingState#BLIGHTED} and the instance is
  * <i>not</i> terminated (matches QEMU's leak-and-return-BLIGHTED behavior;
  * operators are expected to clean up via the AWS console).
  */
-public class Ec2SeedlingProvider extends AbstractGroveProvider<String> implements AutoCloseable {
+public class Ec2GroveProvider extends AbstractGroveProvider<String> implements AutoCloseable {
 
-    private static final Logger log = LoggerFactory.getLogger(Ec2SeedlingProvider.class);
+    private static final Logger log = LoggerFactory.getLogger(Ec2GroveProvider.class);
     private static final String PROVIDER_ID = "aws-ec2";
     private static final int SSH_PORT = 22;
 
@@ -41,7 +41,7 @@ public class Ec2SeedlingProvider extends AbstractGroveProvider<String> implement
     private final Ec2InstanceWaiter waiter;
     private final DevcontainerCliConfig devcontainerCliConfig;
 
-    public Ec2SeedlingProvider(Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
+    public Ec2GroveProvider(Ec2Config config, Ec2Operations operations, Ec2InstanceWaiter waiter,
                                DevcontainerCliConfig devcontainerCliConfig, FruitGrower fruitGrower) {
         super(Executors.newVirtualThreadPerTaskExecutor(), fruitGrower);
         this.config = config;
@@ -121,7 +121,7 @@ public class Ec2SeedlingProvider extends AbstractGroveProvider<String> implement
 
     @Override
     public CompletableFuture<Seedling> dormant(Seedling seedling) {
-        // TODO: implement real StopInstances (matches current QemuSeedlingProvider stub).
+        // TODO: implement real StopInstances (matches current QemuGroveProvider stub).
         log.info("dormant() requested for seedling {} — returning WILTING without calling AWS",
             seedling.id());
         return CompletableFuture.completedFuture(seedling.withState(SeedlingState.WILTING));

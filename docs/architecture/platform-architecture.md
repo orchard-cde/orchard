@@ -223,12 +223,12 @@ Cloud providers are conditionally registered via `@ConditionalOnProperty` beans 
 
 ### 2.4 QEMU Provider Flow
 
-The QEMU provider (`nursery/src/main/java/dev/orchard/nursery/qemu/QemuSeedlingProvider.java`) provisions local VMs:
+The QEMU provider (`nursery/src/main/java/dev/orchard/nursery/qemu/QemuGroveProvider.java`) provisions local VMs:
 
 ```mermaid
 sequenceDiagram
     participant GS as GroveService
-    participant QP as QemuSeedlingProvider
+    participant QP as QemuGroveProvider
     participant FS as Filesystem
     participant VM as QEMU Process
 
@@ -442,10 +442,10 @@ When a grove is provisioned and a matching prebuild exists, the container image 
 | Constraint | Detail |
 |-----------|--------|
 | **Single instance** | Trellis runs as a single Spring Boot process. No clustering. |
-| **In-memory process tracking** | `QemuSeedlingProvider` tracks VM processes in a `ConcurrentHashMap<UUID, Process>`, lost on restart (reconciler compensates). |
+| **In-memory process tracking** | `QemuGroveProvider` tracks VM processes in a `ConcurrentHashMap<UUID, Process>`, lost on restart (reconciler compensates). |
 | **In-memory message broker** | STOMP uses Spring's simple in-memory broker. SSE emitters are also in-memory. |
 | **SSH-based execution** | All VM interaction forks a local `ssh` process per command. No persistent connections or agent. |
-| **Virtual threads** | `FruitGrower` and `QemuSeedlingProvider` use `Executors.newVirtualThreadPerTaskExecutor()` for concurrent provisioning. |
+| **Virtual threads** | `FruitGrower` and `QemuGroveProvider` use `Executors.newVirtualThreadPerTaskExecutor()` for concurrent provisioning. |
 
 ### Horizontal Scaling Path
 

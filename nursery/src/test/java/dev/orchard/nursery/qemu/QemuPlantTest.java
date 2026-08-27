@@ -81,9 +81,9 @@ class QemuPlantTest {
         return Seedling.germinate(UUID.randomUUID(), Seedling.SeedlingSpec.small());
     }
 
-    private QemuSeedlingProvider provider(QemuCommands commands) {
+    private QemuGroveProvider provider(QemuCommands commands) {
         QemuConfig config = QemuConfig.builder().vmStoragePath(vmStorage).build();
-        return new QemuSeedlingProvider(config, new DevcontainerCliConfig("0.80.0", 600, 60),
+        return new QemuGroveProvider(config, new DevcontainerCliConfig("0.80.0", 600, 60),
             new FruitGrower(), commands);
     }
 
