@@ -2,7 +2,6 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.vine.CommandRunner;
-import dev.orchard.vine.SshExecutor;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -25,19 +24,13 @@ public interface SeedlingProvider {
      * {@link #plant}. Cloud-init may still be installing the CLI when {@code plant()} returns a
      * SAPLING, so verifying any earlier would race a legitimate in-progress install. See issue #148.
      *
-     * <p>The default impl uses {@link SshExecutor}. The package-private overload accepting an
-     * explicit {@link CommandRunner} is the test seam — matches the Lane B
-     * {@code Function<Seedling, CommandRunner>} pattern used by {@link DevcontainerCli}.
+     * <p>Reaching the substrate is now {@link GroveProvider}'s business — see
+     * {@link GroveProvider#verifyDevcontainerCli}, which delegates here with an explicit
+     * {@link CommandRunner} obtained from its {@link GroveProvider#vine}. This overload is the
+     * test seam — matches the Lane B {@code Function<Seedling, CommandRunner>} pattern used by
+     * {@link DevcontainerCli}.
      *
      * @throws SeedlingProvisioningException if the CLI is missing or the version mismatches.
-     */
-    default void verifyDevcontainerCli(Seedling seedling, String expectedVersion) {
-        verifyDevcontainerCli(seedling, expectedVersion, new SshExecutor(seedling));
-    }
-
-    /**
-     * Test-friendly overload that runs the verification against an explicit {@link CommandRunner}.
-     * Production callers use {@link #verifyDevcontainerCli(Seedling, String)} which wraps SSH.
      */
     static void verifyDevcontainerCli(Seedling seedling, String expectedVersion, CommandRunner runner) {
         try {
