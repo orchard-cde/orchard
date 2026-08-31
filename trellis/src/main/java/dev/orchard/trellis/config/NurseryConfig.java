@@ -11,8 +11,8 @@ import dev.orchard.nursery.aws.Ec2InstanceWaiter;
 import dev.orchard.nursery.aws.Ec2Operations;
 import dev.orchard.nursery.azure.AzureConfig;
 import dev.orchard.nursery.azure.AzureVmGroveProvider;
-import dev.orchard.nursery.gcp.ComputeConfig;
-import dev.orchard.nursery.gcp.ComputeGroveProvider;
+import dev.orchard.nursery.gcp.GoogleComputeConfig;
+import dev.orchard.nursery.gcp.GoogleComputeGroveProvider;
 import dev.orchard.nursery.qemu.QemuConfig;
 import dev.orchard.nursery.qemu.QemuGroveProvider;
 import dev.orchard.nursery.qemu.QemuPlatformDefaults;
@@ -133,8 +133,8 @@ public class NurseryConfig {
 
     @Bean
     @ConditionalOnProperty(prefix = "orchard.nursery.gcp", name = "project")
-    public ComputeConfig computeConfig(GcpConfigProperties props) {
-        return new ComputeConfig(
+    public GoogleComputeConfig googleComputeConfig(GcpConfigProperties props) {
+        return new GoogleComputeConfig(
             props.getProject(),
             props.getZone(),
             props.getMachineTypeMapping(),
@@ -172,7 +172,7 @@ public class NurseryConfig {
             DevcontainerCliConfig devcontainerCliConfig,
             FruitGrower fruitGrower,
             org.springframework.beans.factory.ObjectProvider<Ec2GroveProvider> ec2GroveProvider,
-            org.springframework.beans.factory.ObjectProvider<ComputeConfig> computeConfig,
+            org.springframework.beans.factory.ObjectProvider<GoogleComputeConfig> googleComputeConfig,
             org.springframework.beans.factory.ObjectProvider<AzureConfig> azureConfig) {
 
         ProviderRegistry registry = new ProviderRegistry();
@@ -191,8 +191,8 @@ public class NurseryConfig {
         });
 
         // Conditionally register GCP Compute
-        computeConfig.ifAvailable(config -> {
-            ComputeGroveProvider gcpProvider = new ComputeGroveProvider(config, fruitGrower);
+        googleComputeConfig.ifAvailable(config -> {
+            GoogleComputeGroveProvider gcpProvider = new GoogleComputeGroveProvider(config, fruitGrower);
             registry.register(gcpProvider);
             log.info("Registered grove provider: {}", gcpProvider.getProviderId());
         });

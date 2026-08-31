@@ -22,15 +22,15 @@ import java.util.concurrent.Executors;
  *
  * <p>TODO: Implement using Google Cloud Compute v1 client (com.google.cloud:google-cloud-compute).
  */
-public class ComputeGroveProvider extends AbstractGroveProvider<Void> {
+public class GoogleComputeGroveProvider extends AbstractGroveProvider<Void> {
 
-    private static final Logger log = LoggerFactory.getLogger(ComputeGroveProvider.class);
+    private static final Logger log = LoggerFactory.getLogger(GoogleComputeGroveProvider.class);
     private static final String PROVIDER_ID = "gcp-compute";
 
     /** Unread until this provider is implemented — kept so the wiring is already correct then. */
-    private final ComputeConfig config;
+    private final GoogleComputeConfig config;
 
-    public ComputeGroveProvider(ComputeConfig config, FruitGrower fruitGrower) {
+    public GoogleComputeGroveProvider(GoogleComputeConfig config, FruitGrower fruitGrower) {
         super(Executors.newVirtualThreadPerTaskExecutor(), fruitGrower);
         this.config = config;
     }
