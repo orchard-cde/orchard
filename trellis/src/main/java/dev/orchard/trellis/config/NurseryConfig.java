@@ -192,14 +192,14 @@ public class NurseryConfig {
 
         // Conditionally register GCP Compute
         computeConfig.ifAvailable(config -> {
-            ComputeGroveProvider gcpProvider = new ComputeGroveProvider(config);
+            ComputeGroveProvider gcpProvider = new ComputeGroveProvider(config, fruitGrower);
             registry.register(gcpProvider);
             log.info("Registered grove provider: {}", gcpProvider.getProviderId());
         });
 
         // Conditionally register Azure VM
         azureConfig.ifAvailable(config -> {
-            AzureVmGroveProvider azureProvider = new AzureVmGroveProvider(config);
+            AzureVmGroveProvider azureProvider = new AzureVmGroveProvider(config, fruitGrower);
             registry.register(azureProvider);
             log.info("Registered grove provider: {}", azureProvider.getProviderId());
         });

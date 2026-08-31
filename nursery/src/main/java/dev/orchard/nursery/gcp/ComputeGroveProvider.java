@@ -2,25 +2,27 @@ package dev.orchard.nursery.gcp;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
+import dev.orchard.nursery.AbstractGroveProvider;
+import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
+import dev.orchard.nursery.PlantedSeedling;
 import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 
 /**
  * GCP Compute Engine implementation of {@link GroveProvider}.
  * Provisions GCE instances as Seedlings using startup scripts for initial setup.
  *
- * <p>Implements {@link GroveProvider} directly rather than extending
- * {@code AbstractGroveProvider}: there is no launch sequence to share yet, and the abstract
- * class's {@code plantSubstrate} would map the unimplemented steps to {@code BLIGHTED} instead of
- * failing loudly.
+ * <p>Extends {@link AbstractGroveProvider} so the class hierarchy is already correct once this
+ * provider is implemented — only the template methods below need filling in.
  *
  * <p>TODO: Implement using Google Cloud Compute v1 client (com.google.cloud:google-cloud-compute).
  */
-public class ComputeGroveProvider implements GroveProvider {
+public class ComputeGroveProvider extends AbstractGroveProvider<Void> {
 
     private static final Logger log = LoggerFactory.getLogger(ComputeGroveProvider.class);
     private static final String PROVIDER_ID = "gcp-compute";
@@ -28,7 +30,8 @@ public class ComputeGroveProvider implements GroveProvider {
     /** Unread until this provider is implemented — kept so the wiring is already correct then. */
     private final ComputeConfig config;
 
-    public ComputeGroveProvider(ComputeConfig config) {
+    public ComputeGroveProvider(ComputeConfig config, FruitGrower fruitGrower) {
+        super(Executors.newVirtualThreadPerTaskExecutor(), fruitGrower);
         this.config = config;
     }
 
@@ -38,7 +41,17 @@ public class ComputeGroveProvider implements GroveProvider {
     }
 
     @Override
-    public CompletableFuture<Seedling> plantSubstrate(Seedling seedling) {
+    protected Void launch(Seedling seedling) {
+        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
+    }
+
+    @Override
+    protected PlantedSeedling resolveEndpoint(Seedling seedling, Void launched) {
+        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
+    }
+
+    @Override
+    protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
@@ -61,6 +74,9 @@ public class ComputeGroveProvider implements GroveProvider {
     public CompletableFuture<Seedling> inspect(Seedling seedling) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
+
+    // The overrides below exist only to keep an unimplemented provider from doing real work via
+    // AbstractGroveProvider's working implementations. Delete them once this provider is implemented.
 
     @Override
     public CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit) {
