@@ -2,9 +2,7 @@ package dev.orchard.nursery.azure;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
-import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
-import dev.orchard.vine.SshVine;
 import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,12 +26,11 @@ public class AzureVmGroveProvider implements GroveProvider {
     private static final Logger log = LoggerFactory.getLogger(AzureVmGroveProvider.class);
     private static final String PROVIDER_ID = "azure-vm";
 
+    /** Unread until this provider is implemented — kept so the wiring is already correct then. */
     private final AzureConfig config;
-    private final FruitGrower fruitGrower;
 
-    public AzureVmGroveProvider(AzureConfig config, FruitGrower fruitGrower) {
+    public AzureVmGroveProvider(AzureConfig config) {
         this.config = config;
-        this.fruitGrower = fruitGrower;
     }
 
     @Override
@@ -68,22 +65,22 @@ public class AzureVmGroveProvider implements GroveProvider {
 
     @Override
     public CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit) {
-        return fruitGrower.grow(seedling, fruit);
+        throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
     public CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit) {
-        return fruitGrower.compost(seedling, fruit);
+        throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
     public Vine vine(Seedling seedling) {
-        return new SshVine(seedling);
+        throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
     public void verifyDevcontainerCli(Seedling seedling, String expectedVersion) {
-        GroveProvider.verifyDevcontainerCli(seedling, expectedVersion, vine(seedling).commands());
+        throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override

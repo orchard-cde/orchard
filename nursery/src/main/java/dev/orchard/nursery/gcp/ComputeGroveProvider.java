@@ -2,9 +2,7 @@ package dev.orchard.nursery.gcp;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
-import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
-import dev.orchard.vine.SshVine;
 import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,12 +25,11 @@ public class ComputeGroveProvider implements GroveProvider {
     private static final Logger log = LoggerFactory.getLogger(ComputeGroveProvider.class);
     private static final String PROVIDER_ID = "gcp-compute";
 
+    /** Unread until this provider is implemented — kept so the wiring is already correct then. */
     private final ComputeConfig config;
-    private final FruitGrower fruitGrower;
 
-    public ComputeGroveProvider(ComputeConfig config, FruitGrower fruitGrower) {
+    public ComputeGroveProvider(ComputeConfig config) {
         this.config = config;
-        this.fruitGrower = fruitGrower;
     }
 
     @Override
@@ -67,22 +64,22 @@ public class ComputeGroveProvider implements GroveProvider {
 
     @Override
     public CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit) {
-        return fruitGrower.grow(seedling, fruit);
+        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
     public CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit) {
-        return fruitGrower.compost(seedling, fruit);
+        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
     public Vine vine(Seedling seedling) {
-        return new SshVine(seedling);
+        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
     public void verifyDevcontainerCli(Seedling seedling, String expectedVersion) {
-        GroveProvider.verifyDevcontainerCli(seedling, expectedVersion, vine(seedling).commands());
+        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
