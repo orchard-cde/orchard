@@ -1,6 +1,8 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
+import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -102,7 +104,17 @@ class ProviderRegistryTest {
         assertThat(registry.getProviderIds()).containsExactlyInAnyOrder("qemu", "aws", "gcp");
     }
 
-    private static class StubProvider implements SeedlingProvider {
+    @Test
+    void register_acceptsGroveProviders() {
+        GroveProvider provider = new StubProvider("qemu-local");
+
+        registry.register(provider);
+
+        assertThat(registry.getDefault()).isSameAs(provider);
+        assertThat(registry.get("qemu-local")).contains(provider);
+    }
+
+    private static class StubProvider implements GroveProvider {
         private final String providerId;
 
         StubProvider(String providerId) {
@@ -111,10 +123,14 @@ class ProviderRegistryTest {
 
         @Override public String getProviderId() { return providerId; }
         @Override public boolean isAvailable() { return true; }
-        @Override public CompletableFuture<Seedling> plant(Seedling s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Seedling> plantSubstrate(Seedling s) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Seedling> water(Seedling s) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Seedling> dormant(Seedling s) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Void> uproot(Seedling s) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Seedling> inspect(Seedling s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Fruit> growFruit(Seedling s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Void> compostFruit(Seedling s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public Vine vine(Seedling s) { throw new UnsupportedOperationException(); }
+        @Override public void verifyDevcontainerCli(Seedling s, String expectedVersion) { throw new UnsupportedOperationException(); }
     }
 }

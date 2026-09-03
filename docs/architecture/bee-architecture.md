@@ -22,6 +22,7 @@ graph TD
     trellis[trellis - Spring Boot app<br/>incl. dev.orchard.api REST layer]
     roots[roots - JPA entities & repos]
     nursery[nursery - VM provisioning]
+    vine[vine - substrate-agnostic exec abstraction]
     harvest[harvest - devcontainer parsing]
     greenhouse[greenhouse - prebuild service]
     core[core - domain models]
@@ -32,6 +33,7 @@ graph TD
     trellis --> core
     trellis --> roots
     trellis --> nursery
+    trellis --> vine
     trellis --> harvest
     trellis --> greenhouse
     trellis --> apiary
@@ -39,14 +41,16 @@ graph TD
     roots --> core
     roots --> harvest
     nursery --> core
+    nursery --> vine
+    vine --> core
     harvest --> core
     greenhouse --> core
     greenhouse --> roots
     greenhouse --> harvest
-    greenhouse --> nursery
 
     apiary --> core
     apiary --> nursery
+    apiary --> vine
 
     trowel --> core
 
@@ -54,7 +58,7 @@ graph TD
     trowel -. "HTTP REST" .-> trellis
 ```
 
-**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. The `apiary` module depends on `core` (domain models) and `nursery` (for `SshExecutor`). Canopy is a separate Next.js application in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository.
+**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. The `apiary` module depends on `core` (domain models), `nursery`, and `vine` (for `CommandRunner`, which `BeeKeeper` implementations use to run commands against a Grove). Canopy is a separate Next.js application in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository.
 
 ---
 
@@ -64,30 +68,30 @@ Defined in `apiary/src/main/java/dev/orchard/apiary/BeeKeeper.java`:
 
 ```java
 public interface BeeKeeper {
-    String getBeeType();
-    CompletableFuture<Bee> install(Seedling seedling, BeeSpec spec);
-    CompletableFuture<Bee> release(Bee bee, Seedling seedling);
-    CompletableFuture<Bee> smoke(Bee bee, Seedling seedling);
-    CompletableFuture<BeeHealth> inspect(Bee bee, Seedling seedling);
-    List<String> prerequisites();
+    BeeType getBeeType();
+    CompletableFuture<Bee> install(Bee bee, BeeSpec spec, CommandRunner runner);
+    CompletableFuture<Bee> release(Bee bee, CommandRunner runner);
+    CompletableFuture<Bee> smoke(Bee bee, CommandRunner runner);
+    CompletableFuture<BeeHealth> inspect(Bee bee, CommandRunner runner);
+    Map<String, String> prerequisites();
 }
 ```
 
-All operations return `CompletableFuture` for non-blocking async execution, following the `SeedlingProvider` pattern.
+All operations return `CompletableFuture` for non-blocking async execution, following the `GroveProvider` pattern. The caller (`BeeService`) resolves the `CommandRunner` once per Grove via `GroveProvider.vine(seedling).commands()` and passes it into each call — `BeeKeeper` implementations never touch `Seedling` or `SshExecutor` directly.
 
 | Method | Purpose | State Transition |
 |--------|---------|-----------------|
-| `install()` | SSH into VM, verify prerequisites, install agent CLI | HATCHING → HIBERNATING |
+| `install()` | Verify prerequisites, install agent CLI, via the passed-in `CommandRunner` | HATCHING → HIBERNATING |
 | `release()` | Start the agent process, return Bee with processId | HIBERNATING → BUZZING |
 | `smoke()` | Stop the agent process gracefully | → HIBERNATING |
 | `inspect()` | Health check, return BeeHealth status | (no transition) |
-| `prerequisites()` | List required software (e.g., `["node>=18"]`) | (no transition) |
+| `prerequisites()` | Required software, keyed by name (e.g., `{"node": ">=18"}`) | (no transition) |
 
 ### 2.1 BeeKeeperRegistry
 
 `apiary/src/main/java/dev/orchard/apiary/BeeKeeperRegistry.java`:
-- Stores BeeKeepers in a `ConcurrentHashMap<String, BeeKeeper>` keyed by bee type string
-- Methods: `register(BeeKeeper)`, `get(String type)`, `getAll()`
+- Stores BeeKeepers in a `ConcurrentHashMap<String, BeeKeeper>` keyed by `BeeType.name()`
+- Methods: `register(BeeKeeper)`, `get(BeeType type)`, `isRegistered(BeeType type)`
 - Follows `ProviderRegistry` pattern from `nursery/`
 
 ### 2.2 Available BeeKeepers
@@ -117,7 +121,7 @@ sequenceDiagram
     participant BS as BeeService
     participant BKR as BeeKeeperRegistry
     participant BK as BeeKeeper
-    participant SSH as SshExecutor
+    participant CR as CommandRunner
     participant CS as CredentialService
     participant DB as BeeRepository
     participant EP as EventPublisher
@@ -137,25 +141,26 @@ sequenceDiagram
     BS->>BKR: get(beeType)
     BKR-->>BS: BeeKeeper
 
-    BS->>BK: install(seedling, spec)
-    BK->>SSH: Check prerequisites
-    BK->>SSH: Install agent CLI
+    Note over BS,CR: BeeService resolves CommandRunner via GroveProvider.vine(seedling).commands()
+    BS->>BK: install(bee, spec, runner)
+    BK->>CR: Check prerequisites
+    BK->>CR: Install agent CLI
     BK-->>BS: Bee (HIBERNATING)
     BS->>DB: update(bee)
     BS->>EP: BeeStateChangedEvent(HIBERNATING)
 
     BS->>CS: decrypt(cultivatorId, beeType)
     CS-->>BS: API key
-    BS->>SSH: Write key to temp file (chmod 600)
+    BS->>CR: Write key to temp file (chmod 600)
 
-    BS->>BK: release(bee, seedling)
-    BK->>SSH: Start agent process
+    BS->>BK: release(bee, runner)
+    BK->>CR: Start agent process
     BK-->>BS: Bee (BUZZING, processId)
     BS->>DB: update(bee)
     BS->>EP: BeeStateChangedEvent(BUZZING)
 
     loop Health monitoring (every 30s)
-        BS->>BK: inspect(bee, seedling)
+        BS->>BK: inspect(bee, runner)
         BK-->>BS: BeeHealth
         alt 3 consecutive failures
             BS->>DB: update(bee → SMOKED)
@@ -393,7 +398,7 @@ sequenceDiagram
     participant GS as GroveService
     participant BS as BeeService
     participant BK as BeeKeeper
-    participant SP as SeedlingProvider
+    participant SP as GroveProvider
     participant EP as EventPublisher
 
     GS->>EP: GroveStateChangedEvent(CLEARING)

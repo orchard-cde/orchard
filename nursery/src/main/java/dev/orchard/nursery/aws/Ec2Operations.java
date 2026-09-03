@@ -44,7 +44,7 @@ public interface Ec2Operations {
      * Returns true iff the EC2 API is reachable from this process with the
      * configured region and credentials. Implementations should perform a
      * minimal request (e.g. {@code DescribeRegions}) and return false on any
-     * exception. Used by {@link Ec2SeedlingProvider#isAvailable()}.
+     * exception. Used by {@link Ec2GroveProvider#isAvailable()}.
      */
     boolean canReachApi();
 

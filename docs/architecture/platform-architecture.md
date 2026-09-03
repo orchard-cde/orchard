@@ -8,44 +8,50 @@ For the themed naming glossary, see [README.md](../../README.md#themed-glossary)
 
 ```mermaid
 graph TD
-    trellis[trellis - Spring Boot app]
-    api[api - REST controllers & services]
+    trellis[trellis - Spring Boot app<br/>incl. dev.orchard.api REST layer]
     roots[roots - JPA entities & repos]
     nursery[nursery - VM provisioning]
+    vine[vine - substrate-agnostic exec abstraction]
     harvest[harvest - devcontainer parsing]
     greenhouse[greenhouse - prebuild service]
+    apiary[apiary - Bee provisioning]
     core[core - domain models]
     trowel[trowel - CLI]
+    fence[fence - auth subsystem]
+    gateway[gateway - SSH jumphost]
     canopy[canopy - web UI<br/>separate repo: orchard-cde/orchard-ui]
 
-    trellis --> api
+    trellis --> core
     trellis --> roots
     trellis --> nursery
+    trellis --> vine
     trellis --> harvest
     trellis --> greenhouse
-
-    api --> core
-    api --> roots
-    api --> harvest
-    api --> nursery
-    api --> greenhouse
+    trellis --> apiary
 
     roots --> core
     roots --> harvest
     nursery --> core
+    nursery --> vine
+    vine --> core
     harvest --> core
     greenhouse --> core
     greenhouse --> roots
     greenhouse --> harvest
-    greenhouse --> nursery
+    apiary --> core
+    apiary --> nursery
+    apiary --> vine
 
     trowel --> core
+    gateway --> core
 
     canopy -. "HTTP REST / SSE" .-> trellis
     trowel -. "HTTP REST" .-> trellis
+    gateway -. "HTTP" .-> trellis
+    gateway -. "HTTP" .-> fence
 ```
 
-**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. Canopy is a separate Next.js application in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository.
+**Key**: Solid arrows are compile-time module dependencies. Dashed arrows are runtime network communication. `api/` is not a separate module — its controllers/services/DTOs live at `trellis/src/main/java/dev/orchard/api/`. `fence` and `gateway` are standalone Spring Boot apps with no compile-time dependency from `trellis`; `gateway` reaches both over HTTP at runtime. Canopy is a separate Next.js application in the [`orchard-cde/orchard-ui`](https://github.com/orchard-cde/orchard-ui) repository.
 
 ---
 
@@ -106,7 +112,7 @@ Canopy is a **separate Next.js application** in the [`orchard-cde/orchard-ui`](h
 
 Canopy uses the browser `EventSource` API via a custom `useGroveEvents()` React hook to receive real-time grove state changes.
 
-Backend implementation in `api/src/main/java/dev/orchard/api/controller/GroveEventController.java`:
+Backend implementation in `trellis/src/main/java/dev/orchard/api/controller/GroveEventController.java`:
 - **Endpoint**: `GET /api/groves/{groveId}/events` (`text/event-stream`)
 - **Event name**: `grove-state-changed`
 - **Timeout**: 30 minutes
@@ -166,30 +172,41 @@ The platform supports two authentication modes, controlled by `orchard.security.
 
 ---
 
-## 2. Seedling Provider Architecture
+## 2. Grove Provider Architecture
 
-### 2.1 SeedlingProvider Interface
+### 2.1 GroveProvider Interface
 
-Defined in `nursery/src/main/java/dev/orchard/nursery/SeedlingProvider.java`:
+Defined in `nursery/src/main/java/dev/orchard/nursery/GroveProvider.java` — the single substrate
+abstraction (issue #86). Every nursery implementation implements it directly; there is no second
+provider hierarchy.
 
 ```java
-public interface SeedlingProvider {
+public interface GroveProvider {
     String getProviderId();
-    CompletableFuture<Seedling> plant(Seedling seedling);    // Provision VM
-    CompletableFuture<Seedling> water(Seedling seedling);    // Resume stopped VM
-    CompletableFuture<Seedling> dormant(Seedling seedling);  // Suspend VM
-    CompletableFuture<Void> uproot(Seedling seedling);       // Destroy VM
-    CompletableFuture<Seedling> inspect(Seedling seedling);  // Check status
-    boolean isAvailable();                                    // Health check
+    boolean isAvailable();                                          // Health check
+    CompletableFuture<Seedling> plantSubstrate(Seedling seedling);  // Acquire substrate
+    CompletableFuture<Seedling> water(Seedling seedling);           // Resume stopped VM
+    CompletableFuture<Seedling> dormant(Seedling seedling);         // Suspend VM
+    CompletableFuture<Void> uproot(Seedling seedling);              // Destroy VM
+    CompletableFuture<Seedling> inspect(Seedling seedling);         // Check status
+    CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit);
+    CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit);
+    Vine vine(Seedling seedling);                                   // How to reach in
+    void verifyDevcontainerCli(Seedling seedling, String expectedVersion);
 }
 ```
 
 All operations return `CompletableFuture` for non-blocking async provisioning.
 
+`AbstractGroveProvider<L>` holds the shared VM behaviour: the `plantSubstrate` template (`launch`
+→ `awaitRunning` → `resolveEndpoint` → `awaitReachable`, mapped to `SAPLING` or `BLIGHTED`), fruit
+forwarding to the shared `FruitGrower`, and an SSH-backed `Vine`. `plantSubstrate` is `final`; a
+substrate that cannot express itself as those steps implements `GroveProvider` directly instead.
+
 ### 2.2 ProviderRegistry
 
 `nursery/src/main/java/dev/orchard/nursery/ProviderRegistry.java`:
-- Stores providers in a `ConcurrentHashMap<String, SeedlingProvider>` keyed by provider ID
+- Stores providers in a `ConcurrentHashMap<String, GroveProvider>` keyed by provider ID
 - Configurable default provider via `orchard.nursery.provider` property
 - Short name mapping (e.g., `"qemu"` → `"qemu-local"`, `"aws"` → `"aws-ec2"`) handled in `NurseryConfig.resolveProviderId()`
 
@@ -206,16 +223,16 @@ Cloud providers are conditionally registered via `@ConditionalOnProperty` beans 
 
 ### 2.4 QEMU Provider Flow
 
-The QEMU provider (`nursery/src/main/java/dev/orchard/nursery/qemu/QemuSeedlingProvider.java`) provisions local VMs:
+The QEMU provider (`nursery/src/main/java/dev/orchard/nursery/qemu/QemuGroveProvider.java`) provisions local VMs:
 
 ```mermaid
 sequenceDiagram
     participant GS as GroveService
-    participant QP as QemuSeedlingProvider
+    participant QP as QemuGroveProvider
     participant FS as Filesystem
     participant VM as QEMU Process
 
-    GS->>QP: plant(seedling)
+    GS->>QP: plantSubstrate(seedling)
     QP->>FS: Create VM directory
     QP->>FS: Create COW disk image (qemu-img create)
     QP->>FS: Generate cloud-init ISO
@@ -239,7 +256,7 @@ sequenceDiagram
 
 ### 3.1 End-to-End Sequence
 
-`api/src/main/java/dev/orchard/api/service/GroveService.java`:
+`trellis/src/main/java/dev/orchard/api/service/GroveService.java`:
 
 **Phase 1 — Synchronous (within transaction)**:
 1. Ensure cultivator exists
@@ -254,7 +271,8 @@ sequenceDiagram
 sequenceDiagram
     participant GS as GroveService
     participant PR as ProviderRegistry
-    participant SP as SeedlingProvider
+    participant SP as GroveProvider
+    participant CR as CommandRunner
     participant SSH as SshExecutor
     participant DP as DevcontainerParser
     participant FG as FruitGrower
@@ -262,22 +280,24 @@ sequenceDiagram
     participant EP as EventPublisher
 
     GS->>PR: getDefault()
-    PR-->>GS: SeedlingProvider
-    GS->>SP: plant(seedling)
+    PR-->>GS: GroveProvider
+    GS->>SP: plantSubstrate(seedling)
     SP-->>GS: Seedling (SAPLING)
     GS->>DB: updateGroveState(GROWING)
     GS->>EP: GroveStateChangedEvent
 
-    GS->>SSH: Poll cloud-init status (every 5s, max 60 attempts)
-    SSH-->>GS: "done"
+    Note over GS,CR: GroveService reaches the Grove via GroveProvider.vine(seedling).commands()
+    GS->>CR: Poll cloud-init status (every 5s, max 60 attempts)
+    CR-->>GS: "done"
 
-    GS->>SSH: git clone --depth 1 {repoUrl} /workspace
-    SSH-->>GS: commit SHA
+    GS->>CR: git clone --depth 1 {repoUrl} /workspace
+    CR-->>GS: commit SHA
 
-    GS->>SSH: Read /workspace/.devcontainer/devcontainer.json
+    GS->>CR: Read /workspace/.devcontainer/devcontainer.json
     GS->>DP: parseJson(content)
     DP-->>GS: Seed
 
+    Note over FG,SSH: FruitGrower still constructs SshExecutor directly (see #86)
     alt Single container
         GS->>FG: grow(seedling, fruit)
         FG->>SSH: docker pull/build + docker run
@@ -351,7 +371,7 @@ stateDiagram-v2
 2. **After commit**: Check VM reachability via TCP socket probe (3s timeout)
 3. If reachable: stop and remove all containers via `FruitGrower.compost()`
 4. Delete fruit entities from database
-5. Terminate VM via `SeedlingProvider.uproot()`
+5. Terminate VM via `GroveProvider.uproot()`
 6. Set grove state to `CLEARED`
 
 ---
@@ -377,7 +397,9 @@ All container operations are executed remotely via SSH to the seedling VM.
 
 ### SSH Execution
 
-All remote commands go through `SshExecutor`:
+`FruitGrower`'s container-management commands (this section) still go through `SshExecutor` directly, constructed inline per call — deliberately out of scope for the `Vine`/`GroveProvider` seam introduced in #86. Control-plane exec elsewhere (e.g. `GroveService`'s cloud-init polling, git clone, and devcontainer.json read/write in [§3.1](#31-end-to-end-sequence)) instead goes through `GroveProvider.vine(seedling).commands()`, a `CommandRunner`, whose only implementation today (`SshVine`) is backed by `SshExecutor` for VM substrates.
+
+`SshExecutor` itself:
 - Invokes the local `ssh` binary via `ProcessBuilder`
 - Options: `StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`, `ConnectTimeout=10`
 - Key: `~/.ssh/orchard_ed25519`
@@ -420,10 +442,10 @@ When a grove is provisioned and a matching prebuild exists, the container image 
 | Constraint | Detail |
 |-----------|--------|
 | **Single instance** | Trellis runs as a single Spring Boot process. No clustering. |
-| **In-memory process tracking** | `QemuSeedlingProvider` tracks VM processes in a `ConcurrentHashMap<UUID, Process>`, lost on restart (reconciler compensates). |
+| **In-memory process tracking** | `QemuGroveProvider` tracks VM processes in a `ConcurrentHashMap<UUID, Process>`, lost on restart (reconciler compensates). |
 | **In-memory message broker** | STOMP uses Spring's simple in-memory broker. SSE emitters are also in-memory. |
 | **SSH-based execution** | All VM interaction forks a local `ssh` process per command. No persistent connections or agent. |
-| **Virtual threads** | `FruitGrower` and `QemuSeedlingProvider` use `Executors.newVirtualThreadPerTaskExecutor()` for concurrent provisioning. |
+| **Virtual threads** | `FruitGrower` and `QemuGroveProvider` use `Executors.newVirtualThreadPerTaskExecutor()` for concurrent provisioning. |
 
 ### Horizontal Scaling Path
 

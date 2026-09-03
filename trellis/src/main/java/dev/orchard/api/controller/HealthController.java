@@ -1,7 +1,7 @@
 package dev.orchard.api.controller;
 
+import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.nursery.SeedlingProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.http.ResponseEntity;
@@ -35,14 +35,14 @@ public class HealthController {
 
     @GetMapping("/ready")
     public ResponseEntity<Map<String, Object>> ready() {
-        SeedlingProvider seedlingProvider = providerRegistry.getDefault();
-        boolean providerReady = seedlingProvider.isAvailable();
+        GroveProvider groveProvider = providerRegistry.getDefault();
+        boolean providerReady = groveProvider.isAvailable();
 
         if (providerReady) {
             return ResponseEntity.ok(Map.of(
                 "status", "ready",
                 "seedlingProvider", Map.of(
-                    "id", seedlingProvider.getProviderId(),
+                    "id", groveProvider.getProviderId(),
                     "available", true
                 )
             ));
@@ -50,7 +50,7 @@ public class HealthController {
             return ResponseEntity.status(503).body(Map.of(
                 "status", "not_ready",
                 "seedlingProvider", Map.of(
-                    "id", seedlingProvider.getProviderId(),
+                    "id", groveProvider.getProviderId(),
                     "available", false
                 )
             ));

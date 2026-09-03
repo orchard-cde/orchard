@@ -1,4 +1,4 @@
-package dev.orchard.nursery;
+package dev.orchard.vine;
 
 import org.junit.jupiter.api.Test;
 
@@ -15,7 +15,7 @@ class SshExecutorCommandTest {
 
     @Test
     void wiresSeedlingTargetAndLivenessOptions() {
-        List<String> argv = new SshExecutor(TestSeedlings.fake(2222)).buildSshCommand("echo hi");
+        List<String> argv = new SshExecutor(VineTestSeedlings.fake(2222)).buildSshCommand("echo hi");
 
         assertThat(argv).startsWith("ssh");
         // The liveness option must be a tight `-o ServerAliveInterval=15` pair (issue #138).

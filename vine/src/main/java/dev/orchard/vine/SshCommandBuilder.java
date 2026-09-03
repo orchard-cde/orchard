@@ -1,4 +1,4 @@
-package dev.orchard.nursery;
+package dev.orchard.vine;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

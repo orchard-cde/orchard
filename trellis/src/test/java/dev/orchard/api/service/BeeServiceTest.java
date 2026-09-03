@@ -5,7 +5,10 @@ import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
 import dev.orchard.apiary.BeeKeeperRegistry;
 import dev.orchard.core.model.*;
-import dev.orchard.nursery.CommandRunner;
+import dev.orchard.nursery.GroveProvider;
+import dev.orchard.nursery.ProviderRegistry;
+import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.Vine;
 import dev.orchard.roots.entity.BeeEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.BeeRepository;
@@ -39,6 +42,7 @@ class BeeServiceTest {
     @Mock private GroveRepository groveRepository;
     @Mock private CredentialResolver credentialResolver;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private ProviderRegistry providerRegistry;
 
     private BeeService beeService;
 
@@ -48,7 +52,16 @@ class BeeServiceTest {
     @BeforeEach
     void setUp() {
         beeService = new BeeService(beeKeeperRegistry, beeRepository, groveRepository,
-            credentialResolver, eventPublisher);
+            credentialResolver, eventPublisher, providerRegistry);
+    }
+
+    /** Stubs the registry -> default provider -> vine -> commands chain that {@code commandRunnerFor} walks. */
+    private void stubCommandRunner() {
+        GroveProvider provider = mock(GroveProvider.class);
+        Vine vine = mock(Vine.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.vine(any())).thenReturn(vine);
+        when(vine.commands()).thenReturn(mock(CommandRunner.class));
     }
 
     @Test
@@ -82,6 +95,7 @@ class BeeServiceTest {
     void attachBee_persistsBeeInHatchingState() {
         setupFlourishingGrove();
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        stubCommandRunner();
 
         try (MockedStatic<TransactionSynchronizationManager> tsm =
                 mockStatic(TransactionSynchronizationManager.class)) {
@@ -102,6 +116,7 @@ class BeeServiceTest {
     void attachBee_registersAfterCommitCallback() {
         setupFlourishingGrove();
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        stubCommandRunner();
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE));
         when(keeper.install(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
 
@@ -184,6 +199,7 @@ class BeeServiceTest {
         GroveEntity groveEntity = mock(GroveEntity.class);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(keeper.release(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        stubCommandRunner();
 
         try (MockedStatic<TransactionSynchronizationManager> tsm =
                 mockStatic(TransactionSynchronizationManager.class)) {
@@ -239,6 +255,7 @@ class BeeServiceTest {
         GroveEntity groveEntity = mock(GroveEntity.class);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(keeper.smoke(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        stubCommandRunner();
 
         try (MockedStatic<TransactionSynchronizationManager> tsm =
                 mockStatic(TransactionSynchronizationManager.class)) {

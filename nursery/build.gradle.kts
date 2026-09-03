@@ -13,6 +13,7 @@ configurations.all {
 
 dependencies {
     api(project(":core"))
+    api(project(":vine"))
 
     // DevcontainerCliConfig is a Spring @ConfigurationProperties record with @ImportRuntimeHints.
     // spring-context provides the annotation; spring-boot provides @ConfigurationProperties.

@@ -1,7 +1,10 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.vine.SshVine;
+import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,27 +12,33 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
 /**
- * Shared {@link #plant} orchestration for seedling providers: async dispatch, the
- * {@code SAPLING} transition, and failure classification to {@code BLIGHTED}. Subclasses supply
+ * Shared {@link #plantSubstrate} orchestration for VM-backed {@link GroveProvider}s: async dispatch,
+ * the {@code SAPLING} transition, and failure classification to {@code BLIGHTED}. Subclasses supply
  * the substrate-specific steps.
+ *
+ * <p>Also carries the behaviour every VM substrate shares — fruit is grown by the injected
+ * {@link FruitGrower}, and the grove is reached over SSH.
  *
  * @param <L> the provider's own launch-result type, carrying whatever transient state
  *            {@link #launch} needs to hand to the later steps. It is a type parameter rather than
- *            a shared field because concurrent {@code plant()} calls would race on a field.
+ *            a shared field because concurrent {@code plantSubstrate()} calls would race on a field.
  */
-public abstract class AbstractSeedlingProvider<L> implements SeedlingProvider {
+public abstract class AbstractGroveProvider<L> implements GroveProvider {
 
     /**
      * Resolved from {@code getClass()} rather than a static field so failure logs are attributed to
-     * the concrete provider (e.g. {@code QemuSeedlingProvider}) rather than to this class. Private,
+     * the concrete provider (e.g. {@code QemuGroveProvider}) rather than to this class. Private,
      * and therefore not inherited — subclasses keep their own logger.
      */
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     protected final ExecutorService executor;
 
-    protected AbstractSeedlingProvider(ExecutorService executor) {
+    private final FruitGrower fruitGrower;
+
+    protected AbstractGroveProvider(ExecutorService executor, FruitGrower fruitGrower) {
         this.executor = executor;
+        this.fruitGrower = fruitGrower;
     }
 
     /**
@@ -38,16 +47,16 @@ public abstract class AbstractSeedlingProvider<L> implements SeedlingProvider {
      * class exists to guarantee, and an override would silently forfeit all three.
      *
      * <p>A substrate that genuinely cannot express itself as these steps should implement
-     * {@link SeedlingProvider} directly rather than extending this class — that is the escape hatch,
+     * {@link GroveProvider} directly rather than extending this class — that is the escape hatch,
      * and it keeps the guarantee intact for every provider that does extend.
      *
      * <p>A returned {@code SAPLING} means the substrate is reachable (e.g. SSH accepts connections);
      * it does not mean the devcontainer CLI is installed yet, since cloud-init may still be running.
      * Verifying the CLI is the caller's responsibility, performed after cloud-init completes — see
-     * {@link SeedlingProvider#verifyDevcontainerCli}.
+     * {@link GroveProvider#verifyDevcontainerCli}.
      */
     @Override
-    public final CompletableFuture<Seedling> plant(Seedling seedling) {
+    public final CompletableFuture<Seedling> plantSubstrate(Seedling seedling) {
         return CompletableFuture.supplyAsync(() -> {
             L launched = null;
             try {
@@ -93,5 +102,29 @@ public abstract class AbstractSeedlingProvider<L> implements SeedlingProvider {
      */
     protected String failureContext(L launched) {
         return launched == null ? "" : " (" + launched + ")";
+    }
+
+    @Override
+    public CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit) {
+        return fruitGrower.grow(seedling, fruit);
+    }
+
+    @Override
+    public CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit) {
+        return fruitGrower.compost(seedling, fruit);
+    }
+
+    /**
+     * A fresh {@link SshVine} per call, deliberately: it holds the seedling's endpoint, which
+     * changes across water/inspect cycles, so caching one would hand out a stale address.
+     */
+    @Override
+    public Vine vine(Seedling seedling) {
+        return new SshVine(seedling);
+    }
+
+    @Override
+    public void verifyDevcontainerCli(Seedling seedling, String expectedVersion) {
+        GroveProvider.verifyDevcontainerCli(seedling, expectedVersion, vine(seedling).commands());
     }
 }

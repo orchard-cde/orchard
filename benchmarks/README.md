@@ -7,7 +7,7 @@ modules that own them. Complements the end-to-end suite in `orchard-gauge`.
 
 ```bash
 # all modules
-./gradlew :harvest:jmh :nursery:jmh :api:jmh :apiary:jmh
+./gradlew :harvest:jmh :nursery:jmh :trellis:jmh :apiary:jmh
 
 # one module
 ./gradlew :harvest:jmh
@@ -24,7 +24,7 @@ Results are written as JSON to each module's `build/results/jmh/results.json`
 | harvest | `SeedSerializerBenchmark` | Seed polymorphic JSON serialize / deserialize |
 | harvest | `DevcontainerParserBenchmark` | `devcontainer.json` parse (small + large) |
 | nursery | `CloudInitTemplateBenchmark` | cloud-init template render |
-| api | `ApiMappingBenchmark` | cloud-init status classify + GroveResponse mapping |
+| trellis | `ApiMappingBenchmark` | cloud-init status classify + GroveResponse mapping |
 | apiary | `BeeKeeperAdapterBenchmark` | BeeKeeper adapter: config render, install / release / smoke / inspect, registry lookup |
 
 > Note: `CloudInitTemplateBenchmark.render` mirrors production, which re-reads the

@@ -11,7 +11,7 @@ import java.util.Map;
  * @param imageFamily        Image family for the base VM image (e.g., "ubuntu-2204-lts")
  * @param imageProject       GCP project hosting the image family (e.g., "ubuntu-os-cloud")
  */
-public record ComputeConfig(
+public record GoogleComputeConfig(
     String project,
     String zone,
     Map<Integer, String> machineTypeMapping,
