@@ -20,7 +20,7 @@ dependencies {
     // Versions resolved via the Spring Boot BOM applied in the root build.
     implementation("org.springframework.boot:spring-boot")
 
-    implementation(platform("software.amazon.awssdk:bom:2.54.2"))
+    implementation(platform("software.amazon.awssdk:bom:2.54.7"))
     implementation("software.amazon.awssdk:ec2")
     implementation("software.amazon.awssdk:url-connection-client")
 
