@@ -9,7 +9,7 @@ dependencies {
     implementation("org.yaml:snakeyaml")
     implementation("tools.jackson.dataformat:jackson-dataformat-yaml")
 
-    testRuntimeOnly("org.slf4j:slf4j-simple:2.0.18")
+    testRuntimeOnly("org.slf4j:slf4j-simple:2.0.19")
 }
 
 jmh {
