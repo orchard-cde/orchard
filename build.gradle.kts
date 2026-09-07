@@ -7,7 +7,7 @@ plugins {
     // never published (latest on Maven Central is 8.90.4), so every Gradle invocation failed to
     // resolve. A floating plugin version means an upstream mistake breaks this build with no commit
     // of ours. Bump deliberately.
-    id("org.openrewrite.rewrite") version "7.39.0"
+    id("org.openrewrite.rewrite") version "7.41.0"
     id("me.champeau.jmh") version "0.7.3" apply false
 }
 
