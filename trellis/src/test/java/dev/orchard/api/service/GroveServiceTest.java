@@ -534,14 +534,19 @@ class GroveServiceTest {
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
+        // The captor holds one mutable GroveEntity, so getAllValues() would return N aliases of
+        // the same final-state object. Record the state AT SAVE TIME instead.
+        List<GroveState> atSave = new java.util.concurrent.CopyOnWriteArrayList<>();
+        when(groveRepository.save(any())).thenAnswer(inv -> {
+            atSave.add(((GroveEntity) inv.getArgument(0)).getState());
+            return inv.getArgument(0);
+        });
+
         groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
 
         verify(provider).uproot(any());
-        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
-        verify(groveRepository, atLeastOnce()).save(saved.capture());
-        assertThat(saved.getAllValues())
-            .extracting(GroveEntity::getState)
-            .doesNotContain(GroveState.CLEARED);
+        verify(groveRepository, atLeastOnce()).save(any());
+        assertThat(atSave).doesNotContain(GroveState.CLEARED);
     }
 
     /**
@@ -582,8 +587,12 @@ class GroveServiceTest {
 
     /**
      * The two phases must not be conflated. If bookkeeping fails AFTER the substrate was released,
-     * the grove must not be reported ORPHANED — nothing leaked, and ORPHANED would send an operator
-     * hunting for a resource that no longer exists. Guards the Phase 1 / Phase 2 split.
+     * tearDownAndRecord itself must not report ORPHANED — nothing leaked, and ORPHANED would send
+     * an operator hunting for a resource that no longer exists. Guards the Phase 1 / Phase 2 split.
+     *
+     * <p>This guarantee is in-process only. If the failing call is Phase 2's own {@code save},
+     * nothing persists and the row keeps CLEARING; {@code GroveReconciler} will mark such a row
+     * ORPHANED at the next application start — a false positive, but in the safe direction.
      */
     @Test
     void tearDownAndRecord_doesNotReportOrphanedWhenOnlyBookkeepingFails() {
@@ -655,6 +664,14 @@ class GroveServiceTest {
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
+        // The captor holds one mutable GroveEntity, so getAllValues() would return N aliases of
+        // the same final-state object. Record the state AT SAVE TIME instead.
+        List<GroveState> atSave = new java.util.concurrent.CopyOnWriteArrayList<>();
+        when(groveRepository.save(any())).thenAnswer(inv -> {
+            atSave.add(((GroveEntity) inv.getArgument(0)).getState());
+            return inv.getArgument(0);
+        });
+
         try (MockedStatic<TransactionSynchronizationManager> tsm =
                 mockStatic(TransactionSynchronizationManager.class)) {
             tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
@@ -670,12 +687,11 @@ class GroveServiceTest {
             // atLeast(2), not atLeastOnce(): stopGrove's own synchronous save(DORMANT) already
             // satisfies atLeastOnce() before the async teardown runs, which would let this verify
             // return before the phase-1 catch's save(ORPHANED) ever happens. Requiring both calls
-            // forces the wait onto the async boundary instead of racing it.
-            ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
-            verify(groveRepository, timeout(2000).atLeast(2)).save(saved.capture());
-            assertThat(saved.getAllValues())
-                .extracting(GroveEntity::getState)
-                .contains(GroveState.ORPHANED);
+            // forces the wait onto the async boundary instead of racing it. (FIX 2's Phase-2 write
+            // guard does not change this: the failure path here never reaches Phase 2, so it still
+            // saves exactly twice — sync DORMANT, then Phase 1's ORPHANED.)
+            verify(groveRepository, timeout(2000).atLeast(2)).save(any());
+            assertThat(atSave).contains(GroveState.ORPHANED);
             verify(fruitRepository, never()).deleteAll(any());
         }
     }

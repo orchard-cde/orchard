@@ -205,6 +205,9 @@ class GroveLifecycleE2ETest {
     void groveReachesCleared() {
         assertThat(groveId).as("groveId must be set").isNotNull();
 
+        // Poll until teardown reaches a TERMINAL state (CLEARED or ORPHANED) rather than only
+        // CLEARED — ORPHANED is now reachable on a failed teardown (issue #228), and polling for
+        // CLEARED alone would burn the full timeout instead of failing fast with a clear message.
         await()
             .atMost(GROVE_CLEARED_TIMEOUT)
             .pollInterval(POLL_INTERVAL)
@@ -212,18 +215,26 @@ class GroveLifecycleE2ETest {
                 GroveResponse resp = getGrove(groveId);
                 assertThat(resp).isNotNull();
                 assertThat(resp.state())
-                    .as("Waiting for CLEARED, currently %s", resp.state())
-                    .isEqualTo(GroveState.CLEARED);
+                    .as("Waiting for teardown to reach a terminal state, currently %s", resp.state())
+                    .isIn(GroveState.CLEARED, GroveState.ORPHANED);
             });
+
+        GroveResponse resp = getGrove(groveId);
+        assertThat(resp).isNotNull();
+        assertThat(resp.state())
+            .as("Teardown reached a terminal state but it was ORPHANED, not CLEARED")
+            .isEqualTo(GroveState.CLEARED);
     }
 
     @AfterAll
     void tearDown() {
-        // Layer 1: API-level cleanup if grove was planted but not cleared
+        // Layer 1: API-level cleanup if grove was planted but not cleared. ORPHANED is accepted
+        // as an end state too — it means teardown failed and won't be retried by the API, so
+        // waiting for CLEARED here would just hang for the full timeout (issue #228).
         if (groveId != null) {
             try {
                 GroveResponse resp = getGrove(groveId);
-                if (resp != null && resp.state() != GroveState.CLEARED) {
+                if (resp != null && resp.state() != GroveState.CLEARED && resp.state() != GroveState.ORPHANED) {
                     restTemplate.delete("/api/groves/" + groveId);
                     await()
                         .atMost(GROVE_CLEARED_TIMEOUT)
@@ -231,7 +242,7 @@ class GroveLifecycleE2ETest {
                         .ignoreExceptions()
                         .until(() -> {
                             GroveResponse r = getGrove(groveId);
-                            return r == null || r.state() == GroveState.CLEARED;
+                            return r == null || r.state() == GroveState.CLEARED || r.state() == GroveState.ORPHANED;
                         });
                 }
             } catch (Exception e) {

@@ -52,6 +52,7 @@ public class GroveReconciler implements ApplicationRunner {
         int blighted = 0;
         int orphaned = 0;
         int alive = 0;
+        int untouched = 0;
 
         for (GroveEntity grove : allGroves) {
             switch (grove.getState()) {
@@ -100,6 +101,8 @@ public class GroveReconciler implements ApplicationRunner {
                         log.warn("Grove '{}' [{}] is DORMANT but its fruit rows survive — stop "
                             + "teardown did not complete; marked ORPHANED, operator action required",
                             grove.getName(), grove.getId());
+                    } else {
+                        untouched++;
                     }
                 }
                 default -> log.debug("Grove '{}' [{}] in state {} — skipping",
@@ -107,8 +110,8 @@ public class GroveReconciler implements ApplicationRunner {
             }
         }
 
-        log.info("Grove reconciliation complete: {} alive, {} blighted, {} orphaned (of {} total)",
-                alive, blighted, orphaned, allGroves.size());
+        log.info("Grove reconciliation complete: {} alive, {} blighted, {} orphaned, {} untouched "
+                + "(of {} total)", alive, blighted, orphaned, untouched, allGroves.size());
     }
 
     private boolean isReachable(GroveEntity grove) {

@@ -585,13 +585,26 @@ public class GroveService {
             return;
         }
 
-        // Phase 2 — the substrate is gone. Nothing below can orphan a resource, so a failure here
-        // must NOT be reported as ORPHANED: that would send an operator hunting for a substrate
-        // that no longer exists. State is recorded before the rows are deleted, so the worst case
-        // is stale rows with a correct terminal state rather than deleted rows with a stale one.
+        // Phase 2 — the substrate is gone. This guarantee is in-process only: nothing below can
+        // orphan a resource on THIS path, so a failure here must NOT be reported as ORPHANED here
+        // — that would send an operator hunting for a substrate that no longer exists. State is
+        // recorded before the rows are deleted, so the worst case is stale rows with a correct
+        // terminal state rather than deleted rows with a stale one. (If the failing call below is
+        // the save() itself, nothing persists and the row keeps CLEARING — GroveReconciler will
+        // mark it ORPHANED at the next application start; that later false positive is a separate,
+        // safe-direction guarantee, not a contradiction of this one.)
         try {
-            entity.setState(successState);
-            groveRepository.save(entity);
+            // stopGrove already committed successState synchronously before this ran, so entity is
+            // a stale detached copy already at successState. Writing it again unconditionally would
+            // race a startGrove that ran in between: startGrove's guard would see the stale
+            // successState it just moved past, and this save would then merge over rows the restart
+            // just created, with deleteAll() removing them. Skipping the write when nothing changed
+            // avoids that lost-update race; on the clear path successState differs from the
+            // in-memory CLEARING, so the write still happens.
+            if (entity.getState() != successState) {
+                entity.setState(successState);
+                groveRepository.save(entity);
+            }
             fruitRepository.deleteAll(fruitRepository.findByGroveId(groveId));
             log.info("Grove {} reached {}", groveId, successState);
         } catch (Exception e) {
