@@ -71,11 +71,12 @@ public class GroveReconciler implements ApplicationRunner {
                             grove.getName(), grove.getId(), grove.getState());
                 }
                 case CLEARING -> {
-                    grove.setState(GroveState.CLEARED);
+                    grove.setState(GroveState.ORPHANED);
                     groveRepository.save(grove);
                     cleared++;
-                    log.info("Grove '{}' [{}] had interrupted teardown — marked CLEARED",
-                            grove.getName(), grove.getId());
+                    log.warn("Grove '{}' [{}] had interrupted teardown and no teardown was "
+                        + "re-attempted — marked ORPHANED; operator action required",
+                        grove.getName(), grove.getId());
                 }
                 default -> log.debug("Grove '{}' [{}] in state {} — skipping",
                         grove.getName(), grove.getId(), grove.getState());
