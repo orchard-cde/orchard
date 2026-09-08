@@ -20,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
@@ -617,5 +618,65 @@ class GroveServiceTest {
         InOrder order = inOrder(provider, fruitRepository);
         order.verify(provider).uproot(any());
         order.verify(fruitRepository).deleteAll(any());
+    }
+
+    @Test
+    void tearDownAndRecord_marksOrphanedRatherThanDormantWhenStopTeardownFails() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.DORMANT);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.DORMANT);
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getValue().getState()).isEqualTo(GroveState.ORPHANED);
+        verify(fruitRepository, never()).deleteAll(any());
+    }
+
+    /**
+     * Gates the stopGrove wiring, which the direct-helper test above cannot: it captures the
+     * TransactionSynchronization stopGrove registers, invokes afterCommit(), and asserts the
+     * teardown contract held. Pattern copied from BeeServiceTest:123-136.
+     *
+     * <p>Observation path: afterCommit() dispatches to CompletableFuture.runAsync on the common
+     * pool, so assertions use Mockito timeout() rather than reading state directly.
+     */
+    @Test
+    void stopGrove_marksOrphanedAndRetainsFruitWhenTeardownFails() {
+        Grove grove = groveWithSeedling().withState(GroveState.FLOURISHING);
+        GroveEntity entity = entityFor(grove, GroveState.FLOURISHING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+                .thenAnswer(invocation -> {
+                    TransactionSynchronization sync = invocation.getArgument(0);
+                    sync.afterCommit();
+                    return null;
+                });
+
+            groveService.stopGrove(grove.id());
+
+            verify(provider, timeout(2000)).uproot(any());
+            // atLeast(2), not atLeastOnce(): stopGrove's own synchronous save(DORMANT) already
+            // satisfies atLeastOnce() before the async teardown runs, which would let this verify
+            // return before the phase-1 catch's save(ORPHANED) ever happens. Requiring both calls
+            // forces the wait onto the async boundary instead of racing it.
+            ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+            verify(groveRepository, timeout(2000).atLeast(2)).save(saved.capture());
+            assertThat(saved.getAllValues())
+                .extracting(GroveEntity::getState)
+                .contains(GroveState.ORPHANED);
+            verify(fruitRepository, never()).deleteAll(any());
+        }
     }
 }

@@ -651,40 +651,8 @@ public class GroveService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            // Container cleanup requires SSH — skip if VM is unreachable
-                            boolean vmReachable = false;
-                            if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
-                                try (var socket = new java.net.Socket()) {
-                                    socket.connect(new java.net.InetSocketAddress(
-                                        grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
-                                    vmReachable = true;
-                                } catch (java.io.IOException e) {
-                                    log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
-                                }
-                            }
-
-                            if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
-                                for (Fruit fruit : grove.fruits()) {
-                                    if (fruit.containerId() != null) {
-                                        log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                                        providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
-                                    }
-                                }
-                            }
-                            fruitRepository.deleteAll(fruitRepository.findByGroveId(groveId));
-
-                            // Uproot is a provider-side operation (kill QEMU process / cloud terminate)
-                            // — does not require SSH reachability
-                            if (grove.seedling() != null) {
-                                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
-                                providerRegistry.getDefault().uproot(grove.seedling()).join();
-                            }
-                        } catch (Exception e) {
-                            log.error("Error during grove stop for {}", groveId, e);
-                        }
-                    });
+                    CompletableFuture.runAsync(
+                        () -> tearDownAndRecord(groveId, grove, entity, GroveState.DORMANT));
                 }
             });
 
