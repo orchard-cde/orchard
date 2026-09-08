@@ -2,6 +2,7 @@ package dev.orchard.trellis;
 
 import dev.orchard.core.model.GroveState;
 import dev.orchard.roots.entity.GroveEntity;
+import dev.orchard.roots.repository.FruitRepository;
 import dev.orchard.roots.repository.GroveRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +23,11 @@ public class GroveReconciler implements ApplicationRunner {
     private static final int LIVENESS_TIMEOUT_MS = 3000;
 
     private final GroveRepository groveRepository;
+    private final FruitRepository fruitRepository;
 
-    public GroveReconciler(GroveRepository groveRepository) {
+    public GroveReconciler(GroveRepository groveRepository, FruitRepository fruitRepository) {
         this.groveRepository = groveRepository;
+        this.fruitRepository = fruitRepository;
     }
 
     @Override
@@ -34,10 +37,12 @@ public class GroveReconciler implements ApplicationRunner {
         List<GroveEntity> activeGroves = groveRepository.findActiveGroves();
         List<GroveEntity> preparingGroves = groveRepository.findByState(GroveState.PREPARING);
         List<GroveEntity> clearingGroves = groveRepository.findByState(GroveState.CLEARING);
+        List<GroveEntity> dormantGroves = groveRepository.findByState(GroveState.DORMANT);
 
         List<GroveEntity> allGroves = new ArrayList<>(activeGroves);
         allGroves.addAll(preparingGroves);
         allGroves.addAll(clearingGroves);
+        allGroves.addAll(dormantGroves);
 
         if (allGroves.isEmpty()) {
             log.info("No groves require reconciliation");
@@ -45,7 +50,7 @@ public class GroveReconciler implements ApplicationRunner {
         }
 
         int blighted = 0;
-        int cleared = 0;
+        int orphaned = 0;
         int alive = 0;
 
         for (GroveEntity grove : allGroves) {
@@ -73,18 +78,37 @@ public class GroveReconciler implements ApplicationRunner {
                 case CLEARING -> {
                     grove.setState(GroveState.ORPHANED);
                     groveRepository.save(grove);
-                    cleared++;
+                    orphaned++;
                     log.warn("Grove '{}' [{}] had interrupted teardown and no teardown was "
                         + "re-attempted — marked ORPHANED; operator action required",
                         grove.getName(), grove.getId());
+                }
+                case DORMANT -> {
+                    // stopGrove commits DORMANT before teardown runs asynchronously. Surviving
+                    // fruit rows mean tearDownAndRecord's Phase 2 never completed, so teardown did
+                    // not finish and the substrate may still exist.
+                    //
+                    // This deliberately over-reports: it cannot distinguish "Phase 1 died, VM is
+                    // live" from "died between the state save and the row delete, VM is already
+                    // gone". Over-reporting a possible leak is the safe direction. It also only
+                    // observes — re-attempting teardown needs a provider, which this class does not
+                    // have; see #228 / Plan 4.
+                    if (!fruitRepository.findByGroveId(grove.getId()).isEmpty()) {
+                        grove.setState(GroveState.ORPHANED);
+                        groveRepository.save(grove);
+                        orphaned++;
+                        log.warn("Grove '{}' [{}] is DORMANT but its fruit rows survive — stop "
+                            + "teardown did not complete; marked ORPHANED, operator action required",
+                            grove.getName(), grove.getId());
+                    }
                 }
                 default -> log.debug("Grove '{}' [{}] in state {} — skipping",
                         grove.getName(), grove.getId(), grove.getState());
             }
         }
 
-        log.info("Grove reconciliation complete: {} alive, {} blighted, {} cleared (of {} total)",
-                alive, blighted, cleared, allGroves.size());
+        log.info("Grove reconciliation complete: {} alive, {} blighted, {} orphaned (of {} total)",
+                alive, blighted, orphaned, allGroves.size());
     }
 
     private boolean isReachable(GroveEntity grove) {
