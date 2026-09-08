@@ -549,49 +549,84 @@ public class GroveService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            // Check if VM is reachable before attempting container cleanup
-                            boolean vmReachable = false;
-                            if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
-                                try (var socket = new java.net.Socket()) {
-                                    socket.connect(new java.net.InetSocketAddress(
-                                        grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
-                                    vmReachable = true;
-                                } catch (java.io.IOException e) {
-                                    log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
-                                }
-                            }
-
-                            // Stop and remove all containers (only if VM is reachable)
-                            if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
-                                for (Fruit fruit : grove.fruits()) {
-                                    if (fruit.containerId() != null) {
-                                        log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                                        providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
-                                    }
-                                }
-                            }
-                            // Always clean up fruit entities from DB
-                            fruitRepository.deleteAll(
-                                fruitRepository.findByGroveId(groveId)
-                            );
-                            // Terminate VM
-                            if (grove.seedling() != null) {
-                                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
-                                providerRegistry.getDefault().uproot(grove.seedling()).join();
-                            }
-                        } catch (Exception e) {
-                            log.error("Error during grove teardown for {}", groveId, e);
-                        } finally {
-                            entity.setState(GroveState.CLEARED);
-                            groveRepository.save(entity);
-                            log.info("Grove {} cleared", groveId);
-                        }
-                    });
+                    CompletableFuture.runAsync(
+                        () -> tearDownAndRecord(groveId, grove, entity, GroveState.CLEARED));
                 }
             });
         });
+    }
+
+    /**
+     * Tears down a grove's substrate, then records the outcome.
+     *
+     * <p>Ordering is load-bearing: the substrate is released <em>before</em> the fruit rows are
+     * deleted, so a failure leaves the records that name the leaked resource. On failure the grove
+     * becomes {@link GroveState#ORPHANED} and its fruit rows are retained — see spec amendment A1.
+     *
+     * <p>Package-private rather than private so the contract is observable from a test on the
+     * calling thread. The production entry point is {@code afterCommit} → {@code runAsync}, which
+     * no test can drive.
+     */
+    void tearDownAndRecord(UUID groveId, Grove grove, GroveEntity entity, GroveState successState) {
+        // Phase 1 — release the substrate. A failure here means a resource may still exist, so
+        // every record is retained and the grove is marked ORPHANED.
+        try {
+            compostFruitsIfReachable(groveId, grove);
+
+            if (grove.seedling() != null) {
+                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
+                providerRegistry.getDefault().uproot(grove.seedling()).join();
+            }
+        } catch (Exception e) {
+            log.error("Substrate teardown failed for grove {} — marking ORPHANED and retaining "
+                + "records; operator action required", groveId, e);
+            entity.setState(GroveState.ORPHANED);
+            groveRepository.save(entity);
+            return;
+        }
+
+        // Phase 2 — the substrate is gone. Nothing below can orphan a resource, so a failure here
+        // must NOT be reported as ORPHANED: that would send an operator hunting for a substrate
+        // that no longer exists. State is recorded before the rows are deleted, so the worst case
+        // is stale rows with a correct terminal state rather than deleted rows with a stale one.
+        try {
+            entity.setState(successState);
+            groveRepository.save(entity);
+            fruitRepository.deleteAll(fruitRepository.findByGroveId(groveId));
+            log.info("Grove {} reached {}", groveId, successState);
+        } catch (Exception e) {
+            log.error("Grove {} substrate was released but bookkeeping failed; state or fruit rows "
+                + "may be stale. The substrate is NOT leaked.", groveId, e);
+        }
+    }
+
+    /**
+     * Best-effort container cleanup, gated on a raw socket probe.
+     *
+     * <p>The probe is a known defect carried forward deliberately: the spec's "Must-fix along the
+     * way" requires a substrate-aware reachability check obtained through the provider, which needs
+     * provider-owned inspection and therefore lands in Plan 4. Do not opportunistically replace it
+     * here. What this plan changes is that a probe miss no longer masks an {@code uproot} failure.
+     */
+    private void compostFruitsIfReachable(UUID groveId, Grove grove) {
+        boolean vmReachable = false;
+        if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
+            try (var socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress(
+                    grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
+                vmReachable = true;
+            } catch (java.io.IOException e) {
+                log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
+            }
+        }
+        if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
+            for (Fruit fruit : grove.fruits()) {
+                if (fruit.containerId() != null) {
+                    log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
+                    providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
+                }
+            }
+        }
     }
 
     /**

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -478,5 +479,143 @@ class GroveServiceTest {
         when(groveRepository.findById(any())).thenReturn(Optional.empty());
 
         assertThat(groveService.startGrove(UUID.randomUUID())).isEmpty();
+    }
+
+    // --- tearDownAndRecord (issue #228) ------------------------------------------------
+
+    /**
+     * A grove whose seedling has NO ip address, so the socket probe in
+     * compostFruitsIfReachable is skipped entirely and the test does no network I/O.
+     * `Grove.plant` assigns the id; `Seedling.germinate` leaves ipAddress null.
+     */
+    private Grove groveWithSeedling() {
+        Grove grove = Grove.plant(
+            UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");
+        Seedling seedling = Seedling
+            .germinate(grove.id(), new SeedlingSpec(2, 4096, 20, "small", null));
+        return grove.withSeedling(seedling);
+    }
+
+    private GroveEntity entityFor(Grove grove, GroveState state) {
+        return GroveEntity.fromModel(grove.withState(state));
+    }
+
+    @Test
+    void tearDownAndRecord_marksOrphanedWhenUprootFails() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        // Prove the failure came from uproot, not from something incidental upstream.
+        verify(provider).uproot(any());
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getValue().getState()).isEqualTo(GroveState.ORPHANED);
+    }
+
+    /**
+     * The defect this plan exists to fix. The old code set CLEARED inside a `finally`, so the
+     * failure path and the success path produced the same terminal state. Asserting "not CLEARED"
+     * is the named assertion from spec A1 — asserting "ORPHANED" alone would still pass if the
+     * method were changed to set some other non-terminal state, so both are checked.
+     */
+    @Test
+    void tearDownAndRecord_neverMarksClearedOnFailure() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        verify(provider).uproot(any());
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues())
+            .extracting(GroveEntity::getState)
+            .doesNotContain(GroveState.CLEARED);
+    }
+
+    /**
+     * Retaining the fruit rows is the point: they name what leaked. The old ordering deleted them
+     * before uproot ran, so a teardown failure destroyed the only record of the orphaned resource.
+     */
+    @Test
+    void tearDownAndRecord_retainsFruitRowsWhenTeardownFails() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        verify(provider).uproot(any());
+        verify(fruitRepository, never()).deleteAll(any());
+    }
+
+    @Test
+    void tearDownAndRecord_marksSuccessStateAndDeletesFruitWhenTeardownSucceeds() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getValue().getState()).isEqualTo(GroveState.CLEARED);
+        verify(fruitRepository).deleteAll(any());
+    }
+
+    /**
+     * The two phases must not be conflated. If bookkeeping fails AFTER the substrate was released,
+     * the grove must not be reported ORPHANED — nothing leaked, and ORPHANED would send an operator
+     * hunting for a resource that no longer exists. Guards the Phase 1 / Phase 2 split.
+     */
+    @Test
+    void tearDownAndRecord_doesNotReportOrphanedWhenOnlyBookkeepingFails() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(groveRepository.save(any())).thenThrow(new RuntimeException("db down"));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        verify(provider).uproot(any());
+        assertThat(entity.getState()).isNotEqualTo(GroveState.ORPHANED);
+    }
+
+    /**
+     * Ordering guard. Verifies teardown precedes record deletion, which is the clause that makes a
+     * failed teardown recoverable. Falsify this deliberately in Step 5.
+     */
+    @Test
+    void tearDownAndRecord_uprootsBeforeDeletingFruitRows() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        InOrder order = inOrder(provider, fruitRepository);
+        order.verify(provider).uproot(any());
+        order.verify(fruitRepository).deleteAll(any());
     }
 }
