@@ -482,6 +482,48 @@ class GroveServiceTest {
         assertThat(groveService.startGrove(UUID.randomUUID())).isEmpty();
     }
 
+    // --- clearGrove ---
+
+    @Test
+    void clearGrove_clearingGrove_rejectedWithoutTeardown() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+
+        groveService.clearGrove(grove.id());
+
+        verify(groveRepository, never()).save(any());
+        verifyNoInteractions(providerRegistry);
+    }
+
+    @Test
+    void clearGrove_clearedGrove_isNoOp() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARED);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+
+        groveService.clearGrove(grove.id());
+
+        verify(groveRepository, never()).save(any());
+        verifyNoInteractions(providerRegistry);
+    }
+
+    @Test
+    void clearGrove_orphanedGrove_acceptedAndProceeds() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            Grove grove = groveWithSeedling();
+            GroveEntity entity = entityFor(grove, GroveState.ORPHANED);
+            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+
+            groveService.clearGrove(grove.id());
+
+            ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+            verify(groveRepository).save(saved.capture());
+            assertThat(saved.getValue().getState()).isEqualTo(GroveState.CLEARING);
+            tsm.verify(() -> TransactionSynchronizationManager.registerSynchronization(any()));
+        }
+    }
+
     /**
      * A grove whose seedling has NO ip address, so the socket probe in
      * compostFruitsIfReachable is skipped entirely and the test does no network I/O.

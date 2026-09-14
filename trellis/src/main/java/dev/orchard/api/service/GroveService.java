@@ -541,6 +541,21 @@ public class GroveService {
     @Transactional
     public void clearGrove(UUID groveId) {
         groveRepository.findById(groveId).ifPresent(entity -> {
+            GroveState state = entity.getState();
+            if (state == GroveState.CLEARING) {
+                log.warn("Cannot clear grove {} in state {} — teardown already in flight", groveId, state);
+                return;
+            }
+            if (state == GroveState.CLEARED) {
+                log.warn("Cannot clear grove {} in state {}", groveId, state);
+                return;
+            }
+            // Every other state is deliberately still accepted: ORPHANED is the documented
+            // recovery path (a DELETE on an ORPHANED grove is how an operator retries a failed
+            // teardown), and PREPARING/PLANTING/GROWING must stay clearable so a grove stuck
+            // mid-provision can still be removed. This method returns void and the controller
+            // always answers 204, so this guard's only visible effect is the log.warn above and
+            // the avoided duplicate teardown — it does not surface as an error to the caller.
             log.info("Clearing grove {}", groveId);
             entity.setState(GroveState.CLEARING);
             groveRepository.save(entity);
