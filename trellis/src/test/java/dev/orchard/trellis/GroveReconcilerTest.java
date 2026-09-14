@@ -27,8 +27,8 @@ class GroveReconcilerTest {
     /**
      * A grove found in CLEARING means teardown started and did not finish. The reconciler cannot
      * know whether the substrate was released, and it attempts no teardown — so it must not report
-     * success. Marking ORPHANED preserves the row for operator action; Plan 4 may upgrade this to a
-     * provider-owned re-attempt.
+     * success. Marking ORPHANED preserves the row for operator action; a future change may upgrade
+     * this to a provider-owned re-attempt (#228).
      *
      * <p>Observation path: `run()` mutates the entity in place and saves it, so the assertion reads
      * the same object the reconciler wrote, on the calling thread. No async boundary.

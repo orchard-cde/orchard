@@ -561,7 +561,7 @@ public class GroveService {
      *
      * <p>Ordering is load-bearing: the substrate is released <em>before</em> the fruit rows are
      * deleted, so a failure leaves the records that name the leaked resource. On failure the grove
-     * becomes {@link GroveState#ORPHANED} and its fruit rows are retained — see spec amendment A1.
+     * becomes {@link GroveState#ORPHANED} and its fruit rows are retained.
      *
      * <p>Package-private rather than private so the contract is observable from a test on the
      * calling thread. The production entry point is {@code afterCommit} → {@code runAsync}, which
@@ -618,8 +618,8 @@ public class GroveService {
      *
      * <p>The probe is a known defect carried forward deliberately: the spec's "Must-fix along the
      * way" requires a substrate-aware reachability check obtained through the provider, which needs
-     * provider-owned inspection and therefore lands in Plan 4. Do not opportunistically replace it
-     * here. What this plan changes is that a probe miss no longer masks an {@code uproot} failure.
+     * provider-owned inspection (#228). Do not opportunistically replace it here. A probe miss no
+     * longer masks an {@code uproot} failure.
      */
     private void compostFruitsIfReachable(UUID groveId, Grove grove) {
         boolean vmReachable = false;

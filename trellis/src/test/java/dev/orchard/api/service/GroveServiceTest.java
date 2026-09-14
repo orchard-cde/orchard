@@ -482,8 +482,6 @@ class GroveServiceTest {
         assertThat(groveService.startGrove(UUID.randomUUID())).isEmpty();
     }
 
-    // --- tearDownAndRecord (issue #228) ------------------------------------------------
-
     /**
      * A grove whose seedling has NO ip address, so the socket probe in
      * compostFruitsIfReachable is skipped entirely and the test does no network I/O.
@@ -520,9 +518,9 @@ class GroveServiceTest {
     }
 
     /**
-     * The defect this plan exists to fix. The old code set CLEARED inside a `finally`, so the
-     * failure path and the success path produced the same terminal state. Asserting "not CLEARED"
-     * is the named assertion from spec A1 — asserting "ORPHANED" alone would still pass if the
+     * Guards the original defect: the old code set CLEARED inside a `finally`, so the failure
+     * path and the success path produced the same terminal state. Asserting "not CLEARED" is the
+     * load-bearing assertion — asserting "ORPHANED" alone would still pass if the
      * method were changed to set some other non-terminal state, so both are checked.
      */
     @Test
@@ -611,7 +609,8 @@ class GroveServiceTest {
 
     /**
      * Ordering guard. Verifies teardown precedes record deletion, which is the clause that makes a
-     * failed teardown recoverable. Falsify this deliberately in Step 5.
+     * failed teardown recoverable. Verified by deliberate mutation: transposing the order so the
+     * rows are deleted first fails this test.
      */
     @Test
     void tearDownAndRecord_uprootsBeforeDeletingFruitRows() {

@@ -93,7 +93,7 @@ public class GroveReconciler implements ApplicationRunner {
                     // live" from "died between the state save and the row delete, VM is already
                     // gone". Over-reporting a possible leak is the safe direction. It also only
                     // observes — re-attempting teardown needs a provider, which this class does not
-                    // have; see #228 / Plan 4.
+                    // have; see #228.
                     if (!fruitRepository.findByGroveId(grove.getId()).isEmpty()) {
                         grove.setState(GroveState.ORPHANED);
                         groveRepository.save(grove);
