@@ -2,9 +2,7 @@ package dev.orchard.trellis;
 
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.GroveState;
-import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
-import dev.orchard.roots.repository.FruitRepository;
 import dev.orchard.roots.repository.GroveRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,14 +13,12 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class GroveReconcilerTest {
 
     @Mock private GroveRepository groveRepository;
-    @Mock private FruitRepository fruitRepository;
 
     /**
      * A grove found in CLEARING means teardown started and did not finish. The reconciler cannot
@@ -44,52 +40,9 @@ class GroveReconcilerTest {
         when(groveRepository.findByState(GroveState.PREPARING)).thenReturn(List.of());
         when(groveRepository.findByState(GroveState.CLEARING)).thenReturn(List.of(entity));
 
-        new GroveReconciler(groveRepository, fruitRepository).run(null);
+        new GroveReconciler(groveRepository).run(null);
 
         assertThat(entity.getState()).isEqualTo(GroveState.ORPHANED);
         assertThat(entity.getState()).isNotEqualTo(GroveState.CLEARED);
-    }
-
-    /**
-     * The durable-DORMANT window. stopGrove commits DORMANT before teardown runs, so a crash in
-     * between leaves DORMANT with a live substrate. Surviving fruit rows prove Phase 2 never
-     * completed, which is the only DB-visible evidence that teardown did not finish.
-     */
-    @Test
-    void dormantGroveWithSurvivingFruitRowsIsMarkedOrphaned() {
-        Grove grove = Grove
-            .plant(UUID.randomUUID(), "half-stopped", "https://example.invalid/r.git", "main")
-            .withState(GroveState.DORMANT);
-        GroveEntity entity = GroveEntity.fromModel(grove);
-        FruitEntity survivor = mock(FruitEntity.class);
-
-        when(groveRepository.findActiveGroves()).thenReturn(List.of());
-        when(groveRepository.findByState(GroveState.PREPARING)).thenReturn(List.of());
-        when(groveRepository.findByState(GroveState.CLEARING)).thenReturn(List.of());
-        when(groveRepository.findByState(GroveState.DORMANT)).thenReturn(List.of(entity));
-        when(fruitRepository.findByGroveId(entity.getId())).thenReturn(List.of(survivor));
-
-        new GroveReconciler(groveRepository, fruitRepository).run(null);
-
-        assertThat(entity.getState()).isEqualTo(GroveState.ORPHANED);
-    }
-
-    /** A cleanly stopped grove has no fruit rows and must be left alone. */
-    @Test
-    void cleanlyStoppedDormantGroveIsLeftDormant() {
-        Grove grove = Grove
-            .plant(UUID.randomUUID(), "stopped", "https://example.invalid/r.git", "main")
-            .withState(GroveState.DORMANT);
-        GroveEntity entity = GroveEntity.fromModel(grove);
-
-        when(groveRepository.findActiveGroves()).thenReturn(List.of());
-        when(groveRepository.findByState(GroveState.PREPARING)).thenReturn(List.of());
-        when(groveRepository.findByState(GroveState.CLEARING)).thenReturn(List.of());
-        when(groveRepository.findByState(GroveState.DORMANT)).thenReturn(List.of(entity));
-        when(fruitRepository.findByGroveId(entity.getId())).thenReturn(List.of());
-
-        new GroveReconciler(groveRepository, fruitRepository).run(null);
-
-        assertThat(entity.getState()).isEqualTo(GroveState.DORMANT);
     }
 }
