@@ -12,12 +12,17 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * QEMU-based grove provider for local VM provisioning.
@@ -27,6 +32,17 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
 
     private static final Logger log = LoggerFactory.getLogger(QemuGroveProvider.class);
     private static final String PROVIDER_ID = "qemu-local";
+
+    /**
+     * How long {@link #uproot} waits for {@code destroyForcibly()} to take effect before treating
+     * the VM as leaked. This is a {@code private static final} rather than a {@link QemuConfig}
+     * property on purpose: {@code destroyForcibly()} sends an unblockable, unignorable kill signal,
+     * so there is no legitimate case where a longer grace period would let a healthy process finish
+     * exiting that this timeout would otherwise cut off. A process still alive after this many
+     * seconds means something is badly wrong (e.g. stuck in uninterruptible I/O) and teardown must
+     * be reported as failed, not retried with a bigger number.
+     */
+    private static final Duration DESTROY_FORCIBLY_TIMEOUT = Duration.ofSeconds(5);
 
     private final QemuConfig config;
     private final ConcurrentHashMap<UUID, ProcessHandle> runningVms;
@@ -113,7 +129,7 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
             log.info("Uprooting seedling {}", seedling.id());
             ProcessHandle handle = runningVms.remove(seedling.id());
             if (handle != null) {
-                handle.destroyForcibly();
+                confirmTerminated(seedling, handle);
             }
 
             // Clean up VM directory (PID file is inside, deleted with the rest)
@@ -134,6 +150,43 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
                 log.warn("Failed to clean up VM directory {}", vmDir, e);
             }
         }, executor);
+    }
+
+    /**
+     * Forcibly kills {@code handle} and blocks until the OS confirms it is gone, so {@link #uproot}
+     * cannot report success while the VM is still running. {@code handle} may belong to a process
+     * this JVM did not spawn — QEMU is launched via {@code setsid} and {@link #reattachSurvivingVms}
+     * recovers such handles with {@code ProcessHandle.of(pid)} — but {@link ProcessHandle#onExit()}
+     * supports that case too: for a non-child pid it falls back to polling {@code isAlive()} rather
+     * than relying on this JVM being the parent that reaps the exit status.
+     *
+     * @throws CompletionException if the process has not exited within {@link #DESTROY_FORCIBLY_TIMEOUT}
+     */
+    private void confirmTerminated(Seedling seedling, ProcessHandle handle) {
+        handle.destroyForcibly();
+        try {
+            handle.onExit().get(DESTROY_FORCIBLY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CompletionException(
+                "Interrupted while waiting for QEMU process (pid " + handle.pid()
+                    + ") for seedling " + seedling.id() + " to exit after destroyForcibly()", e);
+        } catch (ExecutionException e) {
+            throw new CompletionException(
+                "Failed while waiting for QEMU process (pid " + handle.pid()
+                    + ") for seedling " + seedling.id() + " to exit after destroyForcibly()",
+                e.getCause() != null ? e.getCause() : e);
+        } catch (TimeoutException e) {
+            throw new CompletionException(
+                "QEMU process (pid " + handle.pid() + ") for seedling " + seedling.id()
+                    + " did not exit within " + DESTROY_FORCIBLY_TIMEOUT
+                    + " of destroyForcibly() — treating substrate as not released", e);
+        }
+        if (handle.isAlive()) {
+            String message = "QEMU process (pid " + handle.pid() + ") for seedling " + seedling.id()
+                + " is still alive after destroyForcibly() reported exit — treating substrate as not released";
+            throw new CompletionException(message, new IllegalStateException(message));
+        }
     }
 
     @Override

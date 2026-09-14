@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -510,6 +511,7 @@ public class FruitGrower {
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
+                throw new CompletionException(e);
             }
         }, executor);
     }

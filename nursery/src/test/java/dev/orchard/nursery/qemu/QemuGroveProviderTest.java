@@ -11,13 +11,23 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class QemuGroveProviderTest {
 
@@ -196,5 +206,203 @@ class QemuGroveProviderTest {
         Seedling result = provider.inspect(seedling).join();
 
         assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
+    }
+
+    // --- uproot ---
+
+    /**
+     * A missing handle is the already-gone case (e.g. a retry of an already-cleared grove) and
+     * must stay a success path so uproot remains idempotent — see the DELETE-on-ORPHANED recovery
+     * flow this behaviour supports.
+     */
+    @Test
+    void uproot_noHandleRecorded_completesSuccessfully() {
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+
+        assertThatCode(() -> provider.uproot(seedling).join()).doesNotThrowAnyException();
+    }
+
+    /**
+     * Guards the defect this fix closes: a handle that is still alive after destroyForcibly() must
+     * make uproot's future complete exceptionally, not report success while the VM keeps running.
+     */
+    @Test
+    void uproot_handleStillAliveAfterDestroyForcibly_completesExceptionally() {
+        QemuCommands neverExits = new QemuCommands() {
+            @Override
+            public void createDiskImage(Path image, int diskGb) throws IOException {
+                Files.createFile(image);
+            }
+
+            @Override
+            public void createCloudInitIso(Path iso, Seedling seedling) throws IOException {
+                Files.createFile(iso);
+            }
+
+            @Override
+            public int allocateSshPort() {
+                return 2222;
+            }
+
+            @Override
+            public Process startQemu(Seedling s, Path diskImage, Path cloudInitIso, int sshPort) {
+                return new NeverExitsProcess();
+            }
+
+            @Override
+            public void awaitReachable(String host, int sshPort) {
+            }
+        };
+        QemuConfig config = QemuConfig.builder().vmStoragePath(tempDir).build();
+        QemuGroveProvider p = new QemuGroveProvider(
+            config, new DevcontainerCliConfig("0.75.0", 600, 60), new FruitGrower(), neverExits);
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        p.plantSubstrate(seedling).join();
+
+        CompletableFuture<Void> result = p.uproot(seedling);
+
+        assertThatThrownBy(result::join)
+            .isInstanceOf(CompletionException.class)
+            .hasMessageContaining(String.valueOf(NeverExitsProcess.PID));
+    }
+
+    /**
+     * A {@link Process} whose {@link #toHandle()} returns a {@link ProcessHandle} that reports
+     * {@code isAlive() == true} forever and whose {@code onExit()} future never completes,
+     * regardless of {@code destroyForcibly()} — standing in for a QEMU process stuck (e.g. in
+     * uninterruptible I/O) that a real SIGKILL cannot dislodge. Overriding {@link #toHandle()} is
+     * the documented extension point for exactly this ({@code Process.toHandle()}'s javadoc says
+     * subclasses should override it to supply their own handle); the other abstract members are
+     * never exercised by {@code uproot} and just satisfy the compiler.
+     */
+    private static class NeverExitsProcess extends Process {
+        static final long PID = 999_999_999L;
+        private final ProcessHandle handle = new NeverExitsProcessHandle();
+
+        @Override
+        public OutputStream getOutputStream() {
+            return OutputStream.nullOutputStream();
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return InputStream.nullInputStream();
+        }
+
+        @Override
+        public InputStream getErrorStream() {
+            return InputStream.nullInputStream();
+        }
+
+        @Override
+        public int waitFor() {
+            throw new UnsupportedOperationException("not exercised by uproot");
+        }
+
+        @Override
+        public int exitValue() {
+            throw new IllegalThreadStateException("process has not exited");
+        }
+
+        @Override
+        public void destroy() {
+        }
+
+        @Override
+        public long pid() {
+            return PID;
+        }
+
+        @Override
+        public ProcessHandle toHandle() {
+            return handle;
+        }
+    }
+
+    private static class NeverExitsProcessHandle implements ProcessHandle {
+        @Override
+        public long pid() {
+            return NeverExitsProcess.PID;
+        }
+
+        @Override
+        public Optional<ProcessHandle> parent() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Stream<ProcessHandle> children() {
+            return Stream.empty();
+        }
+
+        @Override
+        public Stream<ProcessHandle> descendants() {
+            return Stream.empty();
+        }
+
+        @Override
+        public Info info() {
+            return new Info() {
+                @Override
+                public Optional<String> command() {
+                    return Optional.empty();
+                }
+
+                @Override
+                public Optional<String> commandLine() {
+                    return Optional.empty();
+                }
+
+                @Override
+                public Optional<String[]> arguments() {
+                    return Optional.empty();
+                }
+
+                @Override
+                public Optional<Instant> startInstant() {
+                    return Optional.empty();
+                }
+
+                @Override
+                public Optional<Duration> totalCpuDuration() {
+                    return Optional.empty();
+                }
+
+                @Override
+                public Optional<String> user() {
+                    return Optional.empty();
+                }
+            };
+        }
+
+        @Override
+        public CompletableFuture<ProcessHandle> onExit() {
+            return new CompletableFuture<>(); // never completes — the process never exits
+        }
+
+        @Override
+        public boolean supportsNormalTermination() {
+            return false;
+        }
+
+        @Override
+        public boolean destroy() {
+            return false;
+        }
+
+        @Override
+        public boolean destroyForcibly() {
+            return true; // signal "sent" but has no effect, as if the process ignored SIGKILL
+        }
+
+        @Override
+        public boolean isAlive() {
+            return true;
+        }
+
+        @Override
+        public int compareTo(ProcessHandle o) {
+            return Long.compare(pid(), o.pid());
+        }
     }
 }
