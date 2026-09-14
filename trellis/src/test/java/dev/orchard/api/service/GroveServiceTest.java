@@ -563,7 +563,7 @@ class GroveServiceTest {
         groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
 
         verify(provider).uproot(any());
-        verify(fruitRepository, never()).deleteAll(any());
+        verify(fruitRepository, never()).deleteAllById(any());
     }
 
     @Test
@@ -573,14 +573,38 @@ class GroveServiceTest {
         GroveProvider provider = mock(GroveProvider.class);
         when(providerRegistry.getDefault()).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
-        when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
 
         groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
 
         ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
         verify(groveRepository, atLeastOnce()).save(saved.capture());
         assertThat(saved.getValue().getState()).isEqualTo(GroveState.CLEARED);
-        verify(fruitRepository).deleteAll(any());
+        verify(fruitRepository).deleteAllById(any());
+    }
+
+    /**
+     * Guards the generation constraint (FIX 2): deleteAllById must receive exactly the fruit ids
+     * captured in {@code grove.fruits()} when teardown began, not a re-query result. findByGroveId
+     * is deliberately left unstubbed — if tearDownAndRecord regressed to re-querying at completion
+     * time, the resulting empty list would make this assertion fail rather than pass.
+     */
+    @Test
+    void tearDownAndRecord_deletesOnlyCapturedFruitGeneration() {
+        Seed seed = Seed.devcontainer().name("test").image("ubuntu").build();
+        Grove grove = groveWithSeedling();
+        Fruit fruit = Fruit.bud(grove.id(), grove.seedling().id(), seed);
+        grove = grove.withFruit(fruit);
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UUID>> deletedIds = ArgumentCaptor.forClass(List.class);
+        verify(fruitRepository).deleteAllById(deletedIds.capture());
+        assertThat(deletedIds.getValue()).containsExactly(fruit.id());
     }
 
     /**
@@ -619,13 +643,12 @@ class GroveServiceTest {
         GroveProvider provider = mock(GroveProvider.class);
         when(providerRegistry.getDefault()).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
-        when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
 
         groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
 
         InOrder order = inOrder(provider, fruitRepository);
         order.verify(provider).uproot(any());
-        order.verify(fruitRepository).deleteAll(any());
+        order.verify(fruitRepository).deleteAllById(any());
     }
 
     @Test
@@ -642,7 +665,7 @@ class GroveServiceTest {
         ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
         verify(groveRepository, atLeastOnce()).save(saved.capture());
         assertThat(saved.getValue().getState()).isEqualTo(GroveState.ORPHANED);
-        verify(fruitRepository, never()).deleteAll(any());
+        verify(fruitRepository, never()).deleteAllById(any());
     }
 
     /**
@@ -691,7 +714,7 @@ class GroveServiceTest {
             // saves exactly twice — sync DORMANT, then Phase 1's ORPHANED.)
             verify(groveRepository, timeout(2000).atLeast(2)).save(any());
             assertThat(atSave).contains(GroveState.ORPHANED);
-            verify(fruitRepository, never()).deleteAll(any());
+            verify(fruitRepository, never()).deleteAllById(any());
         }
     }
 }

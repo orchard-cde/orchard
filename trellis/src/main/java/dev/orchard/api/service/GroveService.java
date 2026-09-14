@@ -597,15 +597,21 @@ public class GroveService {
             // stopGrove already committed successState synchronously before this ran, so entity is
             // a stale detached copy already at successState. Writing it again unconditionally would
             // race a startGrove that ran in between: startGrove's guard would see the stale
-            // successState it just moved past, and this save would then merge over rows the restart
-            // just created, with deleteAll() removing them. Skipping the write when nothing changed
-            // avoids that lost-update race; on the clear path successState differs from the
-            // in-memory CLEARING, so the write still happens.
+            // successState it just moved past, and merge its own (correct) state back over it.
+            // Skipping the write when nothing changed avoids that lost-update on the *state* column
+            // only; on the clear path successState differs from the in-memory CLEARING, so the write
+            // still happens. This guard says nothing about the fruit rows below — that protection is
+            // separate, see the comment on capturedFruitIds.
             if (entity.getState() != successState) {
                 entity.setState(successState);
                 groveRepository.save(entity);
             }
-            fruitRepository.deleteAll(fruitRepository.findByGroveId(groveId));
+            // Delete only the fruit generation captured when teardown began. Re-querying by grove id
+            // at completion time would delete rows a subsequent startGrove had already created,
+            // because this runs asynchronously and the grove may have been restarted in the meantime.
+            List<UUID> capturedFruitIds = grove.fruits() == null ? List.of()
+                : grove.fruits().stream().map(Fruit::id).toList();
+            fruitRepository.deleteAllById(capturedFruitIds);
             log.info("Grove {} reached {}", groveId, successState);
         } catch (Exception e) {
             log.error("Grove {} substrate was released but bookkeeping failed; state or fruit rows "
