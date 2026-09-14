@@ -20,8 +20,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
@@ -214,6 +216,25 @@ class Ec2GroveProviderTest {
 
         assertThat(result).isNull();
         verify(ops).terminateInstance("i-abc");
+    }
+
+    /**
+     * Guards the propagation fix: a terminate failure must surface as an exceptional future, not
+     * be swallowed, so {@code GroveService.tearDownAndRecord} can mark the grove ORPHANED instead
+     * of reporting a release that never happened.
+     */
+    @Test
+    void uproot_terminateFails_completesExceptionally() {
+        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
+            .withState(SeedlingState.SAPLING);
+        RuntimeException terminateFailure = new RuntimeException("AWS terminate-instances failed");
+        doThrow(terminateFailure).when(ops).terminateInstance("i-abc");
+
+        var future = providerWith(configWith(Ec2Config.IpMode.AUTO)).uproot(planted);
+
+        assertThatThrownBy(future::join)
+            .isInstanceOf(CompletionException.class)
+            .hasCause(terminateFailure);
     }
 
     @Test
