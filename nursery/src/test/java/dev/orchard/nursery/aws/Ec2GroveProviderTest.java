@@ -219,9 +219,8 @@ class Ec2GroveProviderTest {
     }
 
     /**
-     * Guards the propagation fix: a terminate failure must surface as an exceptional future, not
-     * be swallowed, so {@code GroveService.tearDownAndRecord} can mark the grove ORPHANED instead
-     * of reporting a release that never happened.
+     * Guards the propagation fix: a terminate failure must surface as an exceptional future so
+     * tearDownAndRecord can mark the grove ORPHANED, not report a release that never happened.
      */
     @Test
     void uproot_terminateFails_completesExceptionally() {

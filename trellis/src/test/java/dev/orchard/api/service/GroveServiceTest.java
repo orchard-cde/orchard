@@ -525,9 +525,8 @@ class GroveServiceTest {
     }
 
     /**
-     * A grove whose seedling has NO ip address, so the socket probe in
-     * compostFruitsIfReachable is skipped entirely and the test does no network I/O.
-     * `Grove.plant` assigns the id; `Seedling.germinate` leaves ipAddress null.
+     * Seedling has NO ip address on purpose: the socket probe in compostFruitsIfReachable is
+     * skipped, so these tests do no network I/O.
      */
     private Grove groveWithSeedling() {
         Grove grove = Grove.plant(
@@ -560,10 +559,9 @@ class GroveServiceTest {
     }
 
     /**
-     * Guards the original defect: the old code set CLEARED inside a `finally`, so the failure
-     * path and the success path produced the same terminal state. Asserting "not CLEARED" is the
-     * load-bearing assertion — asserting "ORPHANED" alone would still pass if the
-     * method were changed to set some other non-terminal state, so both are checked.
+     * Guards the original defect: CLEARED was set in a `finally`, so failure and success
+     * produced the same terminal state. "not CLEARED" is the load-bearing half — "ORPHANED"
+     * alone would still pass if some other non-terminal state were set.
      */
     @Test
     void tearDownAndRecord_neverMarksClearedOnFailure() {
@@ -590,8 +588,8 @@ class GroveServiceTest {
     }
 
     /**
-     * Retaining the fruit rows is the point: they name what leaked. The old ordering deleted them
-     * before uproot ran, so a teardown failure destroyed the only record of the orphaned resource.
+     * Retaining the rows is the point: they name what leaked. The old ordering deleted them
+     * before uproot, destroying the only record of the orphaned resource.
      */
     @Test
     void tearDownAndRecord_retainsFruitRowsWhenTeardownFails() {
@@ -625,10 +623,9 @@ class GroveServiceTest {
     }
 
     /**
-     * Guards the generation constraint (FIX 2): deleteAllById must receive exactly the fruit ids
-     * captured in {@code grove.fruits()} when teardown began, not a re-query result. findByGroveId
-     * is deliberately left unstubbed — if tearDownAndRecord regressed to re-querying at completion
-     * time, the resulting empty list would make this assertion fail rather than pass.
+     * Guards the generation constraint: deleteAllById must receive the ids captured in
+     * {@code grove.fruits()}, not a re-query result. findByGroveId is left unstubbed on purpose —
+     * a regression to re-querying would yield an empty list and fail this assertion.
      */
     @Test
     void tearDownAndRecord_deletesOnlyCapturedFruitGeneration() {
@@ -650,13 +647,9 @@ class GroveServiceTest {
     }
 
     /**
-     * The two phases must not be conflated. If bookkeeping fails AFTER the substrate was released,
-     * tearDownAndRecord itself must not report ORPHANED — nothing leaked, and ORPHANED would send
-     * an operator hunting for a resource that no longer exists. Guards the Phase 1 / Phase 2 split.
-     *
-     * <p>This guarantee is in-process only. If the failing call is Phase 2's own {@code save},
-     * nothing persists and the row keeps CLEARING; {@code GroveReconciler} will mark such a row
-     * ORPHANED at the next application start — a false positive, but in the safe direction.
+     * Guards the Phase 1 / Phase 2 split: bookkeeping failing after the substrate was released
+     * must not report ORPHANED, since nothing leaked. In-process only — if Phase 2's own
+     * {@code save} fails, the row keeps CLEARING and the reconciler marks it ORPHANED later.
      */
     @Test
     void tearDownAndRecord_doesNotReportOrphanedWhenOnlyBookkeepingFails() {
@@ -674,9 +667,8 @@ class GroveServiceTest {
     }
 
     /**
-     * Ordering guard. Verifies teardown precedes record deletion, which is the clause that makes a
-     * failed teardown recoverable. Verified by deliberate mutation: transposing the order so the
-     * rows are deleted first fails this test.
+     * Ordering guard: teardown must precede record deletion, which is what makes a failed
+     * teardown recoverable. Verified by mutation — deleting the rows first fails this test.
      */
     @Test
     void tearDownAndRecord_uprootsBeforeDeletingFruitRows() {
@@ -711,12 +703,10 @@ class GroveServiceTest {
     }
 
     /**
-     * Gates the stopGrove wiring, which the direct-helper test above cannot: it captures the
-     * TransactionSynchronization stopGrove registers, invokes afterCommit(), and asserts the
-     * teardown contract held. Pattern copied from BeeServiceTest:123-136.
-     *
-     * <p>Observation path: afterCommit() dispatches to CompletableFuture.runAsync on the common
-     * pool, so assertions use Mockito timeout() rather than reading state directly.
+     * Gates the stopGrove wiring, which the direct-helper tests cannot: captures the
+     * TransactionSynchronization, invokes afterCommit(), and asserts the contract held. Pattern
+     * follows BeeServiceTest. Assertions use Mockito timeout() because afterCommit() dispatches
+     * to runAsync.
      */
     @Test
     void stopGrove_marksOrphanedAndRetainsFruitWhenTeardownFails() {
@@ -748,12 +738,10 @@ class GroveServiceTest {
             groveService.stopGrove(grove.id());
 
             verify(provider, timeout(2000)).uproot(any());
-            // atLeast(2), not atLeastOnce(): stopGrove's own synchronous save(DORMANT) already
-            // satisfies atLeastOnce() before the async teardown runs, which would let this verify
-            // return before the phase-1 catch's save(ORPHANED) ever happens. Requiring both calls
-            // forces the wait onto the async boundary instead of racing it. (FIX 2's Phase-2 write
-            // guard does not change this: the failure path here never reaches Phase 2, so it still
-            // saves exactly twice — sync DORMANT, then Phase 1's ORPHANED.)
+            // atLeast(2), not atLeastOnce(): stopGrove's synchronous save(DORMANT) already
+            // satisfies atLeastOnce() before the async teardown runs, so the verify could return
+            // before Phase 1's save(ORPHANED). Requiring both forces the wait onto the async
+            // boundary. The failure path never reaches Phase 2, so it still saves exactly twice.
             verify(groveRepository, timeout(2000).atLeast(2)).save(any());
             assertThat(atSave).contains(GroveState.ORPHANED);
             verify(fruitRepository, never()).deleteAllById(any());

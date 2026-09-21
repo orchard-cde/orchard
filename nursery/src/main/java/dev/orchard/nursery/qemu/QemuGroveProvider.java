@@ -34,13 +34,10 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
     private static final String PROVIDER_ID = "qemu-local";
 
     /**
-     * How long {@link #uproot} waits for {@code destroyForcibly()} to take effect before treating
-     * the VM as leaked. This is a {@code private static final} rather than a {@link QemuConfig}
-     * property on purpose: {@code destroyForcibly()} sends an unblockable, unignorable kill signal,
-     * so there is no legitimate case where a longer grace period would let a healthy process finish
-     * exiting that this timeout would otherwise cut off. A process still alive after this many
-     * seconds means something is badly wrong (e.g. stuck in uninterruptible I/O) and teardown must
-     * be reported as failed, not retried with a bigger number.
+     * How long {@link #uproot} waits for {@code destroyForcibly()} before treating the VM as
+     * leaked. A constant, not a {@link QemuConfig} property: SIGKILL is unblockable, so no longer
+     * grace period is legitimate — a survivor means something is badly wrong (e.g. uninterruptible
+     * I/O) and teardown must fail rather than be retried with a bigger number.
      */
     private static final Duration DESTROY_FORCIBLY_TIMEOUT = Duration.ofSeconds(5);
 
@@ -153,12 +150,10 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
     }
 
     /**
-     * Forcibly kills {@code handle} and blocks until the OS confirms it is gone, so {@link #uproot}
-     * cannot report success while the VM is still running. {@code handle} may belong to a process
-     * this JVM did not spawn — QEMU is launched via {@code setsid} and {@link #reattachSurvivingVms}
-     * recovers such handles with {@code ProcessHandle.of(pid)} — but {@link ProcessHandle#onExit()}
-     * supports that case too: for a non-child pid it falls back to polling {@code isAlive()} rather
-     * than relying on this JVM being the parent that reaps the exit status.
+     * Kills {@code handle} and blocks until the OS confirms it is gone, so {@link #uproot} cannot
+     * report success while the VM still runs. The handle is usually not this JVM's child (QEMU is
+     * launched via {@code setsid}, and {@link #reattachSurvivingVms} recovers handles with
+     * {@code ProcessHandle.of(pid)}); {@link ProcessHandle#onExit()} handles that by polling.
      *
      * @throws CompletionException if the process has not exited within {@link #DESTROY_FORCIBLY_TIMEOUT}
      */

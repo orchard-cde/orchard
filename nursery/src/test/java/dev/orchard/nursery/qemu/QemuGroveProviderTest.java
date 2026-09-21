@@ -211,9 +211,8 @@ class QemuGroveProviderTest {
     // --- uproot ---
 
     /**
-     * A missing handle is the already-gone case (e.g. a retry of an already-cleared grove) and
-     * must stay a success path so uproot remains idempotent — see the DELETE-on-ORPHANED recovery
-     * flow this behaviour supports.
+     * A missing handle is the already-gone case and must stay a success path, so uproot remains
+     * idempotent for the DELETE-on-ORPHANED retry flow.
      */
     @Test
     void uproot_noHandleRecorded_completesSuccessfully() {
@@ -223,8 +222,8 @@ class QemuGroveProviderTest {
     }
 
     /**
-     * Guards the defect this fix closes: a handle that is still alive after destroyForcibly() must
-     * make uproot's future complete exceptionally, not report success while the VM keeps running.
+     * A handle still alive after destroyForcibly() must make uproot's future complete
+     * exceptionally, not report success while the VM keeps running.
      */
     @Test
     void uproot_handleStillAliveAfterDestroyForcibly_completesExceptionally() {
@@ -267,13 +266,10 @@ class QemuGroveProviderTest {
     }
 
     /**
-     * A {@link Process} whose {@link #toHandle()} returns a {@link ProcessHandle} that reports
-     * {@code isAlive() == true} forever and whose {@code onExit()} future never completes,
-     * regardless of {@code destroyForcibly()} — standing in for a QEMU process stuck (e.g. in
-     * uninterruptible I/O) that a real SIGKILL cannot dislodge. Overriding {@link #toHandle()} is
-     * the documented extension point for exactly this ({@code Process.toHandle()}'s javadoc says
-     * subclasses should override it to supply their own handle); the other abstract members are
-     * never exercised by {@code uproot} and just satisfy the compiler.
+     * Stands in for a QEMU process that SIGKILL cannot dislodge: {@link #toHandle()} returns a
+     * handle reporting {@code isAlive() == true} forever, whose {@code onExit()} never completes.
+     * Overriding {@code toHandle()} is the documented extension point; the other abstract members
+     * just satisfy the compiler.
      */
     private static class NeverExitsProcess extends Process {
         static final long PID = 999_999_999L;

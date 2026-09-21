@@ -550,12 +550,9 @@ public class GroveService {
                 log.warn("Cannot clear grove {} in state {}", groveId, state);
                 return;
             }
-            // Every other state is deliberately still accepted: ORPHANED is the documented
-            // recovery path (a DELETE on an ORPHANED grove is how an operator retries a failed
-            // teardown), and PREPARING/PLANTING/GROWING must stay clearable so a grove stuck
-            // mid-provision can still be removed. This method returns void and the controller
-            // always answers 204, so this guard's only visible effect is the log.warn above and
-            // the avoided duplicate teardown — it does not surface as an error to the caller.
+            // Everything else stays clearable on purpose: ORPHANED is the retry path, and a grove
+            // stuck in PREPARING/PLANTING/GROWING must still be removable. Returns void and the
+            // controller always answers 204, so this guard's only effect is the warn above.
             log.info("Clearing grove {}", groveId);
             entity.setState(GroveState.CLEARING);
             groveRepository.save(entity);
@@ -574,16 +571,14 @@ public class GroveService {
     /**
      * Tears down a grove's substrate, then records the outcome.
      *
-     * <p>Ordering is load-bearing: the substrate is released <em>before</em> the fruit rows are
-     * deleted, so a failure leaves the records that name the leaked resource. On failure the grove
-     * becomes {@link GroveState#ORPHANED} and its fruit rows are retained.
+     * <p>The substrate is released before the fruit rows are deleted, so a failure leaves the
+     * records naming the leaked resource and the grove becomes {@link GroveState#ORPHANED}.
      *
-     * <p>Package-private rather than private so the contract is observable from a test on the
-     * calling thread. The production entry point is {@code afterCommit} → {@code runAsync}, which
-     * no test can drive.
+     * <p>Package-private so tests can drive it directly; production enters via
+     * {@code afterCommit} → {@code runAsync}, which no test can reach.
      */
     void tearDownAndRecord(UUID groveId, Grove grove, GroveEntity entity, GroveState successState) {
-        // Phase 1 — release the substrate. A failure here means a resource may still exist, so
+        // Phase 1 — release the substrate. A failure here may have left a resource behind, so
         // every record is retained and the grove is marked ORPHANED.
         try {
             compostFruitsIfReachable(groveId, grove);
@@ -600,30 +595,20 @@ public class GroveService {
             return;
         }
 
-        // Phase 2 — the substrate is gone. This guarantee is in-process only: nothing below can
-        // orphan a resource on THIS path, so a failure here must NOT be reported as ORPHANED here
-        // — that would send an operator hunting for a substrate that no longer exists. State is
-        // recorded before the rows are deleted, so the worst case is stale rows with a correct
-        // terminal state rather than deleted rows with a stale one. (If the failing call below is
-        // the save() itself, nothing persists and the row keeps CLEARING — GroveReconciler will
-        // mark it ORPHANED at the next application start; that later false positive is a separate,
-        // safe-direction guarantee, not a contradiction of this one.)
+        // Phase 2 — the substrate is gone, so a failure here must not report ORPHANED: that
+        // would send an operator hunting a resource that no longer exists. In-process only — if
+        // the save() below is what fails, the row keeps CLEARING and the reconciler marks it
+        // ORPHANED at the next startup instead.
         try {
-            // stopGrove already committed successState synchronously before this ran, so entity is
-            // a stale detached copy already at successState. Writing it again unconditionally would
-            // race a startGrove that ran in between: startGrove's guard would see the stale
-            // successState it just moved past, and merge its own (correct) state back over it.
-            // Skipping the write when nothing changed avoids that lost-update on the *state* column
-            // only; on the clear path successState differs from the in-memory CLEARING, so the write
-            // still happens. This guard says nothing about the fruit rows below — that protection is
-            // separate, see the comment on capturedFruitIds.
+            // On the stop path this detached entity already holds successState, so rewriting it
+            // would clobber a startGrove that ran in between. Guards the state column only — the
+            // fruit rows are protected separately, below.
             if (entity.getState() != successState) {
                 entity.setState(successState);
                 groveRepository.save(entity);
             }
-            // Delete only the fruit generation captured when teardown began. Re-querying by grove id
-            // at completion time would delete rows a subsequent startGrove had already created,
-            // because this runs asynchronously and the grove may have been restarted in the meantime.
+            // Only the generation captured when teardown began: re-querying at completion would
+            // delete rows a subsequent startGrove created, since this runs asynchronously.
             List<UUID> capturedFruitIds = grove.fruits() == null ? List.of()
                 : grove.fruits().stream().map(Fruit::id).toList();
             fruitRepository.deleteAllById(capturedFruitIds);
