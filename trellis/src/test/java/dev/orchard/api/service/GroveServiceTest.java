@@ -15,10 +15,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
@@ -478,5 +480,271 @@ class GroveServiceTest {
         when(groveRepository.findById(any())).thenReturn(Optional.empty());
 
         assertThat(groveService.startGrove(UUID.randomUUID())).isEmpty();
+    }
+
+    // --- clearGrove ---
+
+    @Test
+    void clearGrove_clearingGrove_rejectedWithoutTeardown() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+
+        groveService.clearGrove(grove.id());
+
+        verify(groveRepository, never()).save(any());
+        verifyNoInteractions(providerRegistry);
+    }
+
+    @Test
+    void clearGrove_clearedGrove_isNoOp() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARED);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+
+        groveService.clearGrove(grove.id());
+
+        verify(groveRepository, never()).save(any());
+        verifyNoInteractions(providerRegistry);
+    }
+
+    @Test
+    void clearGrove_orphanedGrove_acceptedAndProceeds() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            Grove grove = groveWithSeedling();
+            GroveEntity entity = entityFor(grove, GroveState.ORPHANED);
+            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+
+            groveService.clearGrove(grove.id());
+
+            ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+            verify(groveRepository).save(saved.capture());
+            assertThat(saved.getValue().getState()).isEqualTo(GroveState.CLEARING);
+            tsm.verify(() -> TransactionSynchronizationManager.registerSynchronization(any()));
+        }
+    }
+
+    /**
+     * Seedling has NO ip address on purpose: the socket probe in compostFruitsIfReachable is
+     * skipped, so these tests do no network I/O.
+     */
+    private Grove groveWithSeedling() {
+        Grove grove = Grove.plant(
+            UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");
+        Seedling seedling = Seedling
+            .germinate(grove.id(), new SeedlingSpec(2, 4096, 20, "small", null));
+        return grove.withSeedling(seedling);
+    }
+
+    private GroveEntity entityFor(Grove grove, GroveState state) {
+        return GroveEntity.fromModel(grove.withState(state));
+    }
+
+    @Test
+    void tearDownAndRecord_marksOrphanedWhenUprootFails() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        // Prove the failure came from uproot, not from something incidental upstream.
+        verify(provider).uproot(any());
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getValue().getState()).isEqualTo(GroveState.ORPHANED);
+    }
+
+    /**
+     * Guards the original defect: CLEARED was set in a `finally`, so failure and success
+     * produced the same terminal state. "not CLEARED" is the load-bearing half — "ORPHANED"
+     * alone would still pass if some other non-terminal state were set.
+     */
+    @Test
+    void tearDownAndRecord_neverMarksClearedOnFailure() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        // The captor holds one mutable GroveEntity, so getAllValues() would return N aliases of
+        // the same final-state object. Record the state AT SAVE TIME instead.
+        List<GroveState> atSave = new java.util.concurrent.CopyOnWriteArrayList<>();
+        when(groveRepository.save(any())).thenAnswer(inv -> {
+            atSave.add(((GroveEntity) inv.getArgument(0)).getState());
+            return inv.getArgument(0);
+        });
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        verify(provider).uproot(any());
+        verify(groveRepository, atLeastOnce()).save(any());
+        assertThat(atSave).doesNotContain(GroveState.CLEARED);
+    }
+
+    /**
+     * Retaining the rows is the point: they name what leaked. The old ordering deleted them
+     * before uproot, destroying the only record of the orphaned resource.
+     */
+    @Test
+    void tearDownAndRecord_retainsFruitRowsWhenTeardownFails() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        verify(provider).uproot(any());
+        verify(fruitRepository, never()).deleteAllById(any());
+    }
+
+    @Test
+    void tearDownAndRecord_marksSuccessStateAndDeletesFruitWhenTeardownSucceeds() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getValue().getState()).isEqualTo(GroveState.CLEARED);
+        verify(fruitRepository).deleteAllById(any());
+    }
+
+    /**
+     * Guards the generation constraint: deleteAllById must receive the ids captured in
+     * {@code grove.fruits()}, not a re-query result. findByGroveId is left unstubbed on purpose —
+     * a regression to re-querying would yield an empty list and fail this assertion.
+     */
+    @Test
+    void tearDownAndRecord_deletesOnlyCapturedFruitGeneration() {
+        Seed seed = Seed.devcontainer().name("test").image("ubuntu").build();
+        Grove grove = groveWithSeedling();
+        Fruit fruit = Fruit.bud(grove.id(), grove.seedling().id(), seed);
+        grove = grove.withFruit(fruit);
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UUID>> deletedIds = ArgumentCaptor.forClass(List.class);
+        verify(fruitRepository).deleteAllById(deletedIds.capture());
+        assertThat(deletedIds.getValue()).containsExactly(fruit.id());
+    }
+
+    /**
+     * Guards the Phase 1 / Phase 2 split: bookkeeping failing after the substrate was released
+     * must not report ORPHANED, since nothing leaked. In-process only — if Phase 2's own
+     * {@code save} fails, the row keeps CLEARING and the reconciler marks it ORPHANED later.
+     */
+    @Test
+    void tearDownAndRecord_doesNotReportOrphanedWhenOnlyBookkeepingFails() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(groveRepository.save(any())).thenThrow(new RuntimeException("db down"));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        verify(provider).uproot(any());
+        assertThat(entity.getState()).isNotEqualTo(GroveState.ORPHANED);
+    }
+
+    /**
+     * Ordering guard: teardown must precede record deletion, which is what makes a failed
+     * teardown recoverable. Verified by mutation — deleting the rows first fails this test.
+     */
+    @Test
+    void tearDownAndRecord_uprootsBeforeDeletingFruitRows() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        InOrder order = inOrder(provider, fruitRepository);
+        order.verify(provider).uproot(any());
+        order.verify(fruitRepository).deleteAllById(any());
+    }
+
+    @Test
+    void tearDownAndRecord_marksOrphanedRatherThanDormantWhenStopTeardownFails() {
+        Grove grove = groveWithSeedling();
+        GroveEntity entity = entityFor(grove, GroveState.DORMANT);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.DORMANT);
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getValue().getState()).isEqualTo(GroveState.ORPHANED);
+        verify(fruitRepository, never()).deleteAllById(any());
+    }
+
+    /**
+     * Gates the stopGrove wiring, which the direct-helper tests cannot: captures the
+     * TransactionSynchronization, invokes afterCommit(), and asserts the contract held. Pattern
+     * follows BeeServiceTest. Assertions use Mockito timeout() because afterCommit() dispatches
+     * to runAsync.
+     */
+    @Test
+    void stopGrove_marksOrphanedAndRetainsFruitWhenTeardownFails() {
+        Grove grove = groveWithSeedling().withState(GroveState.FLOURISHING);
+        GroveEntity entity = entityFor(grove, GroveState.FLOURISHING);
+        GroveProvider provider = mock(GroveProvider.class);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.uproot(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
+
+        // The captor holds one mutable GroveEntity, so getAllValues() would return N aliases of
+        // the same final-state object. Record the state AT SAVE TIME instead.
+        List<GroveState> atSave = new java.util.concurrent.CopyOnWriteArrayList<>();
+        when(groveRepository.save(any())).thenAnswer(inv -> {
+            atSave.add(((GroveEntity) inv.getArgument(0)).getState());
+            return inv.getArgument(0);
+        });
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+                .thenAnswer(invocation -> {
+                    TransactionSynchronization sync = invocation.getArgument(0);
+                    sync.afterCommit();
+                    return null;
+                });
+
+            groveService.stopGrove(grove.id());
+
+            verify(provider, timeout(2000)).uproot(any());
+            // atLeast(2), not atLeastOnce(): stopGrove's synchronous save(DORMANT) already
+            // satisfies atLeastOnce() before the async teardown runs, so the verify could return
+            // before Phase 1's save(ORPHANED). Requiring both forces the wait onto the async
+            // boundary. The failure path never reaches Phase 2, so it still saves exactly twice.
+            verify(groveRepository, timeout(2000).atLeast(2)).save(any());
+            assertThat(atSave).contains(GroveState.ORPHANED);
+            verify(fruitRepository, never()).deleteAllById(any());
+        }
     }
 }
