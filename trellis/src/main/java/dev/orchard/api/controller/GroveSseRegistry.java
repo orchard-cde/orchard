@@ -21,7 +21,15 @@ public class GroveSseRegistry {
     private static final Logger log = LoggerFactory.getLogger(GroveSseRegistry.class);
     private static final long SSE_TIMEOUT = 30 * 60 * 1000L; // 30 minutes
 
-    private final Map<UUID, CopyOnWriteArrayList<SseEmitter>> emitters = new ConcurrentHashMap<>();
+    private final Map<UUID, CopyOnWriteArrayList<SseEmitter>> emitters;
+
+    public GroveSseRegistry() {
+        this(new ConcurrentHashMap<>());
+    }
+
+    GroveSseRegistry(Map<UUID, CopyOnWriteArrayList<SseEmitter>> emitters) {
+        this.emitters = emitters;
+    }
 
     public SseEmitter subscribe(UUID groveId) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
@@ -31,7 +39,15 @@ public class GroveSseRegistry {
     }
 
     void register(UUID groveId, SseEmitter emitter) {
-        emitters.computeIfAbsent(groveId, k -> new CopyOnWriteArrayList<>()).add(emitter);
+        // Add inside compute() so it cannot interleave with remove() evicting a grove whose
+        // last subscriber just left; adding to a list already dropped from the map would
+        // leave the new subscriber silently receiving nothing.
+        emitters.compute(groveId, (key, groveEmitters) -> {
+            CopyOnWriteArrayList<SseEmitter> target =
+                groveEmitters != null ? groveEmitters : new CopyOnWriteArrayList<>();
+            target.add(emitter);
+            return target;
+        });
 
         Runnable removeEmitter = () -> remove(groveId, emitter);
         emitter.onCompletion(removeEmitter);
@@ -56,6 +72,9 @@ public class GroveSseRegistry {
             } catch (IOException e) {
                 log.debug("Subscriber for grove {} went away before event {}", groveId, eventName);
                 remove(groveId, emitter);
+            } catch (RuntimeException e) {
+                log.warn("Dropping SSE subscriber for grove {} after event {} failed", groveId, eventName, e);
+                remove(groveId, emitter);
             }
         }
     }
@@ -66,12 +85,9 @@ public class GroveSseRegistry {
     }
 
     private void remove(UUID groveId, SseEmitter emitter) {
-        CopyOnWriteArrayList<SseEmitter> groveEmitters = emitters.get(groveId);
-        if (groveEmitters != null) {
+        emitters.computeIfPresent(groveId, (key, groveEmitters) -> {
             groveEmitters.remove(emitter);
-            if (groveEmitters.isEmpty()) {
-                emitters.remove(groveId);
-            }
-        }
+            return groveEmitters.isEmpty() ? null : groveEmitters;
+        });
     }
 }
