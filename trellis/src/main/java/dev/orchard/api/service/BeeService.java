@@ -1,6 +1,7 @@
 package dev.orchard.api.service;
 
 import dev.orchard.api.dto.CreateBeeRequest;
+import dev.orchard.api.event.BeeRemovedEvent;
 import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
 import dev.orchard.apiary.BeeKeeperRegistry;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -162,6 +164,41 @@ public class BeeService {
 
             return smokedBee;
         });
+    }
+
+    private static final Set<BeeState> REMOVABLE_STATES =
+        EnumSet.of(BeeState.HIBERNATING, BeeState.SMOKED);
+
+    /**
+     * Removes a Bee record, but only while its recorded state is HIBERNATING or SMOKED, so a
+     * Bee that the platform believes is running cannot be deleted out from under its process.
+     * The state check is part of the delete statement rather than a preceding read, so a state
+     * change committing concurrently cannot be missed.
+     * <p>
+     * This is not a no-orphan guarantee. {@code wake} does not persist a state change before
+     * starting a process, and {@code SMOKED} is recorded before the stop command runs, so a
+     * live process can sit behind a removable-looking row. Closing that needs changes to those
+     * paths, tracked separately.
+     *
+     * @return {@code false} if no such Bee exists in the given Grove
+     * @throws IllegalStateException if the Bee exists in that Grove but is not in a removable state
+     */
+    @Transactional
+    public boolean removeBee(UUID groveId, UUID beeId) {
+        if (beeRepository.deleteRemovable(beeId, groveId, REMOVABLE_STATES) > 0) {
+            publishAfterCommit(new BeeRemovedEvent(beeId, groveId, Instant.now()));
+            return true;
+        }
+
+        // Nothing was deleted. Re-read only to report why; the safety decision was already
+        // made atomically above.
+        BeeEntity entity = beeRepository.findById(beeId).orElse(null);
+        if (entity == null || !groveId.equals(entity.getGroveId())) {
+            return false;
+        }
+        throw new IllegalStateException(
+            "Bee " + beeId + " must be HIBERNATING or SMOKED to be removed, current state: "
+                + entity.getState());
     }
 
     private void provisionBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {

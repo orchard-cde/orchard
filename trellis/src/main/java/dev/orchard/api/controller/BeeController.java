@@ -65,6 +65,15 @@ public class BeeController {
         return ResponseEntity.ok(new SwarmStatusResponse(groveId, bees.size(), byState));
     }
 
+    @DeleteMapping("/{beeId}")
+    public ResponseEntity<Void> removeBee(
+            @PathVariable UUID groveId,
+            @PathVariable UUID beeId) {
+        return beeService.removeBee(groveId, beeId)
+            ? ResponseEntity.noContent().build()
+            : ResponseEntity.notFound().build();
+    }
+
     @PostMapping("/{beeId}/actions/wake")
     public ResponseEntity<BeeResponse> wakeBee(
             @PathVariable UUID groveId,
