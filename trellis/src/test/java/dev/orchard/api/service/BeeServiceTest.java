@@ -24,12 +24,14 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -270,6 +272,175 @@ class BeeServiceTest {
 
             verify(keeper, timeout(500)).smoke(eq(bee), any(CommandRunner.class));
         }
+    }
+
+    @Test
+    void publishAfterCommit_withNoActiveTransaction_publishesImmediately() {
+        BeeStateChangedEvent event = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(TransactionSynchronizationManager::isSynchronizationActive).thenReturn(false);
+            tsm.when(TransactionSynchronizationManager::isActualTransactionActive).thenReturn(false);
+
+            beeService.publishAfterCommit(event);
+
+            verify(eventPublisher).publishEvent(event);
+            tsm.verify(() -> TransactionSynchronizationManager.registerSynchronization(any()), never());
+        }
+    }
+
+    @Test
+    void publishAfterCommit_withinATransaction_withholdsTheEventUntilCommit() {
+        BeeStateChangedEvent event = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
+        List<TransactionSynchronization> registered = newSynchronizationSink();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            stubActiveTransaction(tsm, registered);
+
+            beeService.publishAfterCommit(event);
+
+            verify(eventPublisher, never()).publishEvent(any());
+            assertThat(registered).hasSize(1);
+
+            registered.get(0).afterCommit();
+
+            verify(eventPublisher, times(1)).publishEvent(event);
+        }
+    }
+
+    @Test
+    void publishAfterCommit_publishesOnceWhenBothCallbacksRun() {
+        BeeStateChangedEvent event = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
+        List<TransactionSynchronization> registered = newSynchronizationSink();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            stubActiveTransaction(tsm, registered);
+            beeService.publishAfterCommit(event);
+
+            registered.get(0).afterCommit();
+            registered.get(0).afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
+
+            verify(eventPublisher, times(1)).publishEvent(event);
+        }
+    }
+
+    @Test
+    void publishAfterCommit_calledFromInsideAnotherAfterCommit_stillPublishesOnce() {
+        BeeStateChangedEvent event = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
+        List<TransactionSynchronization> registered = newSynchronizationSink();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            stubActiveTransaction(tsm, registered);
+
+            // An outer synchronization that calls the helper from its own afterCommit, which is
+            // the shape the smoke path has.
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    beeService.publishAfterCommit(event);
+                }
+            });
+            assertThat(registered).hasSize(1);
+
+            registered.get(0).afterCommit();
+
+            // The helper registered a second synchronization from inside that callback. Spring
+            // snapshots the list before invoking afterCommit, so this one only ever receives
+            // afterCompletion -- fire exactly that, and nothing else.
+            assertThat(registered).hasSize(2);
+            registered.get(1).afterCompletion(TransactionSynchronization.STATUS_COMMITTED);
+
+            verify(eventPublisher, times(1)).publishEvent(event);
+        }
+    }
+
+    @Test
+    void publishAfterCommit_onRollback_publishesNothing() {
+        BeeStateChangedEvent event = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
+        List<TransactionSynchronization> registered = newSynchronizationSink();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            stubActiveTransaction(tsm, registered);
+            beeService.publishAfterCommit(event);
+
+            registered.get(0).afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+            verify(eventPublisher, never()).publishEvent(any());
+        }
+    }
+
+    @Test
+    void publishAfterCommit_whenAListenerThrows_doesNotPropagateToTheCaller() {
+        BeeStateChangedEvent event = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
+        doThrow(new IllegalStateException("listener blew up"))
+            .when(eventPublisher).publishEvent(any(Object.class));
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(TransactionSynchronizationManager::isSynchronizationActive).thenReturn(false);
+            tsm.when(TransactionSynchronizationManager::isActualTransactionActive).thenReturn(false);
+
+            assertThatNoException().isThrownBy(() -> beeService.publishAfterCommit(event));
+        }
+    }
+
+    @Test
+    void wake_hibernating_publishesBuzzingEvent() {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE))
+            .withState(BeeState.HIBERNATING);
+        BeeEntity entity = mock(BeeEntity.class);
+        when(beeRepository.findById(bee.id())).thenReturn(Optional.of(entity));
+        when(entity.toModel()).thenReturn(bee);
+
+        BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        GroveEntity groveEntity = mock(GroveEntity.class);
+        when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
+        when(keeper.release(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        stubCommandRunner();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+                .thenAnswer(invocation -> {
+                    TransactionSynchronization sync = invocation.getArgument(0);
+                    sync.afterCommit();
+                    return null;
+                });
+
+            beeService.wake(bee.id());
+
+            ArgumentCaptor<BeeStateChangedEvent> published =
+                ArgumentCaptor.forClass(BeeStateChangedEvent.class);
+            verify(eventPublisher, timeout(500)).publishEvent(published.capture());
+            assertThat(published.getValue().beeId()).isEqualTo(bee.id());
+            assertThat(published.getValue().newState()).isEqualTo(BeeState.BUZZING);
+        }
+    }
+
+    private List<TransactionSynchronization> newSynchronizationSink() {
+        return new ArrayList<>();
+    }
+
+    private void stubActiveTransaction(MockedStatic<TransactionSynchronizationManager> tsm,
+                                       List<TransactionSynchronization> sink) {
+        tsm.when(TransactionSynchronizationManager::isSynchronizationActive).thenReturn(true);
+        tsm.when(TransactionSynchronizationManager::isActualTransactionActive).thenReturn(true);
+        tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+            .thenAnswer(invocation -> {
+                sink.add(invocation.getArgument(0));
+                return null;
+            });
     }
 
     private void setupFlourishingGrove() {

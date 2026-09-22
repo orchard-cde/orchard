@@ -21,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class BeeService {
@@ -190,7 +191,7 @@ public class BeeService {
             entity.setStartedAt(releasedBee.startedAt());
             beeRepository.save(entity);
 
-            eventPublisher.publishEvent(BeeStateChangedEvent.of(
+            publishAfterCommit(BeeStateChangedEvent.of(
                 bee.id(), bee.groveId(), previousState, BeeState.BUZZING));
 
             return CompletableFuture.completedFuture(releasedBee);
@@ -202,10 +203,56 @@ public class BeeService {
             BeeEntity entity = beeRepository.findById(beeId).orElseThrow();
             entity.setState(newState);
             beeRepository.save(entity);
-            eventPublisher.publishEvent(BeeStateChangedEvent.of(
+            publishAfterCommit(BeeStateChangedEvent.of(
                 beeId, entity.getGroveId(), previousState, newState));
         } catch (Exception e) {
             log.error("Failed to update bee state for bee {}", beeId, e);
+        }
+    }
+
+    /**
+     * Publishes an event so no listener can run before the write that caused it has committed:
+     * deferred when a transaction is in progress, published immediately when there is none.
+     * <p>
+     * Safe to call from any phase, including from inside another {@code afterCommit} callback.
+     * Spring snapshots synchronizations before invoking {@code afterCommit}, so one registered
+     * during that phase would never receive {@code afterCommit} -- it receives
+     * {@code afterCompletion} instead, which is why both are implemented and guarded.
+     * <p>
+     * Delivery is best-effort: a throwing listener is logged, never propagated, so a failed
+     * notification cannot invalidate an already-committed write.
+     */
+    void publishAfterCommit(Object event) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                private final AtomicBoolean published = new AtomicBoolean();
+
+                @Override
+                public void afterCommit() {
+                    publishOnce(event, published);
+                }
+
+                @Override
+                public void afterCompletion(int status) {
+                    if (status == STATUS_COMMITTED) {
+                        publishOnce(event, published);
+                    }
+                }
+            });
+            return;
+        }
+        publishOnce(event, new AtomicBoolean());
+    }
+
+    private void publishOnce(Object event, AtomicBoolean published) {
+        if (!published.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            eventPublisher.publishEvent(event);
+        } catch (RuntimeException e) {
+            log.error("Failed to publish bee event {}", event, e);
         }
     }
 
