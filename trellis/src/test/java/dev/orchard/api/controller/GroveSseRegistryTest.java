@@ -123,8 +123,13 @@ class GroveSseRegistryTest {
         public CopyOnWriteArrayList<SseEmitter> compute(UUID key,
                 java.util.function.BiFunction<? super UUID, ? super CopyOnWriteArrayList<SseEmitter>,
                         ? extends CopyOnWriteArrayList<SseEmitter>> fn) {
-            calls.add("compute");
-            return super.compute(key, fn);
+            // Record the returned list's size, not just that compute() ran: a fix that calls
+            // compute() but performs the add() outside the lambda would still say "compute"
+            // while leaving the same interleaving window open. Size 1 witnesses the add
+            // happened inside fn, before this override observes the result.
+            CopyOnWriteArrayList<SseEmitter> result = super.compute(key, fn);
+            calls.add("compute:" + (result == null ? "null" : result.size()));
+            return result;
         }
 
         @Override
@@ -160,7 +165,7 @@ class GroveSseRegistryTest {
         assertThat(map.calls)
             .as("registration must be a single atomic map operation, or it can interleave "
               + "with a removal evicting the key")
-            .containsExactly("compute");
+            .containsExactly("compute:1");
     }
 
     @Test
@@ -179,6 +184,7 @@ class GroveSseRegistryTest {
             .as("removal must evaluate emptiness and evict the key under one lock")
             .containsExactly("computeIfPresent");
         assertThat(seamed.subscriberCount(groveId)).isZero();
+        assertThat(map).doesNotContainKey(groveId);
     }
 
     private static String rendered(SseEmitter.SseEventBuilder builder) {
