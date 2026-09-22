@@ -197,8 +197,8 @@ public class BeeService {
             return false;
         }
         throw new IllegalStateException(
-            "Bee " + beeId + " must be HIBERNATING or SMOKED to be removed, current state: "
-                + entity.getState());
+            "Bee " + beeId + " was not in a removable state (HIBERNATING or SMOKED) when "
+                + "removal was attempted; state now: " + entity.getState());
     }
 
     private void provisionBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {

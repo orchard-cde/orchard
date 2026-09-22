@@ -475,6 +475,30 @@ class BeeServiceTest {
     }
 
     @Test
+    void removeBee_stoppedBee_deferredPath_publishesAfterCommit() {
+        UUID beeId = UUID.randomUUID();
+        when(beeRepository.deleteRemovable(eq(beeId), eq(groveId), any())).thenReturn(1);
+        List<TransactionSynchronization> registered = newSynchronizationSink();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            stubActiveTransaction(tsm, registered);
+
+            assertThat(beeService.removeBee(groveId, beeId)).isTrue();
+
+            verify(eventPublisher, never()).publishEvent(any());
+            assertThat(registered).hasSize(1);
+
+            registered.get(0).afterCommit();
+
+            ArgumentCaptor<BeeRemovedEvent> published = ArgumentCaptor.forClass(BeeRemovedEvent.class);
+            verify(eventPublisher, times(1)).publishEvent(published.capture());
+            assertThat(published.getValue().beeId()).isEqualTo(beeId);
+            assertThat(published.getValue().groveId()).isEqualTo(groveId);
+        }
+    }
+
+    @Test
     void removeBee_onlyOffersTheTwoStoppedStatesToTheDelete() {
         UUID beeId = UUID.randomUUID();
         when(beeRepository.deleteRemovable(eq(beeId), eq(groveId), any())).thenReturn(1);
