@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(GroveEventController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(GroveEventController.class)
+@Import({GroveEventController.class, GroveSseRegistry.class})
 class GroveEventStreamTest {
 
     @Autowired
@@ -28,6 +28,9 @@ class GroveEventStreamTest {
 
     @Autowired
     private ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    private GroveSseRegistry sseRegistry;
 
     @Test
     void groveStateChange_reachesAnOpenSubscriberOfThatGrove() throws Exception {
@@ -61,5 +64,16 @@ class GroveEventStreamTest {
             GroveState.PLANTING, GroveState.GROWING, Instant.parse("2026-09-21T12:34:56Z")));
 
         assertThat(stream.getResponse().getContentAsString()).doesNotContain("someone-elses-grove");
+    }
+
+    @Test
+    void subscribing_registersTheEmitterOnTheSharedRegistry() throws Exception {
+        UUID groveId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/groves/{groveId}/events", groveId))
+            .andExpect(request().asyncStarted())
+            .andReturn();
+
+        assertThat(sseRegistry.subscriberCount(groveId)).isEqualTo(1);
     }
 }
