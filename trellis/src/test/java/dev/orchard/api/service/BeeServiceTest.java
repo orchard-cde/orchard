@@ -396,6 +396,31 @@ class BeeServiceTest {
     }
 
     @Test
+    void publishAfterCommit_calledTwiceOnSameInstance_publishesBothEvents() {
+        BeeStateChangedEvent firstEvent = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
+        BeeStateChangedEvent secondEvent = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.BUZZING, BeeState.SMOKED);
+        List<TransactionSynchronization> registered = newSynchronizationSink();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            stubActiveTransaction(tsm, registered);
+
+            beeService.publishAfterCommit(firstEvent);
+            beeService.publishAfterCommit(secondEvent);
+
+            assertThat(registered).hasSize(2);
+
+            registered.get(0).afterCommit();
+            registered.get(1).afterCommit();
+
+            verify(eventPublisher, times(1)).publishEvent(firstEvent);
+            verify(eventPublisher, times(1)).publishEvent(secondEvent);
+        }
+    }
+
+    @Test
     void wake_hibernating_publishesBuzzingEvent() {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE))
             .withState(BeeState.HIBERNATING);
