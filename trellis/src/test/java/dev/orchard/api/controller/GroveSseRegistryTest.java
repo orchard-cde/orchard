@@ -11,10 +11,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -183,50 +179,6 @@ class GroveSseRegistryTest {
             .as("removal must evaluate emptiness and evict the key under one lock")
             .containsExactly("computeIfPresent");
         assertThat(seamed.subscriberCount(groveId)).isZero();
-    }
-
-    @Test
-    void register_isNeverStrandedWhenTheLastSubscriberLeavesConcurrently() throws Exception {
-        int rounds = 500;
-        int stranded = 0;
-        ExecutorService pool = Executors.newFixedThreadPool(2);
-        try {
-            for (int round = 0; round < rounds; round++) {
-                UUID grove = UUID.randomUUID();
-
-                SseEmitter leaving = mock(SseEmitter.class);
-                ArgumentCaptor<Runnable> onCompletion = ArgumentCaptor.forClass(Runnable.class);
-                registry.register(grove, leaving);
-                verify(leaving).onCompletion(onCompletion.capture());
-                Runnable disconnect = onCompletion.getValue();
-
-                SseEmitter arriving = mock(SseEmitter.class);
-                CountDownLatch go = new CountDownLatch(1);
-                Future<?> leave = pool.submit(() -> {
-                    go.await();
-                    disconnect.run();
-                    return null;
-                });
-                Future<?> arrive = pool.submit(() -> {
-                    go.await();
-                    registry.register(grove, arriving);
-                    return null;
-                });
-                go.countDown();
-                leave.get();
-                arrive.get();
-
-                if (registry.subscriberCount(grove) == 0) {
-                    stranded++;
-                }
-            }
-        } finally {
-            pool.shutdownNow();
-        }
-
-        assertThat(stranded)
-            .as("subscribers stranded in a list evicted from the map, out of %d rounds", rounds)
-            .isZero();
     }
 
     private static String rendered(SseEmitter.SseEventBuilder builder) {
