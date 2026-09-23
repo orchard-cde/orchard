@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -21,13 +20,13 @@ public class GroveSseRegistry {
     private static final Logger log = LoggerFactory.getLogger(GroveSseRegistry.class);
     private static final long SSE_TIMEOUT = 30 * 60 * 1000L; // 30 minutes
 
-    private final Map<UUID, CopyOnWriteArrayList<SseEmitter>> emitters;
+    private final ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>> emitters;
 
     public GroveSseRegistry() {
         this(new ConcurrentHashMap<>());
     }
 
-    GroveSseRegistry(Map<UUID, CopyOnWriteArrayList<SseEmitter>> emitters) {
+    GroveSseRegistry(ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>> emitters) {
         this.emitters = emitters;
     }
 

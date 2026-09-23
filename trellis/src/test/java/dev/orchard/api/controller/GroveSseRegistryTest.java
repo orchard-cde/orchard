@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -85,6 +86,48 @@ class GroveSseRegistryTest {
         onCompletion.getValue().run();
 
         assertThat(registry.subscriberCount(groveId)).isZero();
+    }
+
+    @Test
+    void subscriberCount_returnsToZeroWhenTheStreamTimesOut() {
+        SseEmitter emitter = mock(SseEmitter.class);
+        ArgumentCaptor<Runnable> onTimeout = ArgumentCaptor.forClass(Runnable.class);
+        registry.register(groveId, emitter);
+        verify(emitter).onTimeout(onTimeout.capture());
+
+        onTimeout.getValue().run();
+
+        assertThat(registry.subscriberCount(groveId)).isZero();
+    }
+
+    @Test
+    void subscriberCount_returnsToZeroWhenTheStreamErrors() {
+        SseEmitter emitter = mock(SseEmitter.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Consumer<Throwable>> onError = ArgumentCaptor.forClass(Consumer.class);
+        registry.register(groveId, emitter);
+        verify(emitter).onError(onError.capture());
+
+        onError.getValue().accept(new IllegalStateException("transport gone"));
+
+        assertThat(registry.subscriberCount(groveId)).isZero();
+    }
+
+    @Test
+    void register_afterLastSubscriberLeaves_reachesTheNewSubscriber() throws IOException {
+        SseEmitter first = mock(SseEmitter.class);
+        ArgumentCaptor<Runnable> onCompletion = ArgumentCaptor.forClass(Runnable.class);
+        registry.register(groveId, first);
+        verify(first).onCompletion(onCompletion.capture());
+        onCompletion.getValue().run();
+        assertThat(registry.subscriberCount(groveId)).isZero();
+
+        SseEmitter second = mock(SseEmitter.class);
+        registry.register(groveId, second);
+
+        assertThat(registry.subscriberCount(groveId)).isEqualTo(1);
+        registry.broadcast(groveId, "bee-state-changed", Map.of());
+        verify(second).send(any(SseEmitter.SseEventBuilder.class));
     }
 
     @Test

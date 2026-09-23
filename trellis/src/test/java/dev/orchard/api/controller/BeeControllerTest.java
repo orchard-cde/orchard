@@ -154,7 +154,8 @@ class BeeControllerTest {
     @Test
     void removeBee_beeStillRunning_returns409() throws Exception {
         when(beeService.removeBee(groveId, beeId)).thenThrow(new IllegalStateException(
-            "Bee " + beeId + " must be HIBERNATING or SMOKED to be removed, current state: BUZZING"));
+            "Bee " + beeId + " was not in a removable state (HIBERNATING or SMOKED) when "
+                + "removal was attempted; state now: BUZZING"));
 
         mockMvc.perform(delete("/api/groves/{groveId}/bees/{beeId}", groveId, beeId))
             .andExpect(status().isConflict())

@@ -157,7 +157,7 @@ public class BeeService {
                     } else {
                         log.warn("Skipping keeper.smoke() for bee {}: no registered keeper or grove", beeId);
                     }
-                    eventPublisher.publishEvent(BeeStateChangedEvent.of(
+                    publishAfterCommit(BeeStateChangedEvent.of(
                         smokedBee.id(), smokedBee.groveId(), previousState, BeeState.SMOKED));
                 }
             });

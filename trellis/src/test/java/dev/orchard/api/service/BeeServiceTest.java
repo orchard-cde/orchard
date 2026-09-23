@@ -398,6 +398,25 @@ class BeeServiceTest {
     }
 
     @Test
+    void publishAfterCommit_deferredPath_whenAListenerThrows_doesNotPropagateToTheCaller() {
+        BeeStateChangedEvent event = BeeStateChangedEvent.of(
+            UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
+        doThrow(new IllegalStateException("listener blew up"))
+            .when(eventPublisher).publishEvent(any(Object.class));
+        List<TransactionSynchronization> registered = newSynchronizationSink();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            stubActiveTransaction(tsm, registered);
+
+            beeService.publishAfterCommit(event);
+
+            assertThat(registered).hasSize(1);
+            assertThatNoException().isThrownBy(() -> registered.get(0).afterCommit());
+        }
+    }
+
+    @Test
     void publishAfterCommit_calledTwiceOnSameInstance_publishesBothEvents() {
         BeeStateChangedEvent firstEvent = BeeStateChangedEvent.of(
             UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
