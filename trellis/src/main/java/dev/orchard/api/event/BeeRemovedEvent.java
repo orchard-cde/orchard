@@ -4,8 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Published after a Bee record has been removed. Carries no state, because the Bee no longer
- * has one; consumers drop the Bee from their view.
+ * Carries no state: a removed Bee no longer has one. Consumers drop the Bee from their view.
  */
 public record BeeRemovedEvent(
     UUID beeId,

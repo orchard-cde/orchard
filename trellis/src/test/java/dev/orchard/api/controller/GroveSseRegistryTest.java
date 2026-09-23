@@ -166,10 +166,8 @@ class GroveSseRegistryTest {
         public CopyOnWriteArrayList<SseEmitter> compute(UUID key,
                 java.util.function.BiFunction<? super UUID, ? super CopyOnWriteArrayList<SseEmitter>,
                         ? extends CopyOnWriteArrayList<SseEmitter>> fn) {
-            // Record the returned list's size, not just that compute() ran: a fix that calls
-            // compute() but performs the add() outside the lambda would still say "compute"
-            // while leaving the same interleaving window open. Size 1 witnesses the add
-            // happened inside fn, before this override observes the result.
+            // Record the returned list's size, not just that compute() ran: an add() performed
+            // outside the lambda would still say "compute" while leaving the window open.
             CopyOnWriteArrayList<SseEmitter> result = super.compute(key, fn);
             calls.add("compute:" + (result == null ? "null" : result.size()));
             return result;
