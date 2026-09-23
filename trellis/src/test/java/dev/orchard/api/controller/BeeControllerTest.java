@@ -133,4 +133,32 @@ class BeeControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.state").value("SMOKED"));
     }
+
+    @Test
+    void removeBee_returns204WithNoBody() throws Exception {
+        when(beeService.removeBee(groveId, beeId)).thenReturn(true);
+
+        mockMvc.perform(delete("/api/groves/{groveId}/bees/{beeId}", groveId, beeId))
+            .andExpect(status().isNoContent())
+            .andExpect(content().string(""));
+    }
+
+    @Test
+    void removeBee_notFound_returns404() throws Exception {
+        when(beeService.removeBee(groveId, beeId)).thenReturn(false);
+
+        mockMvc.perform(delete("/api/groves/{groveId}/bees/{beeId}", groveId, beeId))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void removeBee_beeStillRunning_returns409() throws Exception {
+        when(beeService.removeBee(groveId, beeId)).thenThrow(new IllegalStateException(
+            "Bee " + beeId + " was not in a removable state (HIBERNATING or SMOKED) when "
+                + "removal was attempted; state now: BUZZING"));
+
+        mockMvc.perform(delete("/api/groves/{groveId}/bees/{beeId}", groveId, beeId))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.message", containsString("HIBERNATING or SMOKED")));
+    }
 }
