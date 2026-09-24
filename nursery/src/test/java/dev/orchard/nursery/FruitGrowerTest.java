@@ -7,7 +7,7 @@ import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
 import dev.orchard.vine.CommandRunner;
-import dev.orchard.vine.SshExecutor;
+import dev.orchard.vine.SshVine;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -293,6 +293,6 @@ class FruitGrowerTest {
 
     private static CommandRunner runner() {
         // 127.0.0.255 / port 1 — guaranteed to refuse on any host the test runs on.
-        return new SshExecutor("127.0.0.255", 1, SEEDLING_ID);
+        return new SshVine("127.0.0.255", 1, SEEDLING_ID).commands();
     }
 }

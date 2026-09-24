@@ -11,7 +11,7 @@ import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.vine.SshExecutor;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.trellis.OrchardApplication;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -97,8 +97,18 @@ class FruitGrowerIT {
         waitForCloudInit();
     }
 
+    /**
+     * Resolves the command channel the same way production does — through the provider's
+     * {@link dev.orchard.vine.Vine}, not by constructing an SSH client. Deliberately fresh per
+     * call: {@code vine()} rebuilds from the seedling's current endpoint (#86 stage 2), and a
+     * container-backed provider returns a non-SSH runner here without this test changing.
+     */
+    private CommandRunner commands() {
+        return provider.vine(seedling).commands();
+    }
+
     private void waitForCloudInit() {
-        SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
+        CommandRunner ssh = commands();
         int maxAttempts = 60;
         for (int i = 0; i < maxAttempts; i++) {
             try {
@@ -124,7 +134,7 @@ class FruitGrowerIT {
     @Test
     @Order(1)
     void devcontainerCliIsInstalledAtExpectedVersion() throws Exception {
-        String version = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id()).execute("devcontainer --version").trim();
+        String version = commands().execute("devcontainer --version").trim();
         assertThat(version)
             .as("cloud-init must install the pinned @devcontainers/cli version")
             .isEqualTo(devcontainerCliConfig.version());
@@ -135,7 +145,7 @@ class FruitGrowerIT {
     void growsFruitViaCliAndPreservesContainerName() throws Exception {
         // Stage devcontainer.json with a real, public feature on the seedling's workspace.
         // The CLI reads /workspace/.devcontainer/devcontainer.json by default.
-        SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
+        CommandRunner ssh = commands();
         ssh.execute("mkdir -p /workspace/.devcontainer");
         String devcontainerJson = """
             {
@@ -200,7 +210,7 @@ class FruitGrowerIT {
         // common-utils with username=orchard creates a real local user inside the container.
         // `id orchard` proves the feature actually ran — the legacy docker path would silently
         // skip features and this assertion would fail with "no such user".
-        String idOutput = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id())
+        String idOutput = commands()
             .execute("docker exec " + grown.containerId() + " id " + FEATURE_USERNAME)
             .trim();
 
@@ -216,7 +226,7 @@ class FruitGrowerIT {
     void picksAndCompostsCleanly() throws Exception {
         assertThat(grown).as("grown must be set by the previous test").isNotNull();
 
-        SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
+        CommandRunner ssh = commands();
 
         Fruit picked = fruitGrower.pick(ssh, "/workspace", seedling.id(), grown).join();
         assertThat(picked.state()).isEqualTo(FruitState.PICKED);
@@ -224,7 +234,7 @@ class FruitGrowerIT {
         fruitGrower.compost(ssh, "/workspace", seedling.id(), grown).join();
 
         // After compost, docker inspect should fail (non-zero exit) because the container is gone.
-        // SshExecutor.execute() raises IOException on non-zero exit — that's the success signal here.
+        // CommandRunner.execute() raises IOException on non-zero exit — that's the success signal here.
         boolean inspectFailed;
         try {
             ssh.execute("docker inspect " + grown.containerId() + " > /dev/null 2>&1");
@@ -251,7 +261,7 @@ class FruitGrowerIT {
 
         Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
 
-        SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
+        CommandRunner ssh = commands();
         Fruit devfileGrown = fruitGrower.grow(ssh, "/workspace", seedling.id(), budding).join();
 
         try {
@@ -278,7 +288,7 @@ class FruitGrowerIT {
         // Layer 1: best-effort container teardown if a test failed mid-way and grown is still set.
         if (grown != null && grown.containerId() != null) {
             try {
-                SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
+                CommandRunner ssh = commands();
                 fruitGrower.compost(ssh, "/workspace", seedling.id(), grown).join();
             } catch (Exception ignored) {
                 // Fall through to VM teardown.

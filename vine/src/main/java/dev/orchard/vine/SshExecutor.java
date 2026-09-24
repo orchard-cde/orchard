@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * Executes commands on a remote target (VM) over SSH.
  * Shared utility for any component that needs to run remote commands.
  */
-public class SshExecutor implements CommandRunner {
+class SshExecutor implements CommandRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SshExecutor.class);
     private static final long DEFAULT_TIMEOUT_SECONDS = 60;
@@ -29,7 +29,7 @@ public class SshExecutor implements CommandRunner {
     private final int port;
     private final UUID targetId;
 
-    public SshExecutor(String host, int port, UUID targetId) {
+    SshExecutor(String host, int port, UUID targetId) {
         this.host = host;
         this.port = port;
         this.targetId = targetId;

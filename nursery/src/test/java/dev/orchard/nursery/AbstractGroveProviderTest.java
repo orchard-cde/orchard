@@ -5,7 +5,6 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.vine.CommandRunner;
-import dev.orchard.vine.SshExecutor;
 import dev.orchard.vine.SshVine;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.AfterEach;
@@ -30,6 +29,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AbstractGroveProviderTest {
+
+    /**
+     * The runner class an SSH-backed {@link SshVine} hands out. Derived rather than named: the
+     * implementation is package-private to {@code :vine} precisely so nothing outside can
+     * construct or reference it directly, and asserting "the kind SshVine produces" is the claim
+     * these tests actually want.
+     */
+    private static final Class<?> SSH_RUNNER =
+        new SshVine("10.0.0.1", 22, UUID.randomUUID()).commands().getClass();
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -250,11 +258,11 @@ class AbstractGroveProviderTest {
         FruitGrower fruitGrower = mock(FruitGrower.class);
         Seedling s = TestSeedlings.fake();
         Fruit f = budded(s);
-        when(fruitGrower.grow(argThat(r -> r instanceof SshExecutor), eq("/workspace"), eq(s.id()), eq(f)))
+        when(fruitGrower.grow(argThat(r -> r.getClass() == SSH_RUNNER), eq("/workspace"), eq(s.id()), eq(f)))
             .thenReturn(CompletableFuture.completedFuture(f));
 
         assertThat(new NoHookProvider(executor, fruitGrower).growFruit(s, f).join()).isSameAs(f);
-        verify(fruitGrower).grow(argThat(r -> r instanceof SshExecutor), eq("/workspace"), eq(s.id()), eq(f));
+        verify(fruitGrower).grow(argThat(r -> r.getClass() == SSH_RUNNER), eq("/workspace"), eq(s.id()), eq(f));
     }
 
     @Test
@@ -262,12 +270,12 @@ class AbstractGroveProviderTest {
         FruitGrower fruitGrower = mock(FruitGrower.class);
         Seedling s = TestSeedlings.fake();
         Fruit f = budded(s);
-        when(fruitGrower.compost(argThat(r -> r instanceof SshExecutor), eq("/workspace"), eq(s.id()), eq(f)))
+        when(fruitGrower.compost(argThat(r -> r.getClass() == SSH_RUNNER), eq("/workspace"), eq(s.id()), eq(f)))
             .thenReturn(CompletableFuture.completedFuture(null));
 
         new NoHookProvider(executor, fruitGrower).compostFruit(s, f).join();
 
-        verify(fruitGrower).compost(argThat(r -> r instanceof SshExecutor), eq("/workspace"), eq(s.id()), eq(f));
+        verify(fruitGrower).compost(argThat(r -> r.getClass() == SSH_RUNNER), eq("/workspace"), eq(s.id()), eq(f));
     }
 
     @Test
