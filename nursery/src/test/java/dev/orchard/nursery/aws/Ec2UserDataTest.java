@@ -75,14 +75,6 @@ class Ec2UserDataTest {
     }
 
     @Test
-    void render_outputForAllSpecSizes_isStable() {
-        // The rendered output no longer depends on any per-instance spec.
-        assertThat(Ec2UserData.render(PUBLIC_KEY, CLI_VERSION)).contains("cultivator");
-        assertThat(Ec2UserData.render(PUBLIC_KEY, CLI_VERSION)).contains("cultivator");
-        assertThat(Ec2UserData.render(PUBLIC_KEY, CLI_VERSION)).contains("cultivator");
-    }
-
-    @Test
     void render_blankPublicKey_throws() {
         assertThatThrownBy(() -> Ec2UserData.render("", CLI_VERSION))
             .isInstanceOf(IllegalArgumentException.class)
