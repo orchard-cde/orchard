@@ -188,7 +188,7 @@ public class FruitGrower {
             return fruit;
         }
         return new Fruit(
-            fruit.id(), fruit.groveId(), fruit.seedlingId(),
+            fruit.id(), fruit.groveId(), fruit.plotId(),
             fruit.containerId(), newName, fruit.serviceName(), fruit.seed(),
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt());
     }
@@ -687,7 +687,7 @@ public class FruitGrower {
             .build();
 
         Fruit imageFruit = new Fruit(
-            fruit.id(), fruit.groveId(), fruit.seedlingId(),
+            fruit.id(), fruit.groveId(), fruit.plotId(),
             null, fruit.containerName(), fruit.serviceName(), imageOnlySeed,
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt()
         );
