@@ -166,7 +166,7 @@ class FruitGrowerIT {
         String originallyAssignedName = budding.containerName();
         assertThat(originallyAssignedName).isNotBlank();
 
-        grown = fruitGrower.grow(seedling, budding).join();
+        grown = fruitGrower.grow(ssh, "/workspace", seedling.id(), budding).join();
 
         assertThat(grown.state())
             .as("Fruit must reach RIPE — grow() returned %s", grown.state())
@@ -216,14 +216,15 @@ class FruitGrowerIT {
     void picksAndCompostsCleanly() throws Exception {
         assertThat(grown).as("grown must be set by the previous test").isNotNull();
 
-        Fruit picked = fruitGrower.pick(seedling, grown).join();
+        SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
+
+        Fruit picked = fruitGrower.pick(ssh, "/workspace", seedling.id(), grown).join();
         assertThat(picked.state()).isEqualTo(FruitState.PICKED);
 
-        fruitGrower.compost(seedling, grown).join();
+        fruitGrower.compost(ssh, "/workspace", seedling.id(), grown).join();
 
         // After compost, docker inspect should fail (non-zero exit) because the container is gone.
         // SshExecutor.execute() raises IOException on non-zero exit — that's the success signal here.
-        SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
         boolean inspectFailed;
         try {
             ssh.execute("docker inspect " + grown.containerId() + " > /dev/null 2>&1");
@@ -250,25 +251,25 @@ class FruitGrowerIT {
 
         Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
 
-        Fruit devfileGrown = fruitGrower.grow(seedling, budding).join();
+        SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
+        Fruit devfileGrown = fruitGrower.grow(ssh, "/workspace", seedling.id(), budding).join();
 
         try {
             assertThat(devfileGrown.state()).isEqualTo(FruitState.RIPE);
             assertThat(devfileGrown.containerId()).isNotBlank();
 
             // preStartCommand ran on the seedling host before the container started.
-            String preStartMarker =
-                new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id()).execute("cat /tmp/prestart-marker").trim();
+            String preStartMarker = ssh.execute("cat /tmp/prestart-marker").trim();
             assertThat(preStartMarker).isEqualTo("pre-start-ran");
 
             // postStartCommand ran inside the container after it started.
-            String postStartMarker = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id())
+            String postStartMarker = ssh
                 .execute("docker exec " + devfileGrown.containerId() + " cat /tmp/poststart-marker")
                 .trim();
             assertThat(postStartMarker).isEqualTo("post-start-ran");
         } finally {
-            fruitGrower.compost(seedling, devfileGrown).join();
-            new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id()).execute("rm -f /tmp/prestart-marker");
+            fruitGrower.compost(ssh, "/workspace", seedling.id(), devfileGrown).join();
+            ssh.execute("rm -f /tmp/prestart-marker");
         }
     }
 
@@ -277,7 +278,8 @@ class FruitGrowerIT {
         // Layer 1: best-effort container teardown if a test failed mid-way and grown is still set.
         if (grown != null && grown.containerId() != null) {
             try {
-                fruitGrower.compost(seedling, grown).join();
+                SshExecutor ssh = new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
+                fruitGrower.compost(ssh, "/workspace", seedling.id(), grown).join();
             } catch (Exception ignored) {
                 // Fall through to VM teardown.
             }

@@ -106,12 +106,12 @@ public abstract class AbstractGroveProvider<L> implements GroveProvider {
 
     @Override
     public CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit) {
-        return fruitGrower.grow(seedling, fruit);
+        return fruitGrower.grow(vine(seedling).commands(), "/workspace", seedling.id(), fruit);
     }
 
     @Override
     public CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit) {
-        return fruitGrower.compost(seedling, fruit);
+        return fruitGrower.compost(vine(seedling).commands(), "/workspace", seedling.id(), fruit);
     }
 
     /**

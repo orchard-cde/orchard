@@ -18,6 +18,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -243,10 +245,11 @@ class AbstractGroveProviderTest {
         FruitGrower fruitGrower = mock(FruitGrower.class);
         Seedling s = TestSeedlings.fake();
         Fruit f = budded(s);
-        when(fruitGrower.grow(s, f)).thenReturn(CompletableFuture.completedFuture(f));
+        when(fruitGrower.grow(any(), eq("/workspace"), eq(s.id()), eq(f)))
+            .thenReturn(CompletableFuture.completedFuture(f));
 
         assertThat(new NoHookProvider(executor, fruitGrower).growFruit(s, f).join()).isSameAs(f);
-        verify(fruitGrower).grow(s, f);
+        verify(fruitGrower).grow(any(), eq("/workspace"), eq(s.id()), eq(f));
     }
 
     @Test
@@ -254,11 +257,12 @@ class AbstractGroveProviderTest {
         FruitGrower fruitGrower = mock(FruitGrower.class);
         Seedling s = TestSeedlings.fake();
         Fruit f = budded(s);
-        when(fruitGrower.compost(s, f)).thenReturn(CompletableFuture.completedFuture(null));
+        when(fruitGrower.compost(any(), eq("/workspace"), eq(s.id()), eq(f)))
+            .thenReturn(CompletableFuture.completedFuture(null));
 
         new NoHookProvider(executor, fruitGrower).compostFruit(s, f).join();
 
-        verify(fruitGrower).compost(s, f);
+        verify(fruitGrower).compost(any(), eq("/workspace"), eq(s.id()), eq(f));
     }
 
     @Test
