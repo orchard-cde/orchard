@@ -6,9 +6,6 @@ dependencies {
     // SshExecutor logs command execution/failures over SSH.
     implementation("org.slf4j:slf4j-api")
 
-    // Main sources take a bare host/port/id endpoint and no longer need :core (#86 stage 2).
-    // VineTestSeedlings still builds Seedling fixtures for these tests, so the edge survives
-    // test-scoped only.
-    testImplementation(project(":core"))
+    // Main and test sources take a bare host/port/id endpoint; :vine has no :core edge (#86 stage 2).
     testRuntimeOnly("org.slf4j:slf4j-simple")
 }

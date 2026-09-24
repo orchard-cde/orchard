@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -165,7 +166,7 @@ class FruitGrowerTest {
 
         // attach() runs the post-attach command via CLI exec and flips to RIPE.
         Fruit afterAttach = grower.attach(runner, WORKSPACE_PATH, SEEDLING_ID, afterGrow).get();
-        verify(cli).exec(any(), eq(WORKSPACE_PATH), eq("echo hi"));
+        verify(cli).exec(same(runner), eq(WORKSPACE_PATH), eq("echo hi"));
         assertThat(afterAttach.state()).isEqualTo(FruitState.RIPE);
     }
 
@@ -274,7 +275,7 @@ class FruitGrowerTest {
             .isEqualTo("real-container-name")
             .isNotEqualTo(originalContainerName);
         assertThat(result.containerId()).isEqualTo("c-real");
-        verify(cli).inspectContainerName(any(), eq("c-real"));
+        verify(cli).inspectContainerName(same(runner), eq("c-real"));
     }
 
     // --- helpers -----------------------------------------------------------------------------

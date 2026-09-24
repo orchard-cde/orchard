@@ -1,9 +1,9 @@
 package dev.orchard.vine;
 
-import dev.orchard.core.model.Seedling;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,9 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SshExecutorCommandTest {
 
     @Test
-    void wiresSeedlingTargetAndLivenessOptions() {
-        Seedling s = VineTestSeedlings.fake(2222);
-        List<String> argv = new SshExecutor(s.ipAddress(), s.sshPort(), s.id()).buildSshCommand("echo hi");
+    void wiresTargetAndLivenessOptions() {
+        List<String> argv = new SshExecutor("10.0.0.1", 2222, UUID.randomUUID()).buildSshCommand("echo hi");
 
         assertThat(argv).startsWith("ssh");
         // The liveness option must be a tight `-o ServerAliveInterval=15` pair (issue #138).

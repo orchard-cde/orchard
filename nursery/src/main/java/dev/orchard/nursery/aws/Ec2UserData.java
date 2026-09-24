@@ -22,7 +22,7 @@ public final class Ec2UserData {
     private Ec2UserData() {}
 
     /**
-     * Renders cloud-init YAML for the given seedling spec, SSH public key, and pinned
+     * Renders cloud-init YAML for the given SSH public key and pinned
      * {@code @devcontainers/cli} version.
      *
      * @param publicKey          the orchard SSH public key, e.g. {@code ssh-ed25519 AAAA... orchard@host}

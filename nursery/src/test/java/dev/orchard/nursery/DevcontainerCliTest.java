@@ -64,6 +64,8 @@ class DevcontainerCliTest {
             @Override
             public void executeStreaming(String c, Consumer<String> consumer, long timeoutSeconds) {
                 calls.add(c);
+                consumer.accept("{\"outcome\":\"success\",\"containerId\":\"abc123\","
+                    + "\"remoteUser\":\"vscode\",\"remoteWorkspaceFolder\":\"/workspace\"}");
             }
         };
     }
@@ -156,12 +158,23 @@ class DevcontainerCliTest {
     }
 
     @Test
-    void upTargetsTheSuppliedWorkspacePath() throws Exception {
+    void execTargetsTheSuppliedWorkspacePath() throws Exception {
         var calls = new ArrayList<String>();
         CommandRunner runner = stubRunnerCapturing(calls);
         var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
 
         cli.exec(runner, "/srv/custom-workspace", "echo hi");
+
+        assertThat(calls).anyMatch(c -> c.contains("--workspace-folder /srv/custom-workspace"));
+    }
+
+    @Test
+    void upTargetsTheSuppliedWorkspacePath() throws Exception {
+        var calls = new ArrayList<String>();
+        CommandRunner runner = stubRunnerCapturing(calls);
+        var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
+
+        cli.up(runner, "/srv/custom-workspace", UUID.randomUUID(), "my-fruit", line -> {});
 
         assertThat(calls).anyMatch(c -> c.contains("--workspace-folder /srv/custom-workspace"));
     }
