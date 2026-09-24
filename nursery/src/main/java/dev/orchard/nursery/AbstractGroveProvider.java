@@ -120,7 +120,7 @@ public abstract class AbstractGroveProvider<L> implements GroveProvider {
      */
     @Override
     public Vine vine(Seedling seedling) {
-        return new SshVine(seedling);
+        return new SshVine(seedling.ipAddress(), seedling.sshPort(), seedling.id());
     }
 
     @Override

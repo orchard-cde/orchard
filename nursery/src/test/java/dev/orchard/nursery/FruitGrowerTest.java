@@ -107,9 +107,9 @@ class FruitGrowerTest {
         Seedling seedling = seedling();
         Fruit fruit = buddedFruit(defaultSeed());
 
-        when(cli.up(eq(seedling), eq(fruit.id()), eq(fruit.containerName()), any()))
+        when(cli.up(any(), eq("/workspace"), eq(fruit.id()), eq(fruit.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c123", null, "vscode", "/workspace"));
-        when(cli.inspectContainerName(seedling, "c123")).thenReturn("real-container-name");
+        when(cli.inspectContainerName(any(), eq("c123"))).thenReturn("real-container-name");
 
         FruitGrower grower = new FruitGrower(cli, true, events);
 
@@ -129,7 +129,7 @@ class FruitGrowerTest {
         CliError error = new CliError("boom", "feature install failed", "ghcr.io/devcontainers/features/bad:1",
             null, false, "https://example/docs");
         doThrow(new DevcontainerCli.DevcontainerCliException(error))
-            .when(cli).up(any(), any(), anyString(), any());
+            .when(cli).up(any(), any(), any(), anyString(), any());
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
@@ -152,9 +152,9 @@ class FruitGrowerTest {
             .build();
         Fruit fruit = buddedFruit(seed);
 
-        when(cli.up(eq(seedling), eq(fruit.id()), eq(fruit.containerName()), any()))
+        when(cli.up(any(), eq("/workspace"), eq(fruit.id()), eq(fruit.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c-pa", null, "vscode", "/workspace"));
-        when(cli.inspectContainerName(seedling, "c-pa")).thenReturn(fruit.containerName());
+        when(cli.inspectContainerName(any(), eq("c-pa"))).thenReturn(fruit.containerName());
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
@@ -165,7 +165,7 @@ class FruitGrowerTest {
 
         // attach() runs the post-attach command via CLI exec and flips to RIPE.
         Fruit afterAttach = grower.attach(seedling, afterGrow).get();
-        verify(cli).exec(eq(seedling), eq("echo hi"));
+        verify(cli).exec(any(), eq("/workspace"), eq("echo hi"));
         assertThat(afterAttach.state()).isEqualTo(FruitState.RIPE);
     }
 
@@ -181,14 +181,14 @@ class FruitGrowerTest {
         // each distinct phase boundary.
         doAnswer(inv -> {
             @SuppressWarnings("unchecked")
-            java.util.function.Consumer<String> sink = inv.getArgument(3);
+            java.util.function.Consumer<String> sink = inv.getArgument(4);
             sink.accept("{\"type\":\"progress\",\"message\":\"Building image abc\"}");
             sink.accept("{\"type\":\"progress\",\"message\":\"Running install.sh for ghcr.io/.../node:1\"}");
             sink.accept("{\"outcome\":\"success\",\"containerId\":\"c-events\"}");
             return new DevcontainerCliResult("c-events", null, "vscode", "/workspace");
-        }).when(cli).up(any(), any(), anyString(), any());
+        }).when(cli).up(any(), any(), any(), anyString(), any());
 
-        when(cli.inspectContainerName(seedling, "c-events")).thenReturn(fruit.containerName());
+        when(cli.inspectContainerName(any(), eq("c-events"))).thenReturn(fruit.containerName());
 
         FruitGrower grower = new FruitGrower(cli, true, events);
 
@@ -222,7 +222,7 @@ class FruitGrowerTest {
 
         Fruit result = grower.grow(seedling, fruit).get();
 
-        verify(cli, never()).up(any(), any(), anyString(), any());
+        verify(cli, never()).up(any(), any(), any(), anyString(), any());
         verify(cli, never()).inspectContainerName(any(), anyString());
         // The legacy path's SSH call will fail (no real VM), so the fruit rots — that's the
         // signal we took the legacy branch.
@@ -239,9 +239,9 @@ class FruitGrowerTest {
         Fruit fruit = buddedFruit(defaultSeed());
         String originalContainerName = fruit.containerName();
 
-        when(cli.up(eq(seedling), eq(fruit.id()), eq(fruit.containerName()), any()))
+        when(cli.up(any(), eq("/workspace"), eq(fruit.id()), eq(fruit.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c-real", null, "vscode", "/workspace"));
-        when(cli.inspectContainerName(seedling, "c-real")).thenReturn("real-container-name");
+        when(cli.inspectContainerName(any(), eq("c-real"))).thenReturn("real-container-name");
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
@@ -252,7 +252,7 @@ class FruitGrowerTest {
             .isEqualTo("real-container-name")
             .isNotEqualTo(originalContainerName);
         assertThat(result.containerId()).isEqualTo("c-real");
-        verify(cli).inspectContainerName(seedling, "c-real");
+        verify(cli).inspectContainerName(any(), eq("c-real"));
     }
 
     // --- helpers -----------------------------------------------------------------------------

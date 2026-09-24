@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
- * Interface for executing commands on a remote target (like a Seedling).
+ * Interface for executing commands on a remote target (a VM or a container).
  * Allows for dependency injection of the specific execution mechanism (SSH, API, etc.).
  */
 public interface CommandRunner {

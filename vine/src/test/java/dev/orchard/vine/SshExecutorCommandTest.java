@@ -1,5 +1,6 @@
 package dev.orchard.vine;
 
+import dev.orchard.core.model.Seedling;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -7,7 +8,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifies {@link SshExecutor#buildSshCommand} wires the seedling's address/port into the shared
+ * Verifies {@link SshExecutor#buildSshCommand} wires the target's address/port into the shared
  * {@link SshCommandBuilder} and carries the liveness options through. Exhaustive argv coverage
  * lives in {@link SshCommandBuilderTest}; real SSH integration is covered by FruitGrowerIT.
  */
@@ -15,7 +16,8 @@ class SshExecutorCommandTest {
 
     @Test
     void wiresSeedlingTargetAndLivenessOptions() {
-        List<String> argv = new SshExecutor(VineTestSeedlings.fake(2222)).buildSshCommand("echo hi");
+        Seedling s = VineTestSeedlings.fake(2222);
+        List<String> argv = new SshExecutor(s.ipAddress(), s.sshPort(), s.id()).buildSshCommand("echo hi");
 
         assertThat(argv).startsWith("ssh");
         // The liveness option must be a tight `-o ServerAliveInterval=15` pair (issue #138).

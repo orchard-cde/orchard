@@ -126,14 +126,14 @@ public class FruitGrower {
             PhaseTransitionFilter phaseFilter = new PhaseTransitionFilter(fruit.id(), fruit.groveId(), events);
 
             DevcontainerCliResult result = devcontainerCli.up(
-                seedling, fruit.id(), fruit.containerName(), phaseFilter::onLine);
+                sshExecutor(seedling), "/workspace", fruit.id(), fruit.containerName(), phaseFilter::onLine);
 
             // Locked decision #18 — the actual container name on the host may differ from
             // Fruit.containerName (e.g. CLI appends a suffix on regrow). Inspect and update so
             // downstream consumers (trowel grove status, GroveResponse) see reality.
             String realName;
             try {
-                realName = devcontainerCli.inspectContainerName(seedling, result.containerId());
+                realName = devcontainerCli.inspectContainerName(sshExecutor(seedling), result.containerId());
             } catch (Exception inspectFailure) {
                 log.warn("Could not inspect real container name for fruit {} (containerId={}); " +
                     "keeping Fruit.containerName as-is", fruit.id(), result.containerId(), inspectFailure);
@@ -523,7 +523,7 @@ public class FruitGrower {
                 if (seed.postAttachCommand() != null) {
                     if (useDevcontainerCli && devcontainerCli != null) {
                         runLifecycleCommand(seed.postAttachCommand(),
-                            cmd -> devcontainerCli.exec(seedling, cmd));
+                            cmd -> devcontainerCli.exec(sshExecutor(seedling), "/workspace", cmd));
                     } else {
                         runLifecycleCommand(seed.postAttachCommand(),
                             cmd -> inContainer(seedling, fruit.containerId(), cmd));
@@ -713,7 +713,12 @@ public class FruitGrower {
     }
 
     private String executeSsh(Seedling seedling, String command) throws IOException, InterruptedException {
-        return new SshExecutor(seedling).execute(command);
+        return sshExecutor(seedling).execute(command);
+    }
+
+    /** Temporary: Task 3 removes {@code FruitGrower}'s {@code Seedling} entirely. */
+    private static SshExecutor sshExecutor(Seedling seedling) {
+        return new SshExecutor(seedling.ipAddress(), seedling.sshPort(), seedling.id());
     }
 
     @FunctionalInterface
