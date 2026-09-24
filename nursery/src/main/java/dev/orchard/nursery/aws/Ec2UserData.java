@@ -1,6 +1,5 @@
 package dev.orchard.nursery.aws;
 
-import dev.orchard.core.model.Seedling.SeedlingSpec;
 import dev.orchard.nursery.CloudInitTemplate;
 
 import java.nio.charset.StandardCharsets;
@@ -26,28 +25,26 @@ public final class Ec2UserData {
      * Renders cloud-init YAML for the given seedling spec, SSH public key, and pinned
      * {@code @devcontainers/cli} version.
      *
-     * @param spec               the seedling spec (currently unused by the template, accepted for future use)
      * @param publicKey          the orchard SSH public key, e.g. {@code ssh-ed25519 AAAA... orchard@host}
      * @param devcontainerCliVersion the npm version of {@code @devcontainers/cli} to install
      * @return raw YAML beginning with {@code #cloud-config\n}
      * @throws IllegalArgumentException if {@code publicKey} or {@code devcontainerCliVersion} is null or blank
      */
-    public static String render(SeedlingSpec spec, String publicKey, String devcontainerCliVersion) {
-        return render(spec, publicKey, List.of(), devcontainerCliVersion);
+    public static String render(String publicKey, String devcontainerCliVersion) {
+        return render(publicKey, List.of(), devcontainerCliVersion);
     }
 
     /**
      * Renders cloud-init YAML with the orchard SSH public key plus the cultivator's
      * registered public keys baked into {@code ssh_authorized_keys}.
      *
-     * @param spec               the seedling spec (currently unused by the template, accepted for future use)
      * @param publicKey          the orchard SSH public key, e.g. {@code ssh-ed25519 AAAA... orchard@host}
      * @param registeredKeys     the cultivator's registered public keys, may be null/empty
      * @param devcontainerCliVersion the npm version of {@code @devcontainers/cli} to install
      * @return raw YAML beginning with {@code #cloud-config\n}
      * @throws IllegalArgumentException if {@code publicKey} or {@code devcontainerCliVersion} is null or blank
      */
-    public static String render(SeedlingSpec spec, String publicKey, List<String> registeredKeys,
+    public static String render(String publicKey, List<String> registeredKeys,
                                 String devcontainerCliVersion) {
         if (publicKey == null || publicKey.isBlank()) {
             throw new IllegalArgumentException("publicKey must not be null or blank");
@@ -65,17 +62,17 @@ public final class Ec2UserData {
      * Renders cloud-init YAML and Base64-encodes it for use as
      * {@link software.amazon.awssdk.services.ec2.model.RunInstancesRequest#userData()}.
      */
-    public static String renderBase64(SeedlingSpec spec, String publicKey, String devcontainerCliVersion) {
-        return renderBase64(spec, publicKey, List.of(), devcontainerCliVersion);
+    public static String renderBase64(String publicKey, String devcontainerCliVersion) {
+        return renderBase64(publicKey, List.of(), devcontainerCliVersion);
     }
 
     /**
      * Renders cloud-init YAML (with registered keys) and Base64-encodes it for use as
      * {@link software.amazon.awssdk.services.ec2.model.RunInstancesRequest#userData()}.
      */
-    public static String renderBase64(SeedlingSpec spec, String publicKey, List<String> registeredKeys,
+    public static String renderBase64(String publicKey, List<String> registeredKeys,
                                       String devcontainerCliVersion) {
-        String yaml = render(spec, publicKey, registeredKeys, devcontainerCliVersion);
+        String yaml = render(publicKey, registeredKeys, devcontainerCliVersion);
         return Base64.getEncoder().encodeToString(yaml.getBytes(StandardCharsets.UTF_8));
     }
 
