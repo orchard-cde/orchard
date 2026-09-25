@@ -9,6 +9,7 @@ import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -85,24 +86,24 @@ public class FruitGrower {
      *   <li>{@link DevfileSeed} → docker-direct path (devcontainer CLI is not applicable)</li>
      * </ul>
      */
-    public CompletableFuture<Fruit> grow(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit) {
+    public CompletableFuture<Fruit> grow(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             return switch (fruit.seed()) {
                 case DevfileSeed ignored -> {
-                    log.info("Growing fruit {} on target {} (path=devfile-docker)", fruit.id(), targetId);
-                    yield growDevfileViaDocker(runner, workspacePath, targetId, fruit);
+                    log.info("Growing fruit {} on target {} (path=devfile-docker)", fruit.id(), target.targetId());
+                    yield growDevfileViaDocker(target.runner(), fruit);
                 }
                 case DevcontainerSeed ignored -> {
                     boolean useCli = useDevcontainerCli && devcontainerCli != null;
-                    log.info("Growing fruit {} on target {} (path={})", fruit.id(), targetId,
+                    log.info("Growing fruit {} on target {} (path={})", fruit.id(), target.targetId(),
                         useCli ? "devcontainer-cli" : "legacy-docker");
-                    yield useCli ? growViaCli(runner, workspacePath, targetId, fruit)
-                                  : growViaDocker(runner, workspacePath, targetId, fruit);
+                    yield useCli ? growViaCli(target, fruit)
+                                  : growViaDocker(target.runner(), fruit);
                 }
                 default -> {
                     log.warn("Unknown seed type {} for fruit {}, falling back to legacy docker",
                         fruit.seed().getClass().getSimpleName(), fruit.id());
-                    yield growViaDocker(runner, workspacePath, targetId, fruit);
+                    yield growViaDocker(target.runner(), fruit);
                 }
             };
         }, executor);
@@ -114,14 +115,16 @@ public class FruitGrower {
      * Grows the fruit by shelling out to {@code @devcontainers/cli} via the runner. This is the
      * spec-faithful path: features, lifecycle commands and waitFor are all owned by the CLI.
      */
-    Fruit growViaCli(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit) {
+    Fruit growViaCli(ExecTarget target, Fruit fruit) {
+        CommandRunner runner = target.runner();
+        String workspacePath = target.workspacePath();
         DevcontainerSeed seed = devcontainerSeed(fruit);
         try {
             // initializeCommand runs on the host before the container starts — the CLI does
             // not own this hook (spec Locked decision #2).
             if (seed.initializeCommand() != null) {
                 runLifecycleCommand(seed.initializeCommand(),
-                    cmd -> executeSsh(runner, workspacePath, targetId, cmd));
+                    cmd -> executeSsh(runner, cmd));
             }
 
             PhaseTransitionFilter phaseFilter = new PhaseTransitionFilter(fruit.id(), fruit.groveId(), events);
@@ -145,7 +148,7 @@ public class FruitGrower {
             // the container is already running.
             List<Fruit.PortMapping> ports;
             try {
-                ports = getPortMappings(runner, workspacePath, targetId, result.containerId());
+                ports = getPortMappings(runner, result.containerId());
             } catch (Exception portFailure) {
                 log.warn("Could not fetch port mappings for fruit {} (containerId={})",
                     fruit.id(), result.containerId(), portFailure);
@@ -247,37 +250,37 @@ public class FruitGrower {
      * seed.features()} is silently ignored here — this path predates feature support.
      */
     @Deprecated(forRemoval = true, since = "next-release")
-    Fruit growViaDocker(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit) {
+    Fruit growViaDocker(CommandRunner runner, Fruit fruit) {
         try {
             DevcontainerSeed seed = devcontainerSeed(fruit);
 
             if (seed.initializeCommand() != null) {
                 runLifecycleCommand(seed.initializeCommand(),
-                    cmd -> executeSsh(runner, workspacePath, targetId, cmd));
+                    cmd -> executeSsh(runner, cmd));
             }
 
             String containerId;
             if (seed.image() != null) {
-                containerId = legacyRunFromImage(runner, workspacePath, targetId, fruit);
+                containerId = legacyRunFromImage(runner, fruit);
             } else if (seed.dockerfilePath() != null) {
-                containerId = legacyBuildAndRun(runner, workspacePath, targetId, fruit);
+                containerId = legacyBuildAndRun(runner, fruit);
             } else {
                 throw new IllegalArgumentException("Seed must have either image or dockerfilePath");
             }
 
-            List<Fruit.PortMapping> ports = getPortMappings(runner, workspacePath, targetId, containerId);
+            List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
 
             if (seed.onCreateCommand() != null) {
                 runLifecycleCommand(seed.onCreateCommand(),
-                    cmd -> inContainer(runner, workspacePath, targetId, containerId, cmd));
+                    cmd -> inContainer(runner, containerId, cmd));
             }
             if (seed.postCreateCommand() != null) {
                 runLifecycleCommand(seed.postCreateCommand(),
-                    cmd -> inContainer(runner, workspacePath, targetId, containerId, cmd));
+                    cmd -> inContainer(runner, containerId, cmd));
             }
             if (seed.updateContentCommand() != null) {
                 runLifecycleCommand(seed.updateContentCommand(),
-                    cmd -> inContainer(runner, workspacePath, targetId, containerId, cmd));
+                    cmd -> inContainer(runner, containerId, cmd));
             }
 
             Fruit result = fruit.withContainerDetails(containerId, ports);
@@ -287,7 +290,7 @@ public class FruitGrower {
 
             if (seed.postStartCommand() != null) {
                 runLifecycleCommand(seed.postStartCommand(),
-                    cmd -> inContainer(runner, workspacePath, targetId, containerId, cmd));
+                    cmd -> inContainer(runner, containerId, cmd));
             }
 
             return result;
@@ -320,7 +323,7 @@ public class FruitGrower {
      * LifecycleCommand}/{@code runLifecycleCommand} primitive the devcontainer hooks use, with no
      * translation between devfile and devcontainer event names.
      */
-    Fruit growDevfileViaDocker(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit) {
+    Fruit growDevfileViaDocker(CommandRunner runner, Fruit fruit) {
         DevfileSeed seed = devfileSeed(fruit);
         try {
             if (seed.image() == null || seed.image().isBlank()) {
@@ -331,10 +334,10 @@ public class FruitGrower {
             // devfile events.preStart — runs on the host, before the container starts.
             if (seed.preStartCommand() != null) {
                 runLifecycleCommand(seed.preStartCommand(),
-                    cmd -> executeSsh(runner, workspacePath, targetId, cmd));
+                    cmd -> executeSsh(runner, cmd));
             }
 
-            executeSsh(runner, workspacePath, targetId, "docker pull " + shellQuote(seed.image()));
+            executeSsh(runner, "docker pull " + shellQuote(seed.image()));
 
             StringBuilder cmd = new StringBuilder("docker run -d");
             cmd.append(" --name ").append(shellQuote(fruit.containerName()));
@@ -362,8 +365,8 @@ public class FruitGrower {
             cmd.append(" ").append(shellQuote(seed.image()));
             cmd.append(" sleep infinity");
 
-            String containerId = executeSsh(runner, workspacePath, targetId, cmd.toString()).trim();
-            List<Fruit.PortMapping> ports = getPortMappings(runner, workspacePath, targetId, containerId);
+            String containerId = executeSsh(runner, cmd.toString()).trim();
+            List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
 
             // Record container details before executing lifecycle commands so the fruit
             // retains a containerId reference for cleanup even if a command fails.
@@ -372,7 +375,7 @@ public class FruitGrower {
             // devfile events.postStart — runs inside the container, after it starts.
             if (seed.postStartCommand() != null) {
                 runLifecycleCommand(seed.postStartCommand(),
-                    c -> inContainer(runner, workspacePath, targetId, containerId, c));
+                    c -> inContainer(runner, containerId, c));
             }
 
             return fruit.withState(FruitState.RIPE);
@@ -391,9 +394,8 @@ public class FruitGrower {
      * path subsumes compose in a future lane (spec Locked decision #3 / #11).
      */
     @Deprecated(forRemoval = true, since = "next-release")
-    public CompletableFuture<List<Fruit>> growCompose(CommandRunner runner, String workspacePath, UUID targetId,
-                                                        List<Fruit> fruits, String composeFile) {
-        return growCompose(runner, workspacePath, targetId, fruits, List.of(composeFile));
+    public CompletableFuture<List<Fruit>> growCompose(ExecTarget target, List<Fruit> fruits, String composeFile) {
+        return growCompose(target, fruits, List.of(composeFile));
     }
 
     /**
@@ -402,11 +404,12 @@ public class FruitGrower {
      * Legacy path; the CLI path subsumes compose in a future lane.
      */
     @Deprecated(forRemoval = true, since = "next-release")
-    public CompletableFuture<List<Fruit>> growCompose(CommandRunner runner, String workspacePath, UUID targetId,
-                                                        List<Fruit> fruits, List<String> composeFiles) {
+    public CompletableFuture<List<Fruit>> growCompose(ExecTarget target, List<Fruit> fruits,
+                                                        List<String> composeFiles) {
         return CompletableFuture.supplyAsync(() -> {
+            CommandRunner runner = target.runner();
             try {
-                log.info("Growing {} fruits via Docker Compose on target {}", fruits.size(), targetId);
+                log.info("Growing {} fruits via Docker Compose on target {}", fruits.size(), target.targetId());
 
                 // Build "-f file1 -f file2 ..." from all compose files (issue #32)
                 StringBuilder fileArgs = new StringBuilder();
@@ -432,9 +435,9 @@ public class FruitGrower {
                         .collect(java.util.stream.Collectors.joining(" "));
                 }
 
-                executeSsh(runner, workspacePath, targetId, "docker compose" + fileArgs + " up -d" + upServicesArg);
+                executeSsh(runner, "docker compose" + fileArgs + " up -d" + upServicesArg);
 
-                String psOutput = executeSsh(runner, workspacePath, targetId,
+                String psOutput = executeSsh(runner,
                     "docker compose" + fileArgs + " ps --format '{{.ID}}|{{.Service}}|{{.Name}}'");
 
                 List<Fruit> grownFruits = new ArrayList<>();
@@ -454,16 +457,16 @@ public class FruitGrower {
                     }
 
                     if (containerId != null) {
-                        List<Fruit.PortMapping> ports = getPortMappings(runner, workspacePath, targetId, containerId);
+                        List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
                         if (fruit.seed() instanceof DevcontainerSeed s) {
                             String cid = containerId;
                             if (s.onCreateCommand() != null) {
                                 runLifecycleCommand(s.onCreateCommand(),
-                                    cmd -> inContainer(runner, workspacePath, targetId, cid, cmd));
+                                    cmd -> inContainer(runner, cid, cmd));
                             }
                             if (s.postCreateCommand() != null) {
                                 runLifecycleCommand(s.postCreateCommand(),
-                                    cmd -> inContainer(runner, workspacePath, targetId, cid, cmd));
+                                    cmd -> inContainer(runner, cid, cmd));
                             }
                         }
                         grownFruits.add(fruit
@@ -478,7 +481,7 @@ public class FruitGrower {
                 return grownFruits;
 
             } catch (Exception e) {
-                log.error("Failed to grow compose stack on target {}", targetId, e);
+                log.error("Failed to grow compose stack on target {}", target.targetId(), e);
                 return fruits.stream()
                     .map(f -> f.withState(FruitState.ROTTED))
                     .toList();
@@ -490,12 +493,12 @@ public class FruitGrower {
      * Picks a fruit (stops the container). Same SSH semantics on both paths — the CLI has no
      * {@code down} subcommand per spec Locked decision #4.
      */
-    public CompletableFuture<Fruit> pick(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit) {
+    public CompletableFuture<Fruit> pick(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Picking fruit {}", fruit.id());
                 if (fruit.containerId() != null) {
-                    executeSsh(runner, workspacePath, targetId, "docker stop " + fruit.containerId());
+                    executeSsh(target.runner(), "docker stop " + fruit.containerId());
                 }
                 return fruit.withState(FruitState.PICKED);
             } catch (Exception e) {
@@ -511,12 +514,12 @@ public class FruitGrower {
     /**
      * Composts a fruit (removes the container entirely).
      */
-    public CompletableFuture<Void> compost(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit) {
+    public CompletableFuture<Void> compost(ExecTarget target, Fruit fruit) {
         return CompletableFuture.runAsync(() -> {
             try {
                 log.info("Composting fruit {}", fruit.id());
                 if (fruit.containerId() != null) {
-                    executeSsh(runner, workspacePath, targetId, "docker rm -f " + fruit.containerId());
+                    executeSsh(target.runner(), "docker rm -f " + fruit.containerId());
                 }
             } catch (Exception e) {
                 log.error("Failed to compost fruit {}", fruit.id(), e);
@@ -528,17 +531,17 @@ public class FruitGrower {
         }, executor);
     }
 
-    public CompletableFuture<Fruit> attach(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit) {
+    public CompletableFuture<Fruit> attach(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 DevcontainerSeed seed = devcontainerSeed(fruit);
                 if (seed.postAttachCommand() != null) {
                     if (useDevcontainerCli && devcontainerCli != null) {
                         runLifecycleCommand(seed.postAttachCommand(),
-                            cmd -> devcontainerCli.exec(runner, workspacePath, cmd));
+                            cmd -> devcontainerCli.exec(target.runner(), target.workspacePath(), cmd));
                     } else {
                         runLifecycleCommand(seed.postAttachCommand(),
-                            cmd -> inContainer(runner, workspacePath, targetId, fruit.containerId(), cmd));
+                            cmd -> inContainer(target.runner(), fruit.containerId(), cmd));
                     }
                 }
                 if (seed.waitFor() == WaitFor.POST_ATTACH_COMMAND) {
@@ -576,11 +579,11 @@ public class FruitGrower {
     }
 
     @Deprecated(forRemoval = true, since = "next-release")
-    private String legacyRunFromImage(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit)
+    private String legacyRunFromImage(CommandRunner runner, Fruit fruit)
             throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
 
-        executeSsh(runner, workspacePath, targetId, "docker pull " + shellQuote(seed.image()));
+        executeSsh(runner, "docker pull " + shellQuote(seed.image()));
 
         StringBuilder cmd = new StringBuilder("docker run -d");
         cmd.append(" --name ").append(shellQuote(fruit.containerName()));
@@ -631,11 +634,11 @@ public class FruitGrower {
         cmd.append(" ").append(shellQuote(seed.image()));
         cmd.append(" sleep infinity");
 
-        return executeSsh(runner, workspacePath, targetId, cmd.toString()).trim();
+        return executeSsh(runner, cmd.toString()).trim();
     }
 
     @Deprecated(forRemoval = true, since = "next-release")
-    private String legacyBuildAndRun(CommandRunner runner, String workspacePath, UUID targetId, Fruit fruit)
+    private String legacyBuildAndRun(CommandRunner runner, Fruit fruit)
             throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
 
@@ -669,7 +672,7 @@ public class FruitGrower {
             : "/workspace";
         buildCmd.append(" ").append(shellQuote(context));
 
-        executeSsh(runner, workspacePath, targetId, buildCmd.toString());
+        executeSsh(runner, buildCmd.toString());
 
         Seed imageOnlySeed = DevcontainerSeed.devcontainer()
             .name(seed.name())
@@ -692,7 +695,7 @@ public class FruitGrower {
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt()
         );
 
-        return legacyRunFromImage(runner, workspacePath, targetId, imageFruit);
+        return legacyRunFromImage(runner, imageFruit);
     }
 
     static List<Fruit.PortMapping> parsePortOutput(String output) {
@@ -714,19 +717,18 @@ public class FruitGrower {
         return mappings;
     }
 
-    private List<Fruit.PortMapping> getPortMappings(CommandRunner runner, String workspacePath, UUID targetId,
-                                                      String containerId) throws IOException, InterruptedException {
-        String output = executeSsh(runner, workspacePath, targetId,
-            "docker port " + containerId + " 2>/dev/null || echo ''");
+    private List<Fruit.PortMapping> getPortMappings(CommandRunner runner, String containerId)
+            throws IOException, InterruptedException {
+        String output = executeSsh(runner, "docker port " + containerId + " 2>/dev/null || echo ''");
         return parsePortOutput(output);
     }
 
-    private void inContainer(CommandRunner runner, String workspacePath, UUID targetId, String containerId,
-                              String command) throws IOException, InterruptedException {
-        executeSsh(runner, workspacePath, targetId, "docker exec " + containerId + " /bin/sh -c '" + command + "'");
+    private void inContainer(CommandRunner runner, String containerId, String command)
+            throws IOException, InterruptedException {
+        executeSsh(runner, "docker exec " + containerId + " /bin/sh -c '" + command + "'");
     }
 
-    private String executeSsh(CommandRunner runner, String workspacePath, UUID targetId, String command)
+    private String executeSsh(CommandRunner runner, String command)
             throws IOException, InterruptedException {
         return runner.execute(command);
     }

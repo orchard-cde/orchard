@@ -7,6 +7,7 @@ import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.SshVine;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -114,7 +115,7 @@ class FruitGrowerTest {
 
         FruitGrower grower = new FruitGrower(cli, true, events);
 
-        Fruit result = grower.grow(runner, WORKSPACE_PATH, SEEDLING_ID, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         assertThat(result.containerId()).isEqualTo("c123");
@@ -134,7 +135,7 @@ class FruitGrowerTest {
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
-        Fruit result = grower.grow(runner, WORKSPACE_PATH, SEEDLING_ID, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.ROTTED);
         // Inspect should not be called once the up() throws.
@@ -160,12 +161,12 @@ class FruitGrowerTest {
         FruitGrower grower = new FruitGrower(cli, true, null);
 
         // grow() must NOT flip to RIPE when waitFor=POST_ATTACH_COMMAND.
-        Fruit afterGrow = grower.grow(runner, WORKSPACE_PATH, SEEDLING_ID, fruit).get();
+        Fruit afterGrow = grower.grow(execTarget(runner), fruit).get();
         assertThat(afterGrow.state()).isEqualTo(FruitState.BUDDING);
         assertThat(afterGrow.containerId()).isEqualTo("c-pa");
 
         // attach() runs the post-attach command via CLI exec and flips to RIPE.
-        Fruit afterAttach = grower.attach(runner, WORKSPACE_PATH, SEEDLING_ID, afterGrow).get();
+        Fruit afterAttach = grower.attach(execTarget(runner), afterGrow).get();
         verify(cli).exec(same(runner), eq(WORKSPACE_PATH), eq("echo hi"));
         assertThat(afterAttach.state()).isEqualTo(FruitState.RIPE);
     }
@@ -193,7 +194,7 @@ class FruitGrowerTest {
 
         FruitGrower grower = new FruitGrower(cli, true, events);
 
-        Fruit result = grower.grow(runner, WORKSPACE_PATH, SEEDLING_ID, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
@@ -224,7 +225,7 @@ class FruitGrowerTest {
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
-        Fruit result = grower.grow(runner, customWorkspacePath, SEEDLING_ID, fruit).get();
+        Fruit result = grower.grow(new ExecTarget(runner, customWorkspacePath, SEEDLING_ID), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         verify(cli).up(any(), eq(customWorkspacePath), eq(fruit.id()), eq(fruit.containerName()), any());
@@ -243,7 +244,7 @@ class FruitGrowerTest {
         // is that the CLI mock was never touched.
         FruitGrower grower = new FruitGrower(cli, false, null);
 
-        Fruit result = grower.grow(runner, WORKSPACE_PATH, SEEDLING_ID, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         verify(cli, never()).up(any(), any(), any(), anyString(), any());
         verify(cli, never()).inspectContainerName(any(), anyString());
@@ -268,7 +269,7 @@ class FruitGrowerTest {
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
-        Fruit result = grower.grow(runner, WORKSPACE_PATH, SEEDLING_ID, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         assertThat(result.containerName())
             .as("Fruit.containerName must reflect the actual host name returned by docker inspect")
@@ -294,5 +295,9 @@ class FruitGrowerTest {
     private static CommandRunner runner() {
         // 127.0.0.255 / port 1 — guaranteed to refuse on any host the test runs on.
         return new SshVine("127.0.0.255", 1, SEEDLING_ID).commands();
+    }
+
+    private static ExecTarget execTarget(CommandRunner runner) {
+        return new ExecTarget(runner, WORKSPACE_PATH, SEEDLING_ID);
     }
 }

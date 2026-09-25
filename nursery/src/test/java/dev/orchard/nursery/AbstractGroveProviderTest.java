@@ -5,11 +5,13 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.SshVine;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatcher;
 
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -253,16 +255,27 @@ class AbstractGroveProviderTest {
             DevcontainerSeed.builder().name("test").image("alpine:3").build());
     }
 
+    /**
+     * Matches an {@link ExecTarget} built the way {@link AbstractGroveProvider} builds one for a
+     * VM substrate: an SSH-backed runner, the fixed {@code "/workspace"} path, and the given
+     * seedling's id used purely for correlation.
+     */
+    private static ArgumentMatcher<ExecTarget> execTargetFor(Seedling seedling) {
+        return target -> target.runner().getClass() == SSH_RUNNER
+            && target.workspacePath().equals("/workspace")
+            && target.targetId().equals(seedling.id());
+    }
+
     @Test
     void growFruit_delegatesToTheInjectedFruitGrower() {
         FruitGrower fruitGrower = mock(FruitGrower.class);
         Seedling s = TestSeedlings.fake();
         Fruit f = budded(s);
-        when(fruitGrower.grow(argThat(r -> r.getClass() == SSH_RUNNER), eq("/workspace"), eq(s.id()), eq(f)))
+        when(fruitGrower.grow(argThat(execTargetFor(s)), eq(f)))
             .thenReturn(CompletableFuture.completedFuture(f));
 
         assertThat(new NoHookProvider(executor, fruitGrower).growFruit(s, f).join()).isSameAs(f);
-        verify(fruitGrower).grow(argThat(r -> r.getClass() == SSH_RUNNER), eq("/workspace"), eq(s.id()), eq(f));
+        verify(fruitGrower).grow(argThat(execTargetFor(s)), eq(f));
     }
 
     @Test
@@ -270,12 +283,12 @@ class AbstractGroveProviderTest {
         FruitGrower fruitGrower = mock(FruitGrower.class);
         Seedling s = TestSeedlings.fake();
         Fruit f = budded(s);
-        when(fruitGrower.compost(argThat(r -> r.getClass() == SSH_RUNNER), eq("/workspace"), eq(s.id()), eq(f)))
+        when(fruitGrower.compost(argThat(execTargetFor(s)), eq(f)))
             .thenReturn(CompletableFuture.completedFuture(null));
 
         new NoHookProvider(executor, fruitGrower).compostFruit(s, f).join();
 
-        verify(fruitGrower).compost(argThat(r -> r.getClass() == SSH_RUNNER), eq("/workspace"), eq(s.id()), eq(f));
+        verify(fruitGrower).compost(argThat(execTargetFor(s)), eq(f));
     }
 
     @Test
@@ -296,8 +309,8 @@ class AbstractGroveProviderTest {
 
         new NoHookProvider(executor, fruitGrowerSpy).growFruit(s, f).join();
 
-        ArgumentCaptor<CommandRunner> viaFruitGrower = ArgumentCaptor.forClass(CommandRunner.class);
-        verify(fruitGrowerSpy).grow(viaFruitGrower.capture(), eq("/workspace"), eq(s.id()), eq(f));
+        ArgumentCaptor<ExecTarget> viaFruitGrower = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(fruitGrowerSpy).grow(viaFruitGrower.capture(), eq(f));
 
         ArgumentCaptor<CommandRunner> viaCli = ArgumentCaptor.forClass(CommandRunner.class);
         verify(cli).up(viaCli.capture(), eq("/workspace"), eq(f.id()), eq(f.containerName()), any());
@@ -305,7 +318,7 @@ class AbstractGroveProviderTest {
         assertThat(viaCli.getValue())
             .as("the CommandRunner DevcontainerCli.up() receives must be the exact same instance "
                 + "AbstractGroveProvider handed to FruitGrower.grow() — not merely one of the same type")
-            .isSameAs(viaFruitGrower.getValue());
+            .isSameAs(viaFruitGrower.getValue().runner());
     }
 
     @Test

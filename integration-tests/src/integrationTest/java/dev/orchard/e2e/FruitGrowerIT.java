@@ -12,6 +12,7 @@ import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.trellis.OrchardApplication;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -107,6 +108,15 @@ class FruitGrowerIT {
         return provider.vine(seedling).commands();
     }
 
+    /**
+     * The same command channel as {@link #commands()}, packaged the way production code hands it
+     * to {@link FruitGrower}: bundled with the workspace path and the seedling's id for
+     * correlation.
+     */
+    private ExecTarget execTarget() {
+        return new ExecTarget(commands(), "/workspace", seedling.id());
+    }
+
     private void waitForCloudInit() {
         CommandRunner ssh = commands();
         int maxAttempts = 60;
@@ -176,7 +186,7 @@ class FruitGrowerIT {
         String originallyAssignedName = budding.containerName();
         assertThat(originallyAssignedName).isNotBlank();
 
-        grown = fruitGrower.grow(ssh, "/workspace", seedling.id(), budding).join();
+        grown = fruitGrower.grow(execTarget(), budding).join();
 
         assertThat(grown.state())
             .as("Fruit must reach RIPE — grow() returned %s", grown.state())
@@ -228,10 +238,10 @@ class FruitGrowerIT {
 
         CommandRunner ssh = commands();
 
-        Fruit picked = fruitGrower.pick(ssh, "/workspace", seedling.id(), grown).join();
+        Fruit picked = fruitGrower.pick(execTarget(), grown).join();
         assertThat(picked.state()).isEqualTo(FruitState.PICKED);
 
-        fruitGrower.compost(ssh, "/workspace", seedling.id(), grown).join();
+        fruitGrower.compost(execTarget(), grown).join();
 
         // After compost, docker inspect should fail (non-zero exit) because the container is gone.
         // CommandRunner.execute() raises IOException on non-zero exit — that's the success signal here.
@@ -262,7 +272,7 @@ class FruitGrowerIT {
         Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
 
         CommandRunner ssh = commands();
-        Fruit devfileGrown = fruitGrower.grow(ssh, "/workspace", seedling.id(), budding).join();
+        Fruit devfileGrown = fruitGrower.grow(execTarget(), budding).join();
 
         try {
             assertThat(devfileGrown.state()).isEqualTo(FruitState.RIPE);
@@ -278,7 +288,7 @@ class FruitGrowerIT {
                 .trim();
             assertThat(postStartMarker).isEqualTo("post-start-ran");
         } finally {
-            fruitGrower.compost(ssh, "/workspace", seedling.id(), devfileGrown).join();
+            fruitGrower.compost(execTarget(), devfileGrown).join();
             ssh.execute("rm -f /tmp/prestart-marker");
         }
     }
@@ -288,8 +298,7 @@ class FruitGrowerIT {
         // Layer 1: best-effort container teardown if a test failed mid-way and grown is still set.
         if (grown != null && grown.containerId() != null) {
             try {
-                CommandRunner ssh = commands();
-                fruitGrower.compost(ssh, "/workspace", seedling.id(), grown).join();
+                fruitGrower.compost(execTarget(), grown).join();
             } catch (Exception ignored) {
                 // Fall through to VM teardown.
             }
