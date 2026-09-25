@@ -1,6 +1,5 @@
 package dev.orchard.nursery;
 
-import dev.orchard.core.model.Seedling;
 import dev.orchard.vine.CommandRunner;
 import org.junit.jupiter.api.Test;
 
@@ -44,12 +43,35 @@ class DevcontainerCliTest {
         }
     }
 
-    private static Seedling fakeSeedling() {
-        return TestSeedlings.fake();
+    /** In-process fake that records every command it is asked to run. */
+    private static CommandRunner stubRunnerCapturing(List<String> calls) {
+        return new CommandRunner() {
+            @Override
+            public String execute(String c) {
+                calls.add(c);
+                return "";
+            }
+
+            @Override
+            public String execute(String c, long timeoutSeconds) {
+                calls.add(c);
+                return "";
+            }
+
+            @Override
+            public java.util.Optional<String> readFile(String p) { return java.util.Optional.empty(); }
+
+            @Override
+            public void executeStreaming(String c, Consumer<String> consumer, long timeoutSeconds) {
+                calls.add(c);
+                consumer.accept("{\"outcome\":\"success\",\"containerId\":\"abc123\","
+                    + "\"remoteUser\":\"vscode\",\"remoteWorkspaceFolder\":\"/workspace\"}");
+            }
+        };
     }
 
-    private static DevcontainerCli cliFor(CannedRunner runner) {
-        return new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 0, 0), s -> runner);
+    private static DevcontainerCli cliFor() {
+        return new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 0, 0));
     }
 
     @Test
@@ -60,8 +82,8 @@ class DevcontainerCliTest {
             "{\"outcome\":\"success\",\"containerId\":\"abc123\",\"remoteUser\":\"vscode\",\"remoteWorkspaceFolder\":\"/workspace\"}"
         ), 0);
 
-        DevcontainerCliResult result = cliFor(runner).up(
-            fakeSeedling(), UUID.randomUUID(), "my-fruit", line -> {});
+        DevcontainerCliResult result = cliFor().up(
+            runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {});
 
         assertThat(result.containerId()).isEqualTo("abc123");
         assertThat(result.remoteUser()).isEqualTo("vscode");
@@ -75,8 +97,8 @@ class DevcontainerCliTest {
             "{\"outcome\":\"error\",\"message\":\"build failed\",\"description\":\"Dockerfile RUN exited 1\"}"
         ), 0);
 
-        assertThatThrownBy(() -> cliFor(runner).up(
-                fakeSeedling(), UUID.randomUUID(), "my-fruit", line -> {}))
+        assertThatThrownBy(() -> cliFor().up(
+                runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {}))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .satisfies(t -> {
                 DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
@@ -92,8 +114,8 @@ class DevcontainerCliTest {
             "{\"outcome\":\"error\",\"disallowedFeatureId\":\"ghcr.io/devcontainers/features/java:1\",\"didStopContainer\":true,\"containerId\":\"xyz789\"}"
         ), 0);
 
-        assertThatThrownBy(() -> cliFor(runner).up(
-                fakeSeedling(), UUID.randomUUID(), "my-fruit", line -> {}))
+        assertThatThrownBy(() -> cliFor().up(
+                runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {}))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .satisfies(t -> {
                 DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
@@ -111,8 +133,8 @@ class DevcontainerCliTest {
             "{\"type\":\"progress\",\"name\":\"Half-built\"}"
         ), 0);
 
-        assertThatThrownBy(() -> cliFor(runner).up(
-                fakeSeedling(), UUID.randomUUID(), "my-fruit", line -> {}))
+        assertThatThrownBy(() -> cliFor().up(
+                runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {}))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .satisfies(t -> {
                 DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
@@ -130,8 +152,30 @@ class DevcontainerCliTest {
         CannedRunner runner = new CannedRunner(fed, 0);
 
         List<String> observed = new ArrayList<>();
-        cliFor(runner).up(fakeSeedling(), UUID.randomUUID(), "my-fruit", observed::add);
+        cliFor().up(runner, "/workspace", UUID.randomUUID(), "my-fruit", observed::add);
 
         assertThat(observed).containsExactlyElementsOf(fed);
+    }
+
+    @Test
+    void execTargetsTheSuppliedWorkspacePath() throws Exception {
+        var calls = new ArrayList<String>();
+        CommandRunner runner = stubRunnerCapturing(calls);
+        var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
+
+        cli.exec(runner, "/srv/custom-workspace", "echo hi");
+
+        assertThat(calls).anyMatch(c -> c.contains("--workspace-folder /srv/custom-workspace"));
+    }
+
+    @Test
+    void upTargetsTheSuppliedWorkspacePath() throws Exception {
+        var calls = new ArrayList<String>();
+        CommandRunner runner = stubRunnerCapturing(calls);
+        var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
+
+        cli.up(runner, "/srv/custom-workspace", UUID.randomUUID(), "my-fruit", line -> {});
+
+        assertThat(calls).anyMatch(c -> c.contains("--workspace-folder /srv/custom-workspace"));
     }
 }

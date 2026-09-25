@@ -33,7 +33,7 @@ public class QemuStartupRunner implements ApplicationRunner {
         initializer.initialize(qemuConfig);
 
         // Expose the SSH key path as a system property for cross-module access
-        // (Grove model, SshExecutor, GroveController, etc.)
+        // (Grove model, the :vine SSH runner, GroveController, etc.)
         String keyPath = qemuConfig.sshKeyPath().toString();
         System.setProperty(SSH_KEY_PATH_PROPERTY, keyPath);
         log.info("Set {}={}", SSH_KEY_PATH_PROPERTY, keyPath);

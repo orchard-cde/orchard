@@ -3,6 +3,7 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.SshVine;
 import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
@@ -106,12 +107,12 @@ public abstract class AbstractGroveProvider<L> implements GroveProvider {
 
     @Override
     public CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit) {
-        return fruitGrower.grow(seedling, fruit);
+        return fruitGrower.grow(new ExecTarget(vine(seedling).commands(), "/workspace", seedling.id()), fruit);
     }
 
     @Override
     public CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit) {
-        return fruitGrower.compost(seedling, fruit);
+        return fruitGrower.compost(new ExecTarget(vine(seedling).commands(), "/workspace", seedling.id()), fruit);
     }
 
     /**
@@ -120,7 +121,7 @@ public abstract class AbstractGroveProvider<L> implements GroveProvider {
      */
     @Override
     public Vine vine(Seedling seedling) {
-        return new SshVine(seedling);
+        return new SshVine(seedling.ipAddress(), seedling.sshPort(), seedling.id());
     }
 
     @Override

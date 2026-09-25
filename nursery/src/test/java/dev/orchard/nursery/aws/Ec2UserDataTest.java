@@ -1,6 +1,5 @@
 package dev.orchard.nursery.aws;
 
-import dev.orchard.core.model.Seedling.SeedlingSpec;
 import org.junit.jupiter.api.Test;
 
 import java.util.Base64;
@@ -18,14 +17,14 @@ class Ec2UserDataTest {
 
     @Test
     void render_startsWithCloudConfigShebang() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, CLI_VERSION);
+        String yaml = Ec2UserData.render(PUBLIC_KEY, CLI_VERSION);
 
         assertThat(yaml).startsWith("#cloud-config\n");
     }
 
     @Test
     void render_includesCultivatorUserWithSudoAndKey() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, CLI_VERSION);
+        String yaml = Ec2UserData.render(PUBLIC_KEY, CLI_VERSION);
 
         assertThat(yaml)
             .contains("- name: cultivator")
@@ -37,7 +36,7 @@ class Ec2UserDataTest {
 
     @Test
     void render_installsDockerAndGit() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, CLI_VERSION);
+        String yaml = Ec2UserData.render(PUBLIC_KEY, CLI_VERSION);
 
         assertThat(yaml)
             .contains("packages:")
@@ -48,7 +47,7 @@ class Ec2UserDataTest {
 
     @Test
     void render_installsNodejsAndDevcontainerCli() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, CLI_VERSION);
+        String yaml = Ec2UserData.render(PUBLIC_KEY, CLI_VERSION);
 
         assertThat(yaml)
             .contains("curl -fsSL https://deb.nodesource.com/setup_20.x")
@@ -58,14 +57,14 @@ class Ec2UserDataTest {
 
     @Test
     void render_pinsCliVersionFromArgument() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, "1.2.3");
+        String yaml = Ec2UserData.render(PUBLIC_KEY, "1.2.3");
 
         assertThat(yaml).contains("npm install -g @devcontainers/cli@1.2.3");
     }
 
     @Test
     void render_runcmdEnablesDockerAndPreparesWorkspace() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, CLI_VERSION);
+        String yaml = Ec2UserData.render(PUBLIC_KEY, CLI_VERSION);
 
         assertThat(yaml)
             .contains("runcmd:")
@@ -76,38 +75,30 @@ class Ec2UserDataTest {
     }
 
     @Test
-    void render_outputForAllSpecSizes_isStable() {
-        // Spec size is not currently part of the YAML, but the function must accept all three.
-        assertThat(Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, CLI_VERSION)).contains("cultivator");
-        assertThat(Ec2UserData.render(SeedlingSpec.medium(), PUBLIC_KEY, CLI_VERSION)).contains("cultivator");
-        assertThat(Ec2UserData.render(SeedlingSpec.large(), PUBLIC_KEY, CLI_VERSION)).contains("cultivator");
-    }
-
-    @Test
     void render_blankPublicKey_throws() {
-        assertThatThrownBy(() -> Ec2UserData.render(SeedlingSpec.small(), "", CLI_VERSION))
+        assertThatThrownBy(() -> Ec2UserData.render("", CLI_VERSION))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("publicKey");
 
-        assertThatThrownBy(() -> Ec2UserData.render(SeedlingSpec.small(), null, CLI_VERSION))
+        assertThatThrownBy(() -> Ec2UserData.render(null, CLI_VERSION))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("publicKey");
     }
 
     @Test
     void render_blankCliVersion_throws() {
-        assertThatThrownBy(() -> Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, ""))
+        assertThatThrownBy(() -> Ec2UserData.render(PUBLIC_KEY, ""))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("devcontainerCliVersion");
 
-        assertThatThrownBy(() -> Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, null))
+        assertThatThrownBy(() -> Ec2UserData.render(PUBLIC_KEY, null))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("devcontainerCliVersion");
     }
 
     @Test
     void renderBase64_isDecodableToRawYaml() {
-        String base64 = Ec2UserData.renderBase64(SeedlingSpec.small(), PUBLIC_KEY, CLI_VERSION);
+        String base64 = Ec2UserData.renderBase64(PUBLIC_KEY, CLI_VERSION);
         String decoded = new String(Base64.getDecoder().decode(base64));
 
         assertThat(decoded)
@@ -118,7 +109,7 @@ class Ec2UserDataTest {
 
     @Test
     void render_withRegisteredKeys_includesAllKeys() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, List.of(REGISTERED_KEY_1, REGISTERED_KEY_2), CLI_VERSION);
+        String yaml = Ec2UserData.render(PUBLIC_KEY, List.of(REGISTERED_KEY_1, REGISTERED_KEY_2), CLI_VERSION);
 
         assertThat(yaml)
             .contains("ssh_authorized_keys:")
@@ -129,7 +120,7 @@ class Ec2UserDataTest {
 
     @Test
     void render_withNoRegisteredKeys_includesOnlyConfiguredKey() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, List.of(), CLI_VERSION);
+        String yaml = Ec2UserData.render(PUBLIC_KEY, List.of(), CLI_VERSION);
 
         assertThat(yaml)
             .contains("ssh_authorized_keys:")
@@ -139,7 +130,7 @@ class Ec2UserDataTest {
 
     @Test
     void renderBase64_withRegisteredKeys_decodesToAllKeys() {
-        String base64 = Ec2UserData.renderBase64(SeedlingSpec.small(), PUBLIC_KEY, List.of(REGISTERED_KEY_1), CLI_VERSION);
+        String base64 = Ec2UserData.renderBase64(PUBLIC_KEY, List.of(REGISTERED_KEY_1), CLI_VERSION);
         String decoded = new String(Base64.getDecoder().decode(base64));
 
         assertThat(decoded)
@@ -149,7 +140,7 @@ class Ec2UserDataTest {
 
     @Test
     void render_nullRegisteredKeys_treatedAsEmpty() {
-        String yaml = Ec2UserData.render(SeedlingSpec.small(), PUBLIC_KEY, null, CLI_VERSION);
+        String yaml = Ec2UserData.render(PUBLIC_KEY, null, CLI_VERSION);
 
         assertThat(yaml).contains("- " + PUBLIC_KEY);
     }

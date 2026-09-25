@@ -6,10 +6,10 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
-import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
-import dev.orchard.vine.SshExecutor;
+import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -25,22 +25,22 @@ import java.util.concurrent.Executors;
 
 
 /**
- * Grows Fruit (devcontainers) on Seedlings (VMs).
+ * Grows Fruit (devcontainers) inside a substrate reached via an injected {@link CommandRunner}.
  *
  * <p>Two paths are supported:
  * <ul>
  *   <li><b>CLI path (default, gated by {@code orchard.nursery.use-devcontainer-cli=true})</b> —
  *       delegates to {@link DevcontainerCli} which shells out to {@code @devcontainers/cli}
- *       installed on the Seedling. This is the only path that honours {@code seed.features()},
+ *       inside the substrate. This is the only path that honours {@code seed.features()},
  *       i.e. the actual fix for issue #74.</li>
  *   <li><b>Legacy docker path</b> — raw {@code docker pull}/{@code docker build}/{@code docker run}
- *       over SSH. Retained for one release cycle behind the feature flag per spec Locked
+ *       over the runner. Retained for one release cycle behind the feature flag per spec Locked
  *       decision #12. {@code seed.features()} is silently ignored on this path.</li>
  * </ul>
  *
- * <p>{@link #pick(Seedling, Fruit)} and {@link #compost(Seedling, Fruit)} both run raw
- * {@code docker stop}/{@code docker rm -f} over SSH on either path — the CLI doesn't ship a
- * {@code down} subcommand (spec Locked decision #4).
+ * <p>{@link #pick} and {@link #compost} both run raw {@code docker stop}/{@code docker rm -f}
+ * over the runner on either path — the CLI doesn't ship a {@code down} subcommand (spec Locked
+ * decision #4).
  */
 public class FruitGrower {
 
@@ -77,7 +77,7 @@ public class FruitGrower {
 
 
     /**
-     * Grows a fruit (starts a devcontainer) on the given seedling. Routes based on both
+     * Grows a fruit (starts a devcontainer) against the given workspace. Routes based on both
      * the feature flag and the concrete seed type:
      *
      * <ul>
@@ -86,23 +86,24 @@ public class FruitGrower {
      *   <li>{@link DevfileSeed} → docker-direct path (devcontainer CLI is not applicable)</li>
      * </ul>
      */
-    public CompletableFuture<Fruit> grow(Seedling seedling, Fruit fruit) {
+    public CompletableFuture<Fruit> grow(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             return switch (fruit.seed()) {
                 case DevfileSeed ignored -> {
-                    log.info("Growing fruit {} on seedling {} (path=devfile-docker)", fruit.id(), seedling.id());
-                    yield growDevfileViaDocker(seedling, fruit);
+                    log.info("Growing fruit {} on target {} (path=devfile-docker)", fruit.id(), target.targetId());
+                    yield growDevfileViaDocker(target.runner(), fruit);
                 }
                 case DevcontainerSeed ignored -> {
                     boolean useCli = useDevcontainerCli && devcontainerCli != null;
-                    log.info("Growing fruit {} on seedling {} (path={})", fruit.id(), seedling.id(),
+                    log.info("Growing fruit {} on target {} (path={})", fruit.id(), target.targetId(),
                         useCli ? "devcontainer-cli" : "legacy-docker");
-                    yield useCli ? growViaCli(seedling, fruit) : growViaDocker(seedling, fruit);
+                    yield useCli ? growViaCli(target, fruit)
+                                  : growViaDocker(target.runner(), fruit);
                 }
                 default -> {
                     log.warn("Unknown seed type {} for fruit {}, falling back to legacy docker",
                         fruit.seed().getClass().getSimpleName(), fruit.id());
-                    yield growViaDocker(seedling, fruit);
+                    yield growViaDocker(target.runner(), fruit);
                 }
             };
         }, executor);
@@ -111,29 +112,32 @@ public class FruitGrower {
     // --- CLI path -----------------------------------------------------------------------------
 
     /**
-     * Grows the fruit by shelling out to {@code @devcontainers/cli} on the Seedling. This is the
+     * Grows the fruit by shelling out to {@code @devcontainers/cli} via the runner. This is the
      * spec-faithful path: features, lifecycle commands and waitFor are all owned by the CLI.
      */
-    Fruit growViaCli(Seedling seedling, Fruit fruit) {
+    Fruit growViaCli(ExecTarget target, Fruit fruit) {
+        CommandRunner runner = target.runner();
+        String workspacePath = target.workspacePath();
         DevcontainerSeed seed = devcontainerSeed(fruit);
         try {
-            // initializeCommand runs on the host VM before the container starts — the CLI does
+            // initializeCommand runs on the host before the container starts — the CLI does
             // not own this hook (spec Locked decision #2).
             if (seed.initializeCommand() != null) {
-                runLifecycleCommand(seed.initializeCommand(), cmd -> executeSsh(seedling, cmd));
+                runLifecycleCommand(seed.initializeCommand(),
+                    cmd -> executeSsh(runner, cmd));
             }
 
             PhaseTransitionFilter phaseFilter = new PhaseTransitionFilter(fruit.id(), fruit.groveId(), events);
 
             DevcontainerCliResult result = devcontainerCli.up(
-                seedling, fruit.id(), fruit.containerName(), phaseFilter::onLine);
+                runner, workspacePath, fruit.id(), fruit.containerName(), phaseFilter::onLine);
 
             // Locked decision #18 — the actual container name on the host may differ from
             // Fruit.containerName (e.g. CLI appends a suffix on regrow). Inspect and update so
             // downstream consumers (trowel grove status, GroveResponse) see reality.
             String realName;
             try {
-                realName = devcontainerCli.inspectContainerName(seedling, result.containerId());
+                realName = devcontainerCli.inspectContainerName(runner, result.containerId());
             } catch (Exception inspectFailure) {
                 log.warn("Could not inspect real container name for fruit {} (containerId={}); " +
                     "keeping Fruit.containerName as-is", fruit.id(), result.containerId(), inspectFailure);
@@ -144,7 +148,7 @@ public class FruitGrower {
             // the container is already running.
             List<Fruit.PortMapping> ports;
             try {
-                ports = getPortMappings(seedling, result.containerId());
+                ports = getPortMappings(runner, result.containerId());
             } catch (Exception portFailure) {
                 log.warn("Could not fetch port mappings for fruit {} (containerId={})",
                     fruit.id(), result.containerId(), portFailure);
@@ -187,7 +191,7 @@ public class FruitGrower {
             return fruit;
         }
         return new Fruit(
-            fruit.id(), fruit.groveId(), fruit.seedlingId(),
+            fruit.id(), fruit.groveId(), fruit.plotId(),
             fruit.containerId(), newName, fruit.serviceName(), fruit.seed(),
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt());
     }
@@ -246,33 +250,37 @@ public class FruitGrower {
      * seed.features()} is silently ignored here — this path predates feature support.
      */
     @Deprecated(forRemoval = true, since = "next-release")
-    Fruit growViaDocker(Seedling seedling, Fruit fruit) {
+    Fruit growViaDocker(CommandRunner runner, Fruit fruit) {
         try {
             DevcontainerSeed seed = devcontainerSeed(fruit);
 
             if (seed.initializeCommand() != null) {
-                runLifecycleCommand(seed.initializeCommand(), cmd -> executeSsh(seedling, cmd));
+                runLifecycleCommand(seed.initializeCommand(),
+                    cmd -> executeSsh(runner, cmd));
             }
 
             String containerId;
             if (seed.image() != null) {
-                containerId = legacyRunFromImage(seedling, fruit);
+                containerId = legacyRunFromImage(runner, fruit);
             } else if (seed.dockerfilePath() != null) {
-                containerId = legacyBuildAndRun(seedling, fruit);
+                containerId = legacyBuildAndRun(runner, fruit);
             } else {
                 throw new IllegalArgumentException("Seed must have either image or dockerfilePath");
             }
 
-            List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
+            List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
 
             if (seed.onCreateCommand() != null) {
-                runLifecycleCommand(seed.onCreateCommand(), cmd -> inContainer(seedling, containerId, cmd));
+                runLifecycleCommand(seed.onCreateCommand(),
+                    cmd -> inContainer(runner, containerId, cmd));
             }
             if (seed.postCreateCommand() != null) {
-                runLifecycleCommand(seed.postCreateCommand(), cmd -> inContainer(seedling, containerId, cmd));
+                runLifecycleCommand(seed.postCreateCommand(),
+                    cmd -> inContainer(runner, containerId, cmd));
             }
             if (seed.updateContentCommand() != null) {
-                runLifecycleCommand(seed.updateContentCommand(), cmd -> inContainer(seedling, containerId, cmd));
+                runLifecycleCommand(seed.updateContentCommand(),
+                    cmd -> inContainer(runner, containerId, cmd));
             }
 
             Fruit result = fruit.withContainerDetails(containerId, ports);
@@ -281,7 +289,8 @@ public class FruitGrower {
             }
 
             if (seed.postStartCommand() != null) {
-                runLifecycleCommand(seed.postStartCommand(), cmd -> inContainer(seedling, containerId, cmd));
+                runLifecycleCommand(seed.postStartCommand(),
+                    cmd -> inContainer(runner, containerId, cmd));
             }
 
             return result;
@@ -307,14 +316,14 @@ public class FruitGrower {
      * ({@code memoryLimit} / {@code cpuLimit}) are passed as docker {@code --memory} /
      * {@code --cpus} constraints when present.
      *
-     * <p>{@code preStartCommand} (devfile {@code events.preStart}) runs over SSH on the
-     * seedling host before {@code docker pull}/{@code docker run}. {@code postStartCommand}
-     * (devfile {@code events.postStart}) runs inside the container via {@code docker exec}
-     * immediately after it starts, before the fruit is reported {@code RIPE} — both reuse the
-     * same {@link LifecycleCommand}/{@code runLifecycleCommand} primitive the devcontainer
-     * hooks use, with no translation between devfile and devcontainer event names.
+     * <p>{@code preStartCommand} (devfile {@code events.preStart}) runs over the runner before
+     * {@code docker pull}/{@code docker run}. {@code postStartCommand} (devfile {@code
+     * events.postStart}) runs inside the container via {@code docker exec} immediately after it
+     * starts, before the fruit is reported {@code RIPE} — both reuse the same {@link
+     * LifecycleCommand}/{@code runLifecycleCommand} primitive the devcontainer hooks use, with no
+     * translation between devfile and devcontainer event names.
      */
-    Fruit growDevfileViaDocker(Seedling seedling, Fruit fruit) {
+    Fruit growDevfileViaDocker(CommandRunner runner, Fruit fruit) {
         DevfileSeed seed = devfileSeed(fruit);
         try {
             if (seed.image() == null || seed.image().isBlank()) {
@@ -322,12 +331,13 @@ public class FruitGrower {
                     "DevfileSeed for fruit " + fruit.id() + " has no image — cannot start container");
             }
 
-            // devfile events.preStart — runs on the seedling host, before the container starts.
+            // devfile events.preStart — runs on the host, before the container starts.
             if (seed.preStartCommand() != null) {
-                runLifecycleCommand(seed.preStartCommand(), cmd -> executeSsh(seedling, cmd));
+                runLifecycleCommand(seed.preStartCommand(),
+                    cmd -> executeSsh(runner, cmd));
             }
 
-            executeSsh(seedling, "docker pull " + shellQuote(seed.image()));
+            executeSsh(runner, "docker pull " + shellQuote(seed.image()));
 
             StringBuilder cmd = new StringBuilder("docker run -d");
             cmd.append(" --name ").append(shellQuote(fruit.containerName()));
@@ -355,8 +365,8 @@ public class FruitGrower {
             cmd.append(" ").append(shellQuote(seed.image()));
             cmd.append(" sleep infinity");
 
-            String containerId = executeSsh(seedling, cmd.toString()).trim();
-            List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
+            String containerId = executeSsh(runner, cmd.toString()).trim();
+            List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
 
             // Record container details before executing lifecycle commands so the fruit
             // retains a containerId reference for cleanup even if a command fails.
@@ -364,7 +374,8 @@ public class FruitGrower {
 
             // devfile events.postStart — runs inside the container, after it starts.
             if (seed.postStartCommand() != null) {
-                runLifecycleCommand(seed.postStartCommand(), c -> inContainer(seedling, containerId, c));
+                runLifecycleCommand(seed.postStartCommand(),
+                    c -> inContainer(runner, containerId, c));
             }
 
             return fruit.withState(FruitState.RIPE);
@@ -379,24 +390,26 @@ public class FruitGrower {
     }
 
     /**
-     * Grows multiple fruits via Docker Compose on the given seedling. Legacy path; the CLI path
-     * subsumes compose in a future lane (spec Locked decision #3 / #11).
+     * Grows multiple fruits via Docker Compose against the given workspace. Legacy path; the CLI
+     * path subsumes compose in a future lane (spec Locked decision #3 / #11).
      */
     @Deprecated(forRemoval = true, since = "next-release")
-    public CompletableFuture<List<Fruit>> growCompose(Seedling seedling, List<Fruit> fruits, String composeFile) {
-        return growCompose(seedling, fruits, List.of(composeFile));
+    public CompletableFuture<List<Fruit>> growCompose(ExecTarget target, List<Fruit> fruits, String composeFile) {
+        return growCompose(target, fruits, List.of(composeFile));
     }
 
     /**
-     * Grows multiple fruits via Docker Compose on the given seedling.
+     * Grows multiple fruits via Docker Compose against the given workspace.
      * Accepts all compose files in override order (issue #32 — {@code dockerComposeFiles}).
      * Legacy path; the CLI path subsumes compose in a future lane.
      */
     @Deprecated(forRemoval = true, since = "next-release")
-    public CompletableFuture<List<Fruit>> growCompose(Seedling seedling, List<Fruit> fruits, List<String> composeFiles) {
+    public CompletableFuture<List<Fruit>> growCompose(ExecTarget target, List<Fruit> fruits,
+                                                        List<String> composeFiles) {
         return CompletableFuture.supplyAsync(() -> {
+            CommandRunner runner = target.runner();
             try {
-                log.info("Growing {} fruits via Docker Compose on seedling {}", fruits.size(), seedling.id());
+                log.info("Growing {} fruits via Docker Compose on target {}", fruits.size(), target.targetId());
 
                 // Build "-f file1 -f file2 ..." from all compose files (issue #32)
                 StringBuilder fileArgs = new StringBuilder();
@@ -422,9 +435,9 @@ public class FruitGrower {
                         .collect(java.util.stream.Collectors.joining(" "));
                 }
 
-                executeSsh(seedling, "docker compose" + fileArgs + " up -d" + upServicesArg);
+                executeSsh(runner, "docker compose" + fileArgs + " up -d" + upServicesArg);
 
-                String psOutput = executeSsh(seedling,
+                String psOutput = executeSsh(runner,
                     "docker compose" + fileArgs + " ps --format '{{.ID}}|{{.Service}}|{{.Name}}'");
 
                 List<Fruit> grownFruits = new ArrayList<>();
@@ -444,14 +457,16 @@ public class FruitGrower {
                     }
 
                     if (containerId != null) {
-                        List<Fruit.PortMapping> ports = getPortMappings(seedling, containerId);
+                        List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
                         if (fruit.seed() instanceof DevcontainerSeed s) {
                             String cid = containerId;
                             if (s.onCreateCommand() != null) {
-                                runLifecycleCommand(s.onCreateCommand(), cmd -> inContainer(seedling, cid, cmd));
+                                runLifecycleCommand(s.onCreateCommand(),
+                                    cmd -> inContainer(runner, cid, cmd));
                             }
                             if (s.postCreateCommand() != null) {
-                                runLifecycleCommand(s.postCreateCommand(), cmd -> inContainer(seedling, cid, cmd));
+                                runLifecycleCommand(s.postCreateCommand(),
+                                    cmd -> inContainer(runner, cid, cmd));
                             }
                         }
                         grownFruits.add(fruit
@@ -466,7 +481,7 @@ public class FruitGrower {
                 return grownFruits;
 
             } catch (Exception e) {
-                log.error("Failed to grow compose stack on seedling {}", seedling.id(), e);
+                log.error("Failed to grow compose stack on target {}", target.targetId(), e);
                 return fruits.stream()
                     .map(f -> f.withState(FruitState.ROTTED))
                     .toList();
@@ -478,12 +493,12 @@ public class FruitGrower {
      * Picks a fruit (stops the container). Same SSH semantics on both paths — the CLI has no
      * {@code down} subcommand per spec Locked decision #4.
      */
-    public CompletableFuture<Fruit> pick(Seedling seedling, Fruit fruit) {
+    public CompletableFuture<Fruit> pick(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Picking fruit {}", fruit.id());
                 if (fruit.containerId() != null) {
-                    executeSsh(seedling, "docker stop " + fruit.containerId());
+                    executeSsh(target.runner(), "docker stop " + fruit.containerId());
                 }
                 return fruit.withState(FruitState.PICKED);
             } catch (Exception e) {
@@ -499,12 +514,12 @@ public class FruitGrower {
     /**
      * Composts a fruit (removes the container entirely).
      */
-    public CompletableFuture<Void> compost(Seedling seedling, Fruit fruit) {
+    public CompletableFuture<Void> compost(ExecTarget target, Fruit fruit) {
         return CompletableFuture.runAsync(() -> {
             try {
                 log.info("Composting fruit {}", fruit.id());
                 if (fruit.containerId() != null) {
-                    executeSsh(seedling, "docker rm -f " + fruit.containerId());
+                    executeSsh(target.runner(), "docker rm -f " + fruit.containerId());
                 }
             } catch (Exception e) {
                 log.error("Failed to compost fruit {}", fruit.id(), e);
@@ -516,17 +531,17 @@ public class FruitGrower {
         }, executor);
     }
 
-    public CompletableFuture<Fruit> attach(Seedling seedling, Fruit fruit) {
+    public CompletableFuture<Fruit> attach(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 DevcontainerSeed seed = devcontainerSeed(fruit);
                 if (seed.postAttachCommand() != null) {
                     if (useDevcontainerCli && devcontainerCli != null) {
                         runLifecycleCommand(seed.postAttachCommand(),
-                            cmd -> devcontainerCli.exec(seedling, cmd));
+                            cmd -> devcontainerCli.exec(target.runner(), target.workspacePath(), cmd));
                     } else {
                         runLifecycleCommand(seed.postAttachCommand(),
-                            cmd -> inContainer(seedling, fruit.containerId(), cmd));
+                            cmd -> inContainer(target.runner(), fruit.containerId(), cmd));
                     }
                 }
                 if (seed.waitFor() == WaitFor.POST_ATTACH_COMMAND) {
@@ -564,10 +579,11 @@ public class FruitGrower {
     }
 
     @Deprecated(forRemoval = true, since = "next-release")
-    private String legacyRunFromImage(Seedling seedling, Fruit fruit) throws IOException, InterruptedException {
+    private String legacyRunFromImage(CommandRunner runner, Fruit fruit)
+            throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
 
-        executeSsh(seedling, "docker pull " + shellQuote(seed.image()));
+        executeSsh(runner, "docker pull " + shellQuote(seed.image()));
 
         StringBuilder cmd = new StringBuilder("docker run -d");
         cmd.append(" --name ").append(shellQuote(fruit.containerName()));
@@ -618,11 +634,12 @@ public class FruitGrower {
         cmd.append(" ").append(shellQuote(seed.image()));
         cmd.append(" sleep infinity");
 
-        return executeSsh(seedling, cmd.toString()).trim();
+        return executeSsh(runner, cmd.toString()).trim();
     }
 
     @Deprecated(forRemoval = true, since = "next-release")
-    private String legacyBuildAndRun(Seedling seedling, Fruit fruit) throws IOException, InterruptedException {
+    private String legacyBuildAndRun(CommandRunner runner, Fruit fruit)
+            throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
 
         String imageTag = "orchard-fruit-" + fruit.id().toString().substring(0, 8);
@@ -655,7 +672,7 @@ public class FruitGrower {
             : "/workspace";
         buildCmd.append(" ").append(shellQuote(context));
 
-        executeSsh(seedling, buildCmd.toString());
+        executeSsh(runner, buildCmd.toString());
 
         Seed imageOnlySeed = DevcontainerSeed.devcontainer()
             .name(seed.name())
@@ -673,12 +690,12 @@ public class FruitGrower {
             .build();
 
         Fruit imageFruit = new Fruit(
-            fruit.id(), fruit.groveId(), fruit.seedlingId(),
+            fruit.id(), fruit.groveId(), fruit.plotId(),
             null, fruit.containerName(), fruit.serviceName(), imageOnlySeed,
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt()
         );
 
-        return legacyRunFromImage(seedling, imageFruit);
+        return legacyRunFromImage(runner, imageFruit);
     }
 
     static List<Fruit.PortMapping> parsePortOutput(String output) {
@@ -700,20 +717,20 @@ public class FruitGrower {
         return mappings;
     }
 
-    private List<Fruit.PortMapping> getPortMappings(Seedling seedling, String containerId)
+    private List<Fruit.PortMapping> getPortMappings(CommandRunner runner, String containerId)
             throws IOException, InterruptedException {
-        String output = executeSsh(seedling,
-            "docker port " + containerId + " 2>/dev/null || echo ''");
+        String output = executeSsh(runner, "docker port " + containerId + " 2>/dev/null || echo ''");
         return parsePortOutput(output);
     }
 
-    private void inContainer(Seedling seedling, String containerId, String command)
+    private void inContainer(CommandRunner runner, String containerId, String command)
             throws IOException, InterruptedException {
-        executeSsh(seedling, "docker exec " + containerId + " /bin/sh -c '" + command + "'");
+        executeSsh(runner, "docker exec " + containerId + " /bin/sh -c '" + command + "'");
     }
 
-    private String executeSsh(Seedling seedling, String command) throws IOException, InterruptedException {
-        return new SshExecutor(seedling).execute(command);
+    private String executeSsh(CommandRunner runner, String command)
+            throws IOException, InterruptedException {
+        return runner.execute(command);
     }
 
     @FunctionalInterface

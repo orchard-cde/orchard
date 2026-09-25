@@ -81,8 +81,8 @@ public interface GroveProvider {
      *
      * <p>{@link #verifyDevcontainerCli(Seedling, String)} delegates here with an explicit
      * {@link CommandRunner} obtained from its {@link #vine}. This static is the sole production
-     * path — matches the Lane B {@code Function<Seedling, CommandRunner>} pattern used by
-     * {@link DevcontainerCli}.
+     * path — it takes the {@link CommandRunner} as a plain per-call argument, the same seam
+     * {@link DevcontainerCli} uses.
      *
      * @throws SeedlingProvisioningException if the CLI is missing or the version mismatches.
      */
