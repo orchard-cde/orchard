@@ -389,6 +389,7 @@ public class GroveCommand implements Callable<Integer> {
             case "DORMANT" -> "\uD83D\uDCA4"; // zzz
             case "CLEARING", "CLEARED" -> "\uD83D\uDDD1"; // wastebasket
             case "BLIGHTED" -> "\u274C"; // red x
+            case "ORPHANED" -> "\u26A0"; // warning sign \u2014 needs operator attention
             default -> "\u2753"; // question mark
         };
     }
