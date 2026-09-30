@@ -1,6 +1,7 @@
 package dev.orchard.api.service;
 
 import dev.orchard.api.dto.CreateBeeRequest;
+import dev.orchard.api.event.BeeRemovedEvent;
 import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
 import dev.orchard.apiary.BeeKeeperRegistry;
@@ -19,8 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class BeeService {
@@ -154,13 +157,48 @@ public class BeeService {
                     } else {
                         log.warn("Skipping keeper.smoke() for bee {}: no registered keeper or grove", beeId);
                     }
-                    eventPublisher.publishEvent(BeeStateChangedEvent.of(
+                    publishAfterCommit(BeeStateChangedEvent.of(
                         smokedBee.id(), smokedBee.groveId(), previousState, BeeState.SMOKED));
                 }
             });
 
             return smokedBee;
         });
+    }
+
+    private static final Set<BeeState> REMOVABLE_STATES =
+        EnumSet.of(BeeState.HIBERNATING, BeeState.SMOKED);
+
+    /**
+     * Removes a Bee record, but only while its recorded state is HIBERNATING or SMOKED, so a
+     * Bee that the platform believes is running cannot be deleted out from under its process.
+     * The state check is part of the delete statement rather than a preceding read, so a state
+     * change committing concurrently cannot be missed.
+     * <p>
+     * This is not a no-orphan guarantee. {@code wake} does not persist a state change before
+     * starting a process, and {@code SMOKED} is recorded before the stop command runs, so a
+     * live process can sit behind a removable-looking row. Closing that needs changes to those
+     * paths, tracked separately.
+     *
+     * @return {@code false} if no such Bee exists in the given Grove
+     * @throws IllegalStateException if the Bee exists in that Grove but is not in a removable state
+     */
+    @Transactional
+    public boolean removeBee(UUID groveId, UUID beeId) {
+        if (beeRepository.deleteRemovable(beeId, groveId, REMOVABLE_STATES) > 0) {
+            publishAfterCommit(new BeeRemovedEvent(beeId, groveId, Instant.now()));
+            return true;
+        }
+
+        // Nothing was deleted. Re-read only to report why; the safety decision was already
+        // made atomically above.
+        BeeEntity entity = beeRepository.findById(beeId).orElse(null);
+        if (entity == null || !groveId.equals(entity.getGroveId())) {
+            return false;
+        }
+        throw new IllegalStateException(
+            "Bee " + beeId + " was not in a removable state (HIBERNATING or SMOKED) when "
+                + "removal was attempted; state now: " + entity.getState());
     }
 
     private void provisionBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {
@@ -190,7 +228,7 @@ public class BeeService {
             entity.setStartedAt(releasedBee.startedAt());
             beeRepository.save(entity);
 
-            eventPublisher.publishEvent(BeeStateChangedEvent.of(
+            publishAfterCommit(BeeStateChangedEvent.of(
                 bee.id(), bee.groveId(), previousState, BeeState.BUZZING));
 
             return CompletableFuture.completedFuture(releasedBee);
@@ -202,10 +240,56 @@ public class BeeService {
             BeeEntity entity = beeRepository.findById(beeId).orElseThrow();
             entity.setState(newState);
             beeRepository.save(entity);
-            eventPublisher.publishEvent(BeeStateChangedEvent.of(
+            publishAfterCommit(BeeStateChangedEvent.of(
                 beeId, entity.getGroveId(), previousState, newState));
         } catch (Exception e) {
             log.error("Failed to update bee state for bee {}", beeId, e);
+        }
+    }
+
+    /**
+     * Publishes an event so no listener can run before the write that caused it has committed:
+     * deferred when a transaction is in progress, published immediately when there is none.
+     * <p>
+     * Safe to call from any phase, including from inside another {@code afterCommit} callback.
+     * Spring snapshots synchronizations before invoking {@code afterCommit}, so one registered
+     * during that phase would never receive {@code afterCommit} -- it receives
+     * {@code afterCompletion} instead, which is why both are implemented and guarded.
+     * <p>
+     * Delivery is best-effort: a throwing listener is logged, never propagated, so a failed
+     * notification cannot invalidate an already-committed write.
+     */
+    void publishAfterCommit(Object event) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                private final AtomicBoolean published = new AtomicBoolean();
+
+                @Override
+                public void afterCommit() {
+                    publishOnce(event, published);
+                }
+
+                @Override
+                public void afterCompletion(int status) {
+                    if (status == STATUS_COMMITTED) {
+                        publishOnce(event, published);
+                    }
+                }
+            });
+            return;
+        }
+        publishOnce(event, new AtomicBoolean());
+    }
+
+    private void publishOnce(Object event, AtomicBoolean published) {
+        if (!published.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            eventPublisher.publishEvent(event);
+        } catch (RuntimeException e) {
+            log.error("Failed to publish bee event {}", event, e);
         }
     }
 

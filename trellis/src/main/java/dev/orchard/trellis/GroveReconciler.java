@@ -45,7 +45,7 @@ public class GroveReconciler implements ApplicationRunner {
         }
 
         int blighted = 0;
-        int cleared = 0;
+        int orphaned = 0;
         int alive = 0;
 
         for (GroveEntity grove : allGroves) {
@@ -71,19 +71,20 @@ public class GroveReconciler implements ApplicationRunner {
                             grove.getName(), grove.getId(), grove.getState());
                 }
                 case CLEARING -> {
-                    grove.setState(GroveState.CLEARED);
+                    grove.setState(GroveState.ORPHANED);
                     groveRepository.save(grove);
-                    cleared++;
-                    log.info("Grove '{}' [{}] had interrupted teardown — marked CLEARED",
-                            grove.getName(), grove.getId());
+                    orphaned++;
+                    log.warn("Grove '{}' [{}] had interrupted teardown and no teardown was "
+                        + "re-attempted — marked ORPHANED; operator action required",
+                        grove.getName(), grove.getId());
                 }
                 default -> log.debug("Grove '{}' [{}] in state {} — skipping",
                         grove.getName(), grove.getId(), grove.getState());
             }
         }
 
-        log.info("Grove reconciliation complete: {} alive, {} blighted, {} cleared (of {} total)",
-                alive, blighted, cleared, allGroves.size());
+        log.info("Grove reconciliation complete: {} alive, {} blighted, {} orphaned "
+                + "(of {} total)", alive, blighted, orphaned, allGroves.size());
     }
 
     private boolean isReachable(GroveEntity grove) {

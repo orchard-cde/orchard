@@ -541,6 +541,18 @@ public class GroveService {
     @Transactional
     public void clearGrove(UUID groveId) {
         groveRepository.findById(groveId).ifPresent(entity -> {
+            GroveState state = entity.getState();
+            if (state == GroveState.CLEARING) {
+                log.warn("Cannot clear grove {} in state {} — teardown already in flight", groveId, state);
+                return;
+            }
+            if (state == GroveState.CLEARED) {
+                log.warn("Cannot clear grove {} in state {}", groveId, state);
+                return;
+            }
+            // Everything else stays clearable on purpose: ORPHANED is the retry path, and a grove
+            // stuck in PREPARING/PLANTING/GROWING must still be removable. Returns void and the
+            // controller always answers 204, so this guard's only effect is the warn above.
             log.info("Clearing grove {}", groveId);
             entity.setState(GroveState.CLEARING);
             groveRepository.save(entity);
@@ -549,49 +561,91 @@ public class GroveService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            // Check if VM is reachable before attempting container cleanup
-                            boolean vmReachable = false;
-                            if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
-                                try (var socket = new java.net.Socket()) {
-                                    socket.connect(new java.net.InetSocketAddress(
-                                        grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
-                                    vmReachable = true;
-                                } catch (java.io.IOException e) {
-                                    log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
-                                }
-                            }
-
-                            // Stop and remove all containers (only if VM is reachable)
-                            if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
-                                for (Fruit fruit : grove.fruits()) {
-                                    if (fruit.containerId() != null) {
-                                        log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                                        providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
-                                    }
-                                }
-                            }
-                            // Always clean up fruit entities from DB
-                            fruitRepository.deleteAll(
-                                fruitRepository.findByGroveId(groveId)
-                            );
-                            // Terminate VM
-                            if (grove.seedling() != null) {
-                                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
-                                providerRegistry.getDefault().uproot(grove.seedling()).join();
-                            }
-                        } catch (Exception e) {
-                            log.error("Error during grove teardown for {}", groveId, e);
-                        } finally {
-                            entity.setState(GroveState.CLEARED);
-                            groveRepository.save(entity);
-                            log.info("Grove {} cleared", groveId);
-                        }
-                    });
+                    CompletableFuture.runAsync(
+                        () -> tearDownAndRecord(groveId, grove, entity, GroveState.CLEARED));
                 }
             });
         });
+    }
+
+    /**
+     * Tears down a grove's substrate, then records the outcome.
+     *
+     * <p>The substrate is released before the fruit rows are deleted, so a failure leaves the
+     * records naming the leaked resource and the grove becomes {@link GroveState#ORPHANED}.
+     *
+     * <p>Package-private so tests can drive it directly; production enters via
+     * {@code afterCommit} → {@code runAsync}, which no test can reach.
+     */
+    void tearDownAndRecord(UUID groveId, Grove grove, GroveEntity entity, GroveState successState) {
+        // Phase 1 — release the substrate. A failure here may have left a resource behind, so
+        // every record is retained and the grove is marked ORPHANED.
+        try {
+            compostFruitsIfReachable(groveId, grove);
+
+            if (grove.seedling() != null) {
+                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
+                providerRegistry.getDefault().uproot(grove.seedling()).join();
+            }
+        } catch (Exception e) {
+            log.error("Substrate teardown failed for grove {} — marking ORPHANED and retaining "
+                + "records; operator action required", groveId, e);
+            entity.setState(GroveState.ORPHANED);
+            groveRepository.save(entity);
+            return;
+        }
+
+        // Phase 2 — the substrate is gone, so a failure here must not report ORPHANED: that
+        // would send an operator hunting a resource that no longer exists. In-process only — if
+        // the save() below is what fails, the row keeps CLEARING and the reconciler marks it
+        // ORPHANED at the next startup instead.
+        try {
+            // On the stop path this detached entity already holds successState, so rewriting it
+            // would clobber a startGrove that ran in between. Guards the state column only — the
+            // fruit rows are protected separately, below.
+            if (entity.getState() != successState) {
+                entity.setState(successState);
+                groveRepository.save(entity);
+            }
+            // Only the generation captured when teardown began: re-querying at completion would
+            // delete rows a subsequent startGrove created, since this runs asynchronously.
+            List<UUID> capturedFruitIds = grove.fruits() == null ? List.of()
+                : grove.fruits().stream().map(Fruit::id).toList();
+            fruitRepository.deleteAllById(capturedFruitIds);
+            log.info("Grove {} reached {}", groveId, successState);
+        } catch (Exception e) {
+            log.error("Grove {} substrate was released but bookkeeping failed; state or fruit rows "
+                + "may be stale. The substrate is NOT leaked.", groveId, e);
+        }
+    }
+
+    /**
+     * Best-effort container cleanup, gated on a raw socket probe.
+     *
+     * <p>The probe is a known defect carried forward deliberately: the spec's "Must-fix along the
+     * way" requires a substrate-aware reachability check obtained through the provider, which needs
+     * provider-owned inspection (#228). Do not opportunistically replace it here. A probe miss no
+     * longer masks an {@code uproot} failure.
+     */
+    private void compostFruitsIfReachable(UUID groveId, Grove grove) {
+        boolean vmReachable = false;
+        if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
+            try (var socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress(
+                    grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
+                vmReachable = true;
+            } catch (java.io.IOException e) {
+                log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
+            }
+        }
+        if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
+            for (Fruit fruit : grove.fruits()) {
+                if (fruit.containerId() != null) {
+                    log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
+                    providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
+                }
+            }
+        }
     }
 
     /**
@@ -616,40 +670,8 @@ public class GroveService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            // Container cleanup requires SSH — skip if VM is unreachable
-                            boolean vmReachable = false;
-                            if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
-                                try (var socket = new java.net.Socket()) {
-                                    socket.connect(new java.net.InetSocketAddress(
-                                        grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
-                                    vmReachable = true;
-                                } catch (java.io.IOException e) {
-                                    log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
-                                }
-                            }
-
-                            if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
-                                for (Fruit fruit : grove.fruits()) {
-                                    if (fruit.containerId() != null) {
-                                        log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                                        providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
-                                    }
-                                }
-                            }
-                            fruitRepository.deleteAll(fruitRepository.findByGroveId(groveId));
-
-                            // Uproot is a provider-side operation (kill QEMU process / cloud terminate)
-                            // — does not require SSH reachability
-                            if (grove.seedling() != null) {
-                                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
-                                providerRegistry.getDefault().uproot(grove.seedling()).join();
-                            }
-                        } catch (Exception e) {
-                            log.error("Error during grove stop for {}", groveId, e);
-                        }
-                    });
+                    CompletableFuture.runAsync(
+                        () -> tearDownAndRecord(groveId, grove, entity, GroveState.DORMANT));
                 }
             });
 

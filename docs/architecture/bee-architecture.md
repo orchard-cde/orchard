@@ -327,7 +327,7 @@ New Flyway migration (V7) in `roots/src/main/resources/db/migration/`:
 | POST | `/api/groves/{id}/bees` | Attach a Bee | Grove must be FLOURISHING |
 | GET | `/api/groves/{id}/bees` | List all Bees in a Grove | |
 | GET | `/api/groves/{id}/bees/{beeId}` | Get Bee status | |
-| DELETE | `/api/groves/{id}/bees/{beeId}` | Stop and remove a Bee | Calls smoke(), deletes record |
+| DELETE | `/api/groves/{id}/bees/{beeId}` | Remove a stopped Bee | 204; 409 unless HIBERNATING or SMOKED |
 | POST | `/api/groves/{id}/bees/{beeId}/actions/wake` | Restart a Bee | Valid from HIBERNATING or SMOKED → BUZZING |
 | GET | `/api/groves/{id}/bees/swarm-status` | Summary of all active Bees | |
 
@@ -426,23 +426,54 @@ New event: `BeeStateChangedEvent`
 
 ```java
 public record BeeStateChangedEvent(
-    UUID groveId,
     UUID beeId,
-    String beeType,
+    UUID groveId,
     BeeState previousState,
     BeeState newState,
     Instant changedAt
 ) {}
+
+public record BeeRemovedEvent(
+    UUID beeId,
+    UUID groveId,
+    Instant removedAt
+) {}
 ```
+
+There is deliberately no `beeType` on these events. Consumers needing the type resolve it from
+`GET /api/groves/{groveId}/bees/{beeId}`; two of the publish sites hold only a bee id and would
+otherwise need an extra lookup to populate a field no consumer asked for.
+
+`BeeService` publishes every bee event after the write that caused it has committed. That
+guarantees the commit precedes any listener, not that a listener's own re-read is a clean
+independent observation — `afterCommit` runs before Spring unbinds transactional resources, so
+a listener needing its own transaction must ask for one.
 
 **Broadcast channels:**
 
-| Channel | Topic / Endpoint | Purpose |
-|---------|-----------------|---------|
-| WebSocket/STOMP | `/topic/grove.{groveId}.bees` | Real-time Bee state updates |
-| SSE | `GET /api/groves/{groveId}/events` | Extended with Bee events |
+| Channel | Topic / Endpoint | Event names | Status |
+|---------|-----------------|-------------|--------|
+| SSE | `GET /api/groves/{groveId}/events` | `bee-state-changed`, `bee-removed` | Implemented |
+| WebSocket/STOMP | `/topic/grove.{groveId}.bees` | — | Not implemented |
 
-Messages are broadcast by a `BeeEventBroadcaster` component that listens for `BeeStateChangedEvent` application events, following the `GroveEventBroadcaster` pattern.
+`BeeEventBroadcaster` listens for both events and relays them onto the grove SSE stream,
+alongside the `grove-state-changed` events `GroveEventController` puts there. Both push through
+`GroveSseRegistry`, which owns the per-grove emitter set, so one connection carries grove and
+bee activity.
+
+Payloads stringify UUIDs and enum names and render timestamps as ISO-8601:
+
+```
+event:bee-state-changed
+data:{"beeId":"...","groveId":"...","previousState":"HIBERNATING","newState":"BUZZING","changedAt":"2026-09-21T12:34:56Z"}
+
+event:bee-removed
+data:{"beeId":"...","groveId":"...","removedAt":"2026-09-21T12:34:56Z"}
+```
+
+**Ordering.** These events carry no monotonic revision, and `changedAt` is taken per-event on
+the publishing thread, so it is not a safe ordering key. Clients subscribe first, then fetch
+`GET /api/groves/{groveId}/bees`, and treat the fetch as authoritative.
 
 ---
 
