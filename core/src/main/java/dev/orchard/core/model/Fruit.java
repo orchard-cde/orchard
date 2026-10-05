@@ -11,7 +11,7 @@ import java.util.UUID;
 public record Fruit(
     UUID id,
     UUID groveId,
-    UUID seedlingId,
+    UUID plotId,
     String containerId,
     String containerName,
     String serviceName,
@@ -27,15 +27,15 @@ public record Fruit(
         String protocol
     ) {}
 
-    public static Fruit bud(UUID groveId, UUID seedlingId, Seed seed) {
-        return bud(groveId, seedlingId, seed, null);
+    public static Fruit bud(UUID groveId, UUID plotId, Seed seed) {
+        return bud(groveId, plotId, seed, null);
     }
 
-    public static Fruit bud(UUID groveId, UUID seedlingId, Seed seed, String serviceName) {
+    public static Fruit bud(UUID groveId, UUID plotId, Seed seed, String serviceName) {
         return new Fruit(
             UUID.randomUUID(),
             groveId,
-            seedlingId,
+            plotId,
             null,
             seed.name() != null ? seed.name() : "orchard-fruit",
             serviceName,
@@ -48,12 +48,12 @@ public record Fruit(
     }
 
     public Fruit withState(FruitState newState) {
-        return new Fruit(id, groveId, seedlingId, containerId, containerName, serviceName, seed,
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, seed,
             newState, portMappings, buddedAt, newState == FruitState.RIPE ? Instant.now() : ripenedAt);
     }
 
     public Fruit withContainerDetails(String containerId, List<PortMapping> ports) {
-        return new Fruit(id, groveId, seedlingId, containerId, containerName, serviceName, seed,
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, seed,
             state, ports, buddedAt, ripenedAt);
     }
 

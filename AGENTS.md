@@ -67,7 +67,7 @@ path looks like two modules but is one. `integration-tests/` also exists, holdin
 All domain objects are Java records with factory methods:
 - `Grove.plant(cultivatorId, name, repoUrl, branch)`
 - `Seedling.germinate(groveId, spec)`
-- `Fruit.bud(groveId, seedlingId, seed)`
+- `Fruit.bud(groveId, plotId, seed)`
 
 ### State Machines
 Each entity has a state enum with gardening-themed states:

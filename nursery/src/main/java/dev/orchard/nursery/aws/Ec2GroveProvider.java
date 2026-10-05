@@ -61,7 +61,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
         String publicKey = readPublicKey();
 
         String userDataBase64 = Ec2UserData.renderBase64(
-            seedling.spec(), publicKey, seedling.authorizedKeys(), devcontainerCliConfig.version());
+            publicKey, seedling.authorizedKeys(), devcontainerCliConfig.version());
         String instanceType = config.resolveInstanceType(seedling.spec().cpuCores());
 
         Map<String, String> tags = Map.of(
