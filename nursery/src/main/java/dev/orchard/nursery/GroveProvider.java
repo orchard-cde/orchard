@@ -33,6 +33,13 @@ public interface GroveProvider {
 
     CompletableFuture<Seedling> dormant(Seedling seedling);
 
+    /**
+     * Releases the substrate (e.g. terminates the underlying VM/instance).
+     *
+     * <p>The returned future completes exceptionally if the substrate could not be released.
+     * Callers must treat that as "the resource may still exist" — never assume the substrate is
+     * gone just because this method was called.
+     */
     CompletableFuture<Void> uproot(Seedling seedling);
 
     CompletableFuture<Seedling> inspect(Seedling seedling);
@@ -40,6 +47,13 @@ public interface GroveProvider {
     /** Materializes one fruit on an already-planted substrate. */
     CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit);
 
+    /**
+     * Removes one fruit's container from an already-planted substrate.
+     *
+     * <p>The returned future completes exceptionally if the container could not be removed.
+     * Callers must treat that as "the resource may still exist" — never assume the container is
+     * gone just because this method was called.
+     */
     CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit);
 
     /**
@@ -67,8 +81,8 @@ public interface GroveProvider {
      *
      * <p>{@link #verifyDevcontainerCli(Seedling, String)} delegates here with an explicit
      * {@link CommandRunner} obtained from its {@link #vine}. This static is the sole production
-     * path — matches the Lane B {@code Function<Seedling, CommandRunner>} pattern used by
-     * {@link DevcontainerCli}.
+     * path — it takes the {@link CommandRunner} as a plain per-call argument, the same seam
+     * {@link DevcontainerCli} uses.
      *
      * @throws SeedlingProvisioningException if the CLI is missing or the version mismatches.
      */

@@ -1,6 +1,5 @@
 package dev.orchard.vine;
 
-import dev.orchard.core.model.Seedling;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,14 +8,15 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Executes commands on a Seedling (VM) over SSH.
+ * Executes commands on a remote target (VM) over SSH.
  * Shared utility for any component that needs to run remote commands.
  */
-public class SshExecutor implements CommandRunner {
+class SshExecutor implements CommandRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SshExecutor.class);
     private static final long DEFAULT_TIMEOUT_SECONDS = 60;
@@ -25,14 +25,18 @@ public class SshExecutor implements CommandRunner {
     /** Cap on retained stderr bytes — devcontainer up is verbose and we only need a tail for error context. */
     private static final int STDERR_CAPTURE_CAP_BYTES = 64 * 1024;
 
-    private final Seedling seedling;
+    private final String host;
+    private final int port;
+    private final UUID targetId;
 
-    public SshExecutor(Seedling seedling) {
-        this.seedling = seedling;
+    SshExecutor(String host, int port, UUID targetId) {
+        this.host = host;
+        this.port = port;
+        this.targetId = targetId;
     }
 
     /**
-     * Executes a command on the seedling via SSH and returns stdout.
+     * Executes a command on the remote target via SSH and returns stdout.
      *
      * @param command the command to execute remotely
      * @return the standard output from the command
@@ -45,7 +49,7 @@ public class SshExecutor implements CommandRunner {
 
     @Override
     public String execute(String command, long timeoutSeconds) throws IOException, InterruptedException {
-        log.debug("Executing SSH command on seedling {}: {}", seedling.id(), command);
+        log.debug("Executing SSH command on target {}: {}", targetId, command);
         Process process = new ProcessBuilder(buildSshCommand(command)).start();
 
         // Drain stdout AND stderr on parallel virtual threads while the process runs. Reading only
@@ -90,14 +94,14 @@ public class SshExecutor implements CommandRunner {
                 // Past the cap, keep reading to keep the pipe drained but discard the overflow.
             }
         } catch (IOException e) {
-            log.warn("SSH reader hit IO error on seedling {}: {}", seedling.id(), e.getMessage());
+            log.warn("SSH reader hit IO error on target {}: {}", targetId, e.getMessage());
         }
     }
 
     @Override
     public void executeStreaming(String command, java.util.function.Consumer<String> lineConsumer, long timeoutSeconds)
             throws IOException, InterruptedException {
-        log.debug("Streaming SSH command on seedling {}: {}", seedling.id(), command);
+        log.debug("Streaming SSH command on target {}: {}", targetId, command);
         Process process = new ProcessBuilder(buildSshCommand(command)).start();
 
         // Captured if lineConsumer.accept(...) throws — surfaced to the caller after the reader joins
@@ -118,7 +122,7 @@ public class SshExecutor implements CommandRunner {
                     }
                 }
             } catch (IOException e) {
-                log.warn("Streaming stdout reader hit IO error on seedling {}: {}", seedling.id(), e.getMessage());
+                log.warn("Streaming stdout reader hit IO error on target {}: {}", targetId, e.getMessage());
             }
         });
 
@@ -135,7 +139,7 @@ public class SshExecutor implements CommandRunner {
                     // Once over the cap, keep reading (to keep the pipe drained) but discard.
                 }
             } catch (IOException e) {
-                log.warn("Streaming stderr reader hit IO error on seedling {}: {}", seedling.id(), e.getMessage());
+                log.warn("Streaming stderr reader hit IO error on target {}: {}", targetId, e.getMessage());
             }
         });
 
@@ -172,8 +176,8 @@ public class SshExecutor implements CommandRunner {
      */
     List<String> buildSshCommand(String remoteCommand) {
         return new SshCommandBuilder()
-            .host(seedling.ipAddress())
-            .port(seedling.sshPort())
+            .host(host)
+            .port(port)
             .identityKey(resolveSshKeyPath())
             .remoteCommand(remoteCommand)
             .build();
@@ -188,9 +192,9 @@ public class SshExecutor implements CommandRunner {
     }
 
     /**
-     * Reads a file from the seedling via SSH. Returns empty if the file does not exist.
+     * Reads a file from the remote target via SSH. Returns empty if the file does not exist.
      *
-     * @param remotePath the absolute path of the file on the seedling
+     * @param remotePath the absolute path of the file on the remote target
      * @return the file contents, or empty if the file does not exist
      */
     public Optional<String> readFile(String remotePath) {
@@ -201,7 +205,7 @@ public class SshExecutor implements CommandRunner {
             }
             return Optional.of(content);
         } catch (IOException | InterruptedException e) {
-            log.debug("File not found or unreadable on seedling {}: {}", seedling.id(), remotePath);
+            log.debug("File not found or unreadable on target {}: {}", targetId, remotePath);
             return Optional.empty();
         }
     }

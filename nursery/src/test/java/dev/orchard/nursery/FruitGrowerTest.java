@@ -4,15 +4,15 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
+import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
+import dev.orchard.vine.SshVine;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -41,6 +42,7 @@ class FruitGrowerTest {
 
     private static final UUID GROVE_ID = UUID.randomUUID();
     private static final UUID SEEDLING_ID = UUID.randomUUID();
+    private static final String WORKSPACE_PATH = "/workspace";
 
     // --- parsePortOutput (legacy helper still used on docker path) ---------------------------
 
@@ -104,16 +106,16 @@ class FruitGrowerTest {
     void growViaCli_happyPath_returnsRipeFruit() throws Exception {
         DevcontainerCli cli = mock(DevcontainerCli.class);
         ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
-        Seedling seedling = seedling();
+        CommandRunner runner = runner();
         Fruit fruit = buddedFruit(defaultSeed());
 
-        when(cli.up(eq(seedling), eq(fruit.id()), eq(fruit.containerName()), any()))
-            .thenReturn(new DevcontainerCliResult("c123", null, "vscode", "/workspace"));
-        when(cli.inspectContainerName(seedling, "c123")).thenReturn("real-container-name");
+        when(cli.up(any(), eq(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
+            .thenReturn(new DevcontainerCliResult("c123", null, "vscode", WORKSPACE_PATH));
+        when(cli.inspectContainerName(any(), eq("c123"))).thenReturn("real-container-name");
 
         FruitGrower grower = new FruitGrower(cli, true, events);
 
-        Fruit result = grower.grow(seedling, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         assertThat(result.containerId()).isEqualTo("c123");
@@ -123,17 +125,17 @@ class FruitGrowerTest {
     @Test
     void growViaCli_cliError_returnsRottedFruit() throws Exception {
         DevcontainerCli cli = mock(DevcontainerCli.class);
-        Seedling seedling = seedling();
+        CommandRunner runner = runner();
         Fruit fruit = buddedFruit(defaultSeed());
 
         CliError error = new CliError("boom", "feature install failed", "ghcr.io/devcontainers/features/bad:1",
             null, false, "https://example/docs");
         doThrow(new DevcontainerCli.DevcontainerCliException(error))
-            .when(cli).up(any(), any(), anyString(), any());
+            .when(cli).up(any(), any(), any(), anyString(), any());
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
-        Fruit result = grower.grow(seedling, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.ROTTED);
         // Inspect should not be called once the up() throws.
@@ -143,7 +145,7 @@ class FruitGrowerTest {
     @Test
     void growViaCli_postAttachWaitFor_staysBuddedUntilAttach() throws Exception {
         DevcontainerCli cli = mock(DevcontainerCli.class);
-        Seedling seedling = seedling();
+        CommandRunner runner = runner();
         Seed seed = Seed.devcontainer()
             .name("post-attach-seed")
             .image("mcr.microsoft.com/devcontainers/base:ubuntu")
@@ -152,20 +154,20 @@ class FruitGrowerTest {
             .build();
         Fruit fruit = buddedFruit(seed);
 
-        when(cli.up(eq(seedling), eq(fruit.id()), eq(fruit.containerName()), any()))
-            .thenReturn(new DevcontainerCliResult("c-pa", null, "vscode", "/workspace"));
-        when(cli.inspectContainerName(seedling, "c-pa")).thenReturn(fruit.containerName());
+        when(cli.up(any(), eq(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
+            .thenReturn(new DevcontainerCliResult("c-pa", null, "vscode", WORKSPACE_PATH));
+        when(cli.inspectContainerName(any(), eq("c-pa"))).thenReturn(fruit.containerName());
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
         // grow() must NOT flip to RIPE when waitFor=POST_ATTACH_COMMAND.
-        Fruit afterGrow = grower.grow(seedling, fruit).get();
+        Fruit afterGrow = grower.grow(execTarget(runner), fruit).get();
         assertThat(afterGrow.state()).isEqualTo(FruitState.BUDDING);
         assertThat(afterGrow.containerId()).isEqualTo("c-pa");
 
         // attach() runs the post-attach command via CLI exec and flips to RIPE.
-        Fruit afterAttach = grower.attach(seedling, afterGrow).get();
-        verify(cli).exec(eq(seedling), eq("echo hi"));
+        Fruit afterAttach = grower.attach(execTarget(runner), afterGrow).get();
+        verify(cli).exec(same(runner), eq(WORKSPACE_PATH), eq("echo hi"));
         assertThat(afterAttach.state()).isEqualTo(FruitState.RIPE);
     }
 
@@ -173,7 +175,7 @@ class FruitGrowerTest {
     void growViaCli_publishesPhaseTransitionEvents() throws Exception {
         DevcontainerCli cli = mock(DevcontainerCli.class);
         ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
-        Seedling seedling = seedling();
+        CommandRunner runner = runner();
         Fruit fruit = buddedFruit(defaultSeed());
 
         // Simulate the CLI streaming three JSON lines: a build start, a feature install, and
@@ -181,18 +183,18 @@ class FruitGrowerTest {
         // each distinct phase boundary.
         doAnswer(inv -> {
             @SuppressWarnings("unchecked")
-            java.util.function.Consumer<String> sink = inv.getArgument(3);
+            java.util.function.Consumer<String> sink = inv.getArgument(4);
             sink.accept("{\"type\":\"progress\",\"message\":\"Building image abc\"}");
             sink.accept("{\"type\":\"progress\",\"message\":\"Running install.sh for ghcr.io/.../node:1\"}");
             sink.accept("{\"outcome\":\"success\",\"containerId\":\"c-events\"}");
-            return new DevcontainerCliResult("c-events", null, "vscode", "/workspace");
-        }).when(cli).up(any(), any(), anyString(), any());
+            return new DevcontainerCliResult("c-events", null, "vscode", WORKSPACE_PATH);
+        }).when(cli).up(any(), any(), any(), anyString(), any());
 
-        when(cli.inspectContainerName(seedling, "c-events")).thenReturn(fruit.containerName());
+        when(cli.inspectContainerName(any(), eq("c-events"))).thenReturn(fruit.containerName());
 
         FruitGrower grower = new FruitGrower(cli, true, events);
 
-        Fruit result = grower.grow(seedling, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
@@ -209,20 +211,42 @@ class FruitGrowerTest {
     }
 
     @Test
+    void growExecutesAgainstTheSuppliedWorkspacePath() throws Exception {
+        // Regression coverage for the FruitGrower/CommandRunner decoupling (#86): the CLI must
+        // receive whatever workspace path grow() was called with, not a hardcoded "/workspace".
+        DevcontainerCli cli = mock(DevcontainerCli.class);
+        CommandRunner runner = runner();
+        Fruit fruit = buddedFruit(defaultSeed());
+        String customWorkspacePath = "/custom/workspace";
+
+        when(cli.up(any(), eq(customWorkspacePath), eq(fruit.id()), eq(fruit.containerName()), any()))
+            .thenReturn(new DevcontainerCliResult("c-custom", null, "vscode", customWorkspacePath));
+        when(cli.inspectContainerName(any(), eq("c-custom"))).thenReturn(fruit.containerName());
+
+        FruitGrower grower = new FruitGrower(cli, true, null);
+
+        Fruit result = grower.grow(new ExecTarget(runner, customWorkspacePath, SEEDLING_ID), fruit).get();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        verify(cli).up(any(), eq(customWorkspacePath), eq(fruit.id()), eq(fruit.containerName()), any());
+        verify(cli, never()).up(any(), eq(WORKSPACE_PATH), any(), anyString(), any());
+    }
+
+    @Test
     void growViaDocker_featureFlagOff_usesLegacyPath() throws Exception {
         DevcontainerCli cli = mock(DevcontainerCli.class);
-        Seedling seedling = seedling();
+        CommandRunner runner = runner();
         Fruit fruit = buddedFruit(defaultSeed());
 
         // Feature flag off — even though a CLI mock is wired, grow() must route to the legacy
-        // path. We can't run docker over SSH from a unit test, so the seedling's bogus IP makes
+        // path. We can't run docker over SSH from a unit test, so the runner's bogus target makes
         // executeSsh() fail; the grower's catch-all maps that to ROTTED. The critical assertion
         // is that the CLI mock was never touched.
         FruitGrower grower = new FruitGrower(cli, false, null);
 
-        Fruit result = grower.grow(seedling, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
-        verify(cli, never()).up(any(), any(), anyString(), any());
+        verify(cli, never()).up(any(), any(), any(), anyString(), any());
         verify(cli, never()).inspectContainerName(any(), anyString());
         // The legacy path's SSH call will fail (no real VM), so the fruit rots — that's the
         // signal we took the legacy branch.
@@ -235,24 +259,24 @@ class FruitGrowerTest {
         // differently from Fruit.containerName (e.g. on regrow). FruitGrower MUST call
         // inspectContainerName and overwrite Fruit.containerName with the real value.
         DevcontainerCli cli = mock(DevcontainerCli.class);
-        Seedling seedling = seedling();
+        CommandRunner runner = runner();
         Fruit fruit = buddedFruit(defaultSeed());
         String originalContainerName = fruit.containerName();
 
-        when(cli.up(eq(seedling), eq(fruit.id()), eq(fruit.containerName()), any()))
-            .thenReturn(new DevcontainerCliResult("c-real", null, "vscode", "/workspace"));
-        when(cli.inspectContainerName(seedling, "c-real")).thenReturn("real-container-name");
+        when(cli.up(any(), eq(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
+            .thenReturn(new DevcontainerCliResult("c-real", null, "vscode", WORKSPACE_PATH));
+        when(cli.inspectContainerName(any(), eq("c-real"))).thenReturn("real-container-name");
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
-        Fruit result = grower.grow(seedling, fruit).get();
+        Fruit result = grower.grow(execTarget(runner), fruit).get();
 
         assertThat(result.containerName())
             .as("Fruit.containerName must reflect the actual host name returned by docker inspect")
             .isEqualTo("real-container-name")
             .isNotEqualTo(originalContainerName);
         assertThat(result.containerId()).isEqualTo("c-real");
-        verify(cli).inspectContainerName(seedling, "c-real");
+        verify(cli).inspectContainerName(same(runner), eq("c-real"));
     }
 
     // --- helpers -----------------------------------------------------------------------------
@@ -268,13 +292,12 @@ class FruitGrowerTest {
         return Fruit.bud(GROVE_ID, SEEDLING_ID, seed);
     }
 
-    private static Seedling seedling() {
+    private static CommandRunner runner() {
         // 127.0.0.255 / port 1 — guaranteed to refuse on any host the test runs on.
-        return new Seedling(
-            SEEDLING_ID, GROVE_ID, "test-instance",
-            "127.0.0.255", 1,
-            SeedlingState.SAPLING,
-            Seedling.SeedlingSpec.small(),
-            Instant.now(), Instant.now());
+        return new SshVine("127.0.0.255", 1, SEEDLING_ID).commands();
+    }
+
+    private static ExecTarget execTarget(CommandRunner runner) {
+        return new ExecTarget(runner, WORKSPACE_PATH, SEEDLING_ID);
     }
 }

@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 
 /**
@@ -60,7 +61,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
         String publicKey = readPublicKey();
 
         String userDataBase64 = Ec2UserData.renderBase64(
-            seedling.spec(), publicKey, seedling.authorizedKeys(), devcontainerCliConfig.version());
+            publicKey, seedling.authorizedKeys(), devcontainerCliConfig.version());
         String instanceType = config.resolveInstanceType(seedling.spec().cpuCores());
 
         Map<String, String> tags = Map.of(
@@ -137,6 +138,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
             } catch (Exception e) {
                 log.error("Failed to uproot seedling {} (instance={}): {}",
                     seedling.id(), seedling.providerInstanceId(), e.getMessage(), e);
+                throw new CompletionException(e);
             }
             return (Void) null;
         }, executor);

@@ -159,6 +159,9 @@ class GroveSurvivesRestartE2ETest {
             Void.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
+        // Poll until teardown reaches a TERMINAL state (CLEARED or ORPHANED) rather than only
+        // CLEARED — ORPHANED is now reachable on a failed teardown (issue #228), and polling for
+        // CLEARED alone would burn the full timeout instead of failing fast with a clear message.
         await()
             .atMost(GROVE_CLEARED_TIMEOUT)
             .pollInterval(POLL_INTERVAL)
@@ -166,9 +169,15 @@ class GroveSurvivesRestartE2ETest {
                 GroveResponse resp = getGrove(groveId);
                 assertThat(resp).isNotNull();
                 assertThat(resp.state())
-                    .as("Waiting for CLEARED, currently %s", resp.state())
-                    .isEqualTo(GroveState.CLEARED);
+                    .as("Waiting for teardown to reach a terminal state, currently %s", resp.state())
+                    .isIn(GroveState.CLEARED, GroveState.ORPHANED);
             });
+
+        GroveResponse terminal = getGrove(groveId);
+        assertThat(terminal).isNotNull();
+        assertThat(terminal.state())
+            .as("Teardown reached a terminal state but it was ORPHANED, not CLEARED")
+            .isEqualTo(GroveState.CLEARED);
 
         UUID seedlingId = latestResponse.seedling().id();
         Process pgrep = new ProcessBuilder("pgrep", "-f", "orchard-" + seedlingId.toString().substring(0, 8))

@@ -42,5 +42,14 @@ public enum GroveState {
     /**
      * The grove encountered a blight (error state)
      */
-    BLIGHTED
+    BLIGHTED,
+
+    /**
+     * Substrate teardown failed or was refused. The grove's records — including its fruit rows —
+     * are retained deliberately, because they name the resource that leaked and the provider that
+     * owns it. Requires operator action; the reconciler will not clear it.
+     *
+     * <p>Distinct from {@link #BLIGHTED}, which means <em>provisioning</em> failed.
+     */
+    ORPHANED
 }
