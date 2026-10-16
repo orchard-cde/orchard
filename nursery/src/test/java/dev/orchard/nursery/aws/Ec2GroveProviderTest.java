@@ -6,8 +6,8 @@ import dev.orchard.core.model.ContainerSpec;
 import dev.orchard.core.model.PlotRequest;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
-import dev.orchard.core.model.VmEndpoint.Host;
-import dev.orchard.core.model.VmEndpoint.InstanceId;
+import dev.orchard.core.model.Host;
+import dev.orchard.core.model.ProviderHandle;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
@@ -190,7 +190,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void water_startsInstanceAndRefreshesIp() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.WILTING);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "5.6.7.8", "10.0.0.4"));
@@ -207,7 +207,7 @@ class Ec2GroveProviderTest {
     @Test
     void water_refreshesHostButPreservesSshPort() {
         VmPlot planted = germinated
-            .withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), 2201))
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), 2201))
             .withState(PlotState.WILTING);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "5.6.7.8", "10.0.0.4"));
@@ -242,7 +242,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void dormant_returnsWiltingWithoutTouchingAws() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
 
         VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
@@ -254,7 +254,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void uproot_callsTerminateAndReturnsNull() throws Exception {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
 
         Void result = providerWith(configWith(Ec2Config.IpMode.AUTO))
@@ -270,7 +270,7 @@ class Ec2GroveProviderTest {
      */
     @Test
     void uproot_terminateFails_completesExceptionally() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
         RuntimeException terminateFailure = new RuntimeException("AWS terminate-instances failed");
         doThrow(terminateFailure).when(ops).terminateInstance("i-abc");
@@ -284,7 +284,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void inspect_mapsRunningToSapling() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
@@ -297,7 +297,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void inspect_mapsStoppedToWilting() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.STOPPED, null, "10.0.0.4"));
@@ -310,7 +310,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void inspect_mapsTerminatedToWithered() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.TERMINATED, null, null));
@@ -323,7 +323,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void inspect_mapsPendingToSprouting() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.PENDING, null, "10.0.0.4"));
@@ -336,7 +336,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void inspect_mapsUnknownToCurrentState() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.UNKNOWN, null, null));
@@ -351,7 +351,7 @@ class Ec2GroveProviderTest {
 
     @Test
     void inspect_instanceNotFound_returnsWithered() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new InstanceId("i-gone"), new Host("1.2.3.4"), germinated.sshPort()))
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-gone"), new Host("1.2.3.4"), germinated.sshPort()))
             .withState(PlotState.SAPLING);
         when(ops.describeInstance("i-gone")).thenThrow(new InstanceNotFoundException("i-gone"));
 

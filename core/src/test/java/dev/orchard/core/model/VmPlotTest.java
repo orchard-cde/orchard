@@ -1,7 +1,5 @@
 package dev.orchard.core.model;
 
-import dev.orchard.core.model.VmEndpoint.Host;
-import dev.orchard.core.model.VmEndpoint.InstanceId;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -74,7 +72,7 @@ class VmPlotTest {
             PlotState.GERMINATING, Instant.now(), null, null, 22,
             List.of("ssh-ed25519 AAAA k"), VmSpec.medium());
 
-        VmPlot located = plot.withEndpoint(new VmEndpoint(new InstanceId("i-abc"), new Host("10.1.2.3"), 2222));
+        VmPlot located = plot.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("10.1.2.3"), 2222));
 
         assertThat(located.providerInstanceId()).isEqualTo("i-abc");
         assertThat(located.host()).isEqualTo("10.1.2.3");

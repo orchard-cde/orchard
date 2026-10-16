@@ -44,7 +44,7 @@ public record VmPlot(
     }
 
     public VmPlot withEndpoint(VmEndpoint endpoint) {
-        return new VmPlot(id, groveId, providerId, endpoint.instanceId().value(), state, plantedAt,
+        return new VmPlot(id, groveId, providerId, endpoint.handle().value(), state, plantedAt,
             readyAt, endpoint.host().value(), endpoint.sshPort(), authorizedKeys, spec);
     }
 }

@@ -7,8 +7,8 @@ import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotRequest;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
-import dev.orchard.core.model.VmEndpoint.Host;
-import dev.orchard.core.model.VmEndpoint.InstanceId;
+import dev.orchard.core.model.Host;
+import dev.orchard.core.model.ProviderHandle;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
@@ -116,7 +116,7 @@ class QemuGroveProviderTest {
 
         provider.reattachSurvivingVms();
 
-        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new InstanceId(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
         assertThat(result.state()).isEqualTo(PlotState.SAPLING);
     }
 
@@ -133,7 +133,7 @@ class QemuGroveProviderTest {
 
         provider.reattachSurvivingVms();
 
-        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new InstanceId(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
         assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
@@ -151,7 +151,7 @@ class QemuGroveProviderTest {
 
         provider.reattachSurvivingVms();
 
-        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new InstanceId(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
         assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
@@ -164,7 +164,7 @@ class QemuGroveProviderTest {
 
         provider.reattachSurvivingVms(); // must not throw
 
-        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new InstanceId(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
         assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
@@ -175,7 +175,7 @@ class QemuGroveProviderTest {
 
         provider.reattachSurvivingVms(); // must not throw
 
-        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new InstanceId(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
         assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
@@ -199,9 +199,9 @@ class QemuGroveProviderTest {
 
         provider.reattachSurvivingVms();
 
-        assertThat(provider.inspect(alivePlot.withEndpoint(new VmEndpoint(new InstanceId(alivePlot.id().toString()), new Host("127.0.0.1"), alivePlot.sshPort()))).join().state())
+        assertThat(provider.inspect(alivePlot.withEndpoint(new VmEndpoint(new ProviderHandle(alivePlot.id().toString()), new Host("127.0.0.1"), alivePlot.sshPort()))).join().state())
             .isEqualTo(PlotState.SAPLING);
-        assertThat(provider.inspect(deadPlot.withEndpoint(new VmEndpoint(new InstanceId(deadPlot.id().toString()), new Host("127.0.0.1"), deadPlot.sshPort()))).join().state())
+        assertThat(provider.inspect(deadPlot.withEndpoint(new VmEndpoint(new ProviderHandle(deadPlot.id().toString()), new Host("127.0.0.1"), deadPlot.sshPort()))).join().state())
             .isEqualTo(PlotState.WITHERED);
     }
 
@@ -210,7 +210,7 @@ class QemuGroveProviderTest {
     void inspect_noEntryInMap_returnsWithered() {
         VmPlot germinated = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
         VmPlot plot = germinated.withEndpoint(
-            new VmEndpoint(new InstanceId("some-id"), new Host("127.0.0.1"), germinated.sshPort()));
+            new VmEndpoint(new ProviderHandle("some-id"), new Host("127.0.0.1"), germinated.sshPort()));
 
         Plot result = provider.inspect(plot).join();
 

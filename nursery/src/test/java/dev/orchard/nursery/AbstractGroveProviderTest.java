@@ -9,8 +9,8 @@ import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotRequest;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
-import dev.orchard.core.model.VmEndpoint.Host;
-import dev.orchard.core.model.VmEndpoint.InstanceId;
+import dev.orchard.core.model.Host;
+import dev.orchard.core.model.ProviderHandle;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
 import dev.orchard.vine.CommandRunner;
@@ -101,7 +101,7 @@ class AbstractGroveProviderTest {
         @Override
         protected VmEndpoint resolveEndpoint(VmPlot plot, FakeLaunch launched) {
             step("resolveEndpoint");
-            return new VmEndpoint(new InstanceId(launched.instanceId()), new Host("192.168.1.50"), launched.port());
+            return new VmEndpoint(new ProviderHandle(launched.instanceId()), new Host("192.168.1.50"), launched.port());
         }
 
         @Override
@@ -158,7 +158,7 @@ class AbstractGroveProviderTest {
 
         @Override
         protected VmEndpoint resolveEndpoint(VmPlot plot, String launched) {
-            return new VmEndpoint(new InstanceId(launched), new Host("172.16.0.9"), 22);
+            return new VmEndpoint(new ProviderHandle(launched), new Host("172.16.0.9"), 22);
         }
 
         @Override
@@ -398,7 +398,7 @@ class AbstractGroveProviderTest {
 
         @Override
         protected VmEndpoint resolveEndpoint(VmPlot plot, FakeLaunch launched) {
-            return new VmEndpoint(new InstanceId(launched.instanceId()), new Host("192.168.1.51"), launched.port());
+            return new VmEndpoint(new ProviderHandle(launched.instanceId()), new Host("192.168.1.51"), launched.port());
         }
 
         @Override

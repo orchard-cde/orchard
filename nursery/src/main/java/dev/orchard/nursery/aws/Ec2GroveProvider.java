@@ -3,8 +3,8 @@ package dev.orchard.nursery.aws;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
-import dev.orchard.core.model.VmEndpoint.Host;
-import dev.orchard.core.model.VmEndpoint.InstanceId;
+import dev.orchard.core.model.Host;
+import dev.orchard.core.model.ProviderHandle;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
@@ -90,7 +90,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
     @Override
     protected VmEndpoint resolveEndpoint(VmPlot plot, String instanceId) {
         InstanceDescription desc = operations.describeInstance(instanceId);
-        return new VmEndpoint(new InstanceId(instanceId), new Host(selectIp(desc)), SSH_PORT);
+        return new VmEndpoint(new ProviderHandle(instanceId), new Host(selectIp(desc)), SSH_PORT);
     }
 
     @Override
@@ -112,7 +112,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
                 waiter.awaitRunning(vm.providerInstanceId());
                 InstanceDescription desc = operations.describeInstance(vm.providerInstanceId());
                 return vm.withEndpoint(new VmEndpoint(
-                        new InstanceId(vm.providerInstanceId()), new Host(selectIp(desc)), vm.sshPort()))
+                        new ProviderHandle(vm.providerInstanceId()), new Host(selectIp(desc)), vm.sshPort()))
                     .withState(PlotState.SAPLING);
             // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
             // and surface as RuntimeException, caught below.

@@ -3,8 +3,8 @@ package dev.orchard.nursery.qemu;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
-import dev.orchard.core.model.VmEndpoint.Host;
-import dev.orchard.core.model.VmEndpoint.InstanceId;
+import dev.orchard.core.model.Host;
+import dev.orchard.core.model.ProviderHandle;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
@@ -98,7 +98,7 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
 
     @Override
     protected VmEndpoint resolveEndpoint(VmPlot plot, QemuLaunch launched) {
-        return new VmEndpoint(new InstanceId(plot.id().toString()), new Host("127.0.0.1"),
+        return new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"),
             launched.sshPort());
     }
 
