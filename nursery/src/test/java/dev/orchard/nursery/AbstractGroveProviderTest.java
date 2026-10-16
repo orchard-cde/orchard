@@ -264,10 +264,10 @@ class AbstractGroveProviderTest {
             .isTrue();
     }
 
-    // --- Shared VM behaviour, rehomed here when VmGroveProvider was collapsed away (#86) ---
+    // --- Shared VM behaviour ---
 
     private static Fruit budded(VmPlot plot) {
-        // Seed must be non-null: Fruit.bud dereferences seed.name() at Fruit.java:40.
+        // Seed must be non-null: Fruit.bud dereferences seed.name().
         return Fruit.bud(plot.groveId(), plot.id(),
             DevcontainerSeed.builder().name("test").image("alpine:3").build());
     }
@@ -313,7 +313,7 @@ class AbstractGroveProviderTest {
         // Closes the class of defect where AbstractGroveProvider or FruitGrower could substitute
         // a different CommandRunner en route: this asserts a single runner INSTANCE flows from
         // AbstractGroveProvider.growFruit() through FruitGrower.grow() into DevcontainerCli.up(),
-        // not merely that "some" runner arrived (#86 final review, Important 4).
+        // not merely that "some" runner arrived (#86).
         DevcontainerCli cli = mock(DevcontainerCli.class);
         FruitGrower realFruitGrower = new FruitGrower(cli, true, null);
         FruitGrower fruitGrowerSpy = spy(realFruitGrower);

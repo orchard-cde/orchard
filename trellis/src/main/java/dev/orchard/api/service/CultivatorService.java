@@ -42,7 +42,6 @@ public class CultivatorService {
             CultivatorEntity entity = existing.get();
             entity.setLastActiveAt(Instant.now());
 
-            // Update mutable profile fields if they changed
             if (email != null && !email.equals(entity.getEmail())) {
                 entity.setEmail(email);
             }
@@ -58,7 +57,6 @@ public class CultivatorService {
             return entity.toModel();
         }
 
-        // Create new cultivator from OAuth info
         Cultivator cultivator = Cultivator.createFromOAuth(provider, providerId, username, email, avatarUrl, displayName);
         CultivatorEntity entity = CultivatorEntity.fromModel(cultivator);
         cultivatorRepository.save(entity);
@@ -94,25 +92,16 @@ public class CultivatorService {
             });
     }
 
-    /**
-     * Find a cultivator by their ID.
-     */
     public Optional<Cultivator> findById(UUID cultivatorId) {
         return cultivatorRepository.findById(cultivatorId)
             .map(CultivatorEntity::toModel);
     }
 
-    /**
-     * Find a cultivator by username.
-     */
     public Optional<Cultivator> findByUsername(String username) {
         return cultivatorRepository.findByUsername(username)
             .map(CultivatorEntity::toModel);
     }
 
-    /**
-     * Find a cultivator by email.
-     */
     public Optional<Cultivator> findByEmail(String email) {
         return cultivatorRepository.findByEmail(email)
             .map(CultivatorEntity::toModel);

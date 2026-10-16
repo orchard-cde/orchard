@@ -9,8 +9,8 @@ import dev.orchard.core.model.VmPlot;
 
 /**
  * Converts between {@code Grove}'s {@link Seedling} and the provider seam's {@link Plot}. Exists
- * only while {@code Grove} still holds a {@code Seedling}; Plan 3b moves {@code Grove} onto
- * {@code Plot} and deletes this class.
+ * only while {@code Grove} still holds a {@code Seedling}; delete once {@code Grove} holds a
+ * {@code Plot} directly.
  */
 final class PlotBridge {
 

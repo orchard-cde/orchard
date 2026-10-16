@@ -16,7 +16,7 @@ import java.util.UUID;
 
 /**
  * Mints the short-lived JWT the SSH gateway accepts as an SSH password
- * (OwnerTokenAuthenticator). Claims per design spec §2e:
+ * (OwnerTokenAuthenticator). Claims:
  * {sub, email, scope: gateway-ssh, aud: orchard-gateway, exp, iat, jti}.
  */
 @Service

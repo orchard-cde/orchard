@@ -290,7 +290,7 @@ class GroveServiceTest {
         verify(eventPublisher, never()).publishEvent(any());
     }
 
-    // --- cloud-init status classification (issue #113) --------------------------------
+    // cloud-init status classification (issue #113)
     // The previous waitForCloudInit used `status.contains("done") || contains("not available")`,
     // which mistook a *failed* or unreadable cloud-init for completion and then surfaced the
     // missing devcontainer CLI downstream as a confusing `devcontainer: command not found`.
@@ -333,7 +333,7 @@ class GroveServiceTest {
             .isEqualTo(GroveService.CloudInitStatus.IN_PROGRESS);
     }
 
-    // --- provisionGrove: registered SSH keys baked into the seedling --------------------
+    // provisionGrove: registered SSH keys baked into the seedling
 
     @Test
     void provisionGrove_attachesRegisteredKeysToSeedlingBeforePlanting() {
@@ -413,7 +413,6 @@ class GroveServiceTest {
         }
     }
 
-    // --- stopGrove / startGrove ---
 
     @Test
     void stopGrove_growingGrove_transitionsToDormant() {
@@ -523,7 +522,6 @@ class GroveServiceTest {
         assertThat(groveService.startGrove(UUID.randomUUID())).isEmpty();
     }
 
-    // --- clearGrove ---
 
     @Test
     void clearGrove_clearingGrove_rejectedWithoutTeardown() {
@@ -709,7 +707,7 @@ class GroveServiceTest {
 
     /**
      * Ordering guard: teardown must precede record deletion, which is what makes a failed
-     * teardown recoverable. Verified by mutation — deleting the rows first fails this test.
+     * teardown recoverable.
      */
     @Test
     void tearDownAndRecord_uprootsBeforeDeletingFruitRows() {

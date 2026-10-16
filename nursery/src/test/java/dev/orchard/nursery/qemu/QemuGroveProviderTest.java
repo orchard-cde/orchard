@@ -84,7 +84,6 @@ class QemuGroveProviderTest {
         return p;
     }
 
-    // --- reattachSurvivingVms ---
 
     @Test
     void reattachSurvivingVms_noStorageDir_isNoop() {
@@ -206,7 +205,6 @@ class QemuGroveProviderTest {
             .isEqualTo(PlotState.WITHERED);
     }
 
-    // --- inspect ---
 
     @Test
     void inspect_noEntryInMap_returnsWithered() {
@@ -239,7 +237,6 @@ class QemuGroveProviderTest {
             .hasMessageContaining(container.id().toString());
     }
 
-    // --- uproot ---
 
     /**
      * A missing handle is the already-gone case and must stay a success path, so uproot remains

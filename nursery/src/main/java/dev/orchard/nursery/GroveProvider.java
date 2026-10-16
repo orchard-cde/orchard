@@ -15,7 +15,7 @@ import java.util.concurrent.CompletableFuture;
  *
  * <p>Deliberately granular rather than a single end-to-end {@code plant(Grove, Seed)}. Grove-level
  * orchestration — state transitions, event publishing, persistence — stays in {@code GroveService};
- * moving it here would be a behaviour change rather than the adapter this stage is meant to be. The
+ * moving it here would change behaviour rather than just adapt the substrate. The
  * end-to-end shape is revisited once a second substrate exists to justify it. See issue #86.
  *
  * <p>{@link Plot} is sealed. A provider that supports only one substrate narrows the plot it is

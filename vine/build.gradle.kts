@@ -3,7 +3,7 @@ plugins {
 }
 
 dependencies {
-    // SshVine is built from a VmPlot (#215 open question 1, decided in Plan 3a): the vine translates
+    // SshVine is built from a VmPlot (#215): the vine translates
     // the domain plot into transport primitives itself, so providers hand it a plot rather than
     // destructuring one. SshExecutor stays primitive and package-private.
     api(project(":core"))

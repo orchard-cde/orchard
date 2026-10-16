@@ -36,7 +36,6 @@ public class NurseryConfig {
 
     private static final Logger log = LoggerFactory.getLogger(NurseryConfig.class);
 
-    // --- QEMU (always available) ---
 
     @Bean
     @ConfigurationProperties(prefix = "orchard.qemu")
@@ -62,7 +61,6 @@ public class NurseryConfig {
             .build();
     }
 
-    // --- AWS EC2 ---
 
     @Bean
     @ConditionalOnProperty(prefix = "orchard.nursery.aws", name = "region")
@@ -122,7 +120,6 @@ public class NurseryConfig {
         return new Ec2GroveProvider(config, operations, waiter, devcontainerCliConfig, fruitGrower);
     }
 
-    // --- GCP Compute ---
 
     @Bean
     @ConditionalOnProperty(prefix = "orchard.nursery.gcp", name = "project")
@@ -143,7 +140,6 @@ public class NurseryConfig {
         );
     }
 
-    // --- Azure VM ---
 
     @Bean
     @ConditionalOnProperty(prefix = "orchard.nursery.azure", name = "subscription-id")
@@ -163,7 +159,6 @@ public class NurseryConfig {
         );
     }
 
-    // --- Provider Registry ---
 
     @Bean
     public ProviderRegistry providerRegistry(
@@ -177,34 +172,30 @@ public class NurseryConfig {
 
         ProviderRegistry registry = new ProviderRegistry();
 
-        // Always register QEMU; reattach any VMs that survived the previous server run
+        // reattach VMs that survived the previous server run
         QemuGroveProvider qemuProvider =
             new QemuGroveProvider(qemuConfig, devcontainerCliConfig, fruitGrower);
         qemuProvider.reattachSurvivingVms();
         registry.register(qemuProvider);
         log.info("Registered grove provider: {}", qemuProvider.getProviderId());
 
-        // Conditionally register AWS EC2 — Spring instantiates and manages the bean lifecycle.
         ec2GroveProvider.ifAvailable(provider -> {
             registry.register(provider);
             log.info("Registered grove provider: {}", provider.getProviderId());
         });
 
-        // Conditionally register GCP Compute
         googleComputeConfig.ifAvailable(config -> {
             GoogleComputeGroveProvider gcpProvider = new GoogleComputeGroveProvider(config, fruitGrower);
             registry.register(gcpProvider);
             log.info("Registered grove provider: {}", gcpProvider.getProviderId());
         });
 
-        // Conditionally register Azure VM
         azureConfig.ifAvailable(config -> {
             AzureVmGroveProvider azureProvider = new AzureVmGroveProvider(config, fruitGrower);
             registry.register(azureProvider);
             log.info("Registered grove provider: {}", azureProvider.getProviderId());
         });
 
-        // Set the default provider based on configuration
         String resolvedDefault = resolveProviderId(defaultProvider);
         if (registry.hasProvider(resolvedDefault)) {
             registry.setDefault(resolvedDefault);
@@ -254,7 +245,6 @@ public class NurseryConfig {
         };
     }
 
-    // --- Config Properties Classes ---
 
     public static class QemuConfigProperties {
         private String qemuBinary = QemuPlatformDefaults.defaultQemuBinary().toString();

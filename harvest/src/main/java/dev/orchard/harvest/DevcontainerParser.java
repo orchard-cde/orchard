@@ -152,12 +152,10 @@ public class DevcontainerParser {
         JsonNode root = objectMapper.readTree(jsonContent);
         DevcontainerSeed.Builder builder = DevcontainerSeed.devcontainer();
 
-        // Name
         if (root.has("name")) {
             builder.name(root.get("name").asText());
         }
 
-        // Image
         if (root.has("image")) {
             builder.image(root.get("image").asText());
         }
@@ -198,7 +196,6 @@ public class DevcontainerParser {
             builder.dockerComposeFiles(parseStringList(root.get("dockerComposeFile")));
         }
 
-        // service (compose primary service)
         if (root.has("service")) {
             builder.service(root.get("service").asText());
         }
@@ -210,7 +207,6 @@ public class DevcontainerParser {
             builder.runServices(svc);
         }
 
-        // features
         if (root.has("features")) {
             Map<String, Map<String, Object>> features = new LinkedHashMap<>();
             root.get("features").properties().forEach(entry -> {
@@ -228,14 +224,12 @@ public class DevcontainerParser {
             builder.overrideFeatureInstallOrder(order);
         }
 
-        // forwardPorts
         if (root.has("forwardPorts")) {
             List<String> ports = new ArrayList<>();
             root.get("forwardPorts").forEach(node -> ports.add(node.asText()));
             builder.forwardPorts(ports);
         }
 
-        // containerEnv
         if (root.has("containerEnv")) {
             builder.containerEnv(parseStringMap(root.get("containerEnv")));
         }
@@ -359,7 +353,6 @@ public class DevcontainerParser {
             builder.secrets(secretMap);
         }
 
-        // Lifecycle commands
         if (root.has("initializeCommand")) {
             builder.initializeCommand(parseLifecycleCommand(root.get("initializeCommand")));
         }
@@ -379,12 +372,10 @@ public class DevcontainerParser {
             builder.postAttachCommand(parseLifecycleCommand(root.get("postAttachCommand")));
         }
 
-        // waitFor
         if (root.has("waitFor")) {
             builder.waitFor(parseWaitFor(root.get("waitFor").asText()));
         }
 
-        // VS Code customizations
         if (root.has("customizations") && root.get("customizations").has("vscode")) {
             JsonNode vscode = root.get("customizations").get("vscode");
             List<String> extensions = new ArrayList<>();

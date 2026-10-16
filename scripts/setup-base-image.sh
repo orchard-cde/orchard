@@ -1,12 +1,7 @@
 #!/bin/bash
 set -e
 
-# =============================================================================
-# Orchard CDE - Base Image Setup Script
-#
-# Downloads and prepares an Ubuntu 22.04 cloud image for use as the base
-# seedling (VM) image in the Orchard platform.
-# =============================================================================
+# Downloads and prepares an Ubuntu 22.04 cloud image as the base seedling (VM) image.
 
 ARCH="$(uname -m)"
 if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
@@ -20,9 +15,6 @@ IMAGE_FILENAME="ubuntu-22.04-base.qcow2"
 RESIZE_TARGET="20G"
 SSH_KEY_PATH="$HOME/.ssh/orchard_ed25519"
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 info()  { echo "[INFO]  $*"; }
 warn()  { echo "[WARN]  $*"; }
@@ -46,9 +38,6 @@ EOF
     exit 0
 }
 
-# ---------------------------------------------------------------------------
-# Argument parsing
-# ---------------------------------------------------------------------------
 
 CUSTOM_IMAGE_PATH=""
 
@@ -68,9 +57,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# ---------------------------------------------------------------------------
-# 1. Detect OS
-# ---------------------------------------------------------------------------
+# Detect OS
 
 OS="$(uname -s)"
 case "$OS" in
@@ -90,9 +77,7 @@ esac
 IMAGE_DIR="${CUSTOM_IMAGE_PATH:-$DEFAULT_IMAGE_DIR}"
 info "Image directory: $IMAGE_DIR"
 
-# ---------------------------------------------------------------------------
-# 2. Check required tools
-# ---------------------------------------------------------------------------
+# Check required tools
 
 check_command() {
     if ! command -v "$1" &>/dev/null; then
@@ -119,9 +104,7 @@ else
     die "Neither wget nor curl is installed. Please install one of them."
 fi
 
-# ---------------------------------------------------------------------------
-# 3. Create images directory
-# ---------------------------------------------------------------------------
+# Create images directory
 
 if [[ ! -d "$IMAGE_DIR" ]]; then
     info "Creating image directory: $IMAGE_DIR"
@@ -130,9 +113,7 @@ else
     info "Image directory already exists: $IMAGE_DIR"
 fi
 
-# ---------------------------------------------------------------------------
-# 4. Download Ubuntu 22.04 cloud image (idempotent)
-# ---------------------------------------------------------------------------
+# Download Ubuntu 22.04 cloud image (idempotent)
 
 DOWNLOAD_PATH="$IMAGE_DIR/$DOWNLOAD_FILENAME"
 FINAL_IMAGE_PATH="$IMAGE_DIR/$IMAGE_FILENAME"
@@ -156,32 +137,25 @@ else
         info "Download complete."
     fi
 
-    # -----------------------------------------------------------------------
-    # 5. Convert to qcow2 format
-    # -----------------------------------------------------------------------
+    # Convert to qcow2
 
     info "Converting image to qcow2 format..."
     qemu-img convert -f qcow2 -O qcow2 "$DOWNLOAD_PATH" "$FINAL_IMAGE_PATH"
     info "Conversion complete: $FINAL_IMAGE_PATH"
 
-    # -----------------------------------------------------------------------
-    # 6. Resize to 20G
-    # -----------------------------------------------------------------------
+    # Resize to RESIZE_TARGET
 
     info "Resizing image to $RESIZE_TARGET..."
     qemu-img resize "$FINAL_IMAGE_PATH" "$RESIZE_TARGET"
     info "Resize complete."
 
-    # Clean up the raw download to save space
     if [[ "$DOWNLOAD_PATH" != "$FINAL_IMAGE_PATH" ]]; then
         info "Removing original download to save space..."
         rm -f "$DOWNLOAD_PATH"
     fi
 fi
 
-# ---------------------------------------------------------------------------
-# 7. Generate SSH key pair for Orchard (if it doesn't already exist)
-# ---------------------------------------------------------------------------
+# Generate SSH key pair for Orchard if absent
 
 if [[ -f "$SSH_KEY_PATH" ]]; then
     info "Orchard SSH key already exists at $SSH_KEY_PATH -- skipping generation."
@@ -191,9 +165,7 @@ else
     info "SSH key pair generated."
 fi
 
-# ---------------------------------------------------------------------------
-# 8. Print instructions for ORCHARD_SSH_PUBLIC_KEY env var
-# ---------------------------------------------------------------------------
+# Print instructions for ORCHARD_SSH_PUBLIC_KEY
 
 echo ""
 echo "============================================================================="
@@ -217,9 +189,7 @@ echo ""
 echo "   echo \"\$ORCHARD_SSH_PUBLIC_KEY\""
 echo ""
 
-# ---------------------------------------------------------------------------
-# 9. Check for genisoimage/mkisofs (needed for cloud-init ISO creation)
-# ---------------------------------------------------------------------------
+# genisoimage/mkisofs is needed for cloud-init ISO creation
 
 ISOMAKER=""
 if check_command genisoimage; then

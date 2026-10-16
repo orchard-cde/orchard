@@ -83,10 +83,8 @@ public class GroveService {
         // Parse --spec up front so an invalid value fails before any rows are created.
         final SeedSpec seedSpec = SeedSpec.fromFlag(request.spec());
 
-        // Ensure cultivator exists (auto-creates for local-dev)
         cultivatorService.ensureCultivator(cultivatorId);
 
-        // Create initial grove
         String name = request.name() != null ? request.name() :
             extractRepoName(request.repositoryUrl()) + "-" + request.branch();
 
@@ -104,7 +102,6 @@ public class GroveService {
             providerRegistry.getDefault().reserve(grove.id(), plotRequest));
         grove = grove.withSeedling(seedling);
 
-        // Save initial state
         GroveEntity entity = GroveEntity.fromModel(grove);
         groveRepository.save(entity);
 
@@ -133,7 +130,6 @@ public class GroveService {
                 .toList();
             Seedling seedlingToPlant = grove.seedling().withAuthorizedKeys(registeredKeys);
 
-            // Plant seedling (start VM)
             GroveProvider provider = providerRegistry.getDefault();
             Plot plantedPlot = provider.plantSubstrate(plotOf(provider, seedlingToPlant)).join();
             Seedling plantedSeedling = PlotBridge.toSeedling(plantedPlot);
@@ -153,7 +149,6 @@ public class GroveService {
             // Verify devcontainer CLI was installed by cloud-init's runcmd block
             provider.verifyDevcontainerCli(plantedPlot, devcontainerCliConfig.version());
 
-            // Clone repository to VM
             String commitSha = cloneRepository(plantedSeedling, grove.repositoryUrl(), grove.branch());
             if (commitSha != null) {
                 grove = grove.withCommit(commitSha);
@@ -486,7 +481,6 @@ public class GroveService {
     @Transactional
     public void updateGroveState(Grove grove) {
         try {
-            // Look up previous state before persisting
             GroveState previousState = groveRepository.findById(grove.id())
                 .map(GroveEntity::getState)
                 .orElse(null);
@@ -494,7 +488,6 @@ public class GroveService {
             GroveEntity entity = GroveEntity.fromModel(grove);
             groveRepository.save(entity);
 
-            // Publish event if state actually changed
             if (previousState != null && previousState != grove.state()) {
                 eventPublisher.publishEvent(GroveStateChangedEvent.of(
                     grove.id(),
@@ -511,9 +504,6 @@ public class GroveService {
         }
     }
 
-    /**
-     * Saves all fruits for a grove to the database.
-     */
     @Transactional
     public void saveFruits(List<Fruit> fruits) {
         if (fruits == null || fruits.isEmpty()) {
@@ -628,9 +618,9 @@ public class GroveService {
     /**
      * Best-effort container cleanup, gated on a raw socket probe.
      *
-     * <p>The probe is a known defect carried forward deliberately: the spec's "Must-fix along the
-     * way" requires a substrate-aware reachability check obtained through the provider, which needs
-     * provider-owned inspection (#228). Do not opportunistically replace it here. A probe miss no
+     * <p>The probe is a known defect carried forward deliberately: a substrate-aware reachability
+     * check obtained through the provider would be correct, but needs provider-owned inspection
+     * (#228). Do not opportunistically replace it here. A probe miss no
      * longer masks an {@code uproot} failure.
      */
     private void compostFruitsIfReachable(UUID groveId, Grove grove) {
@@ -748,7 +738,6 @@ public class GroveService {
             );
         }
 
-        // Load fruits from the separate fruits table
         List<Fruit> fruits = fruitRepository.findByGroveId(entity.getId())
             .stream()
             .map(FruitEntity::toModel)

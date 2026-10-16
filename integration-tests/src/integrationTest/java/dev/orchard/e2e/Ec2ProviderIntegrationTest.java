@@ -159,7 +159,6 @@ class Ec2ProviderIntegrationTest {
                 Ec2Operations.AwsInstanceState.TERMINATED,
                 Ec2Operations.AwsInstanceState.SHUTTING_DOWN);
         } catch (Ec2Operations.InstanceNotFoundException expected) {
-            // also acceptable
         }
     }
 

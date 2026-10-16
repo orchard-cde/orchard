@@ -48,7 +48,6 @@ class FruitGrowerTest {
     private static final UUID SEEDLING_ID = UUID.randomUUID();
     private static final String WORKSPACE_PATH = "/workspace";
 
-    // --- parsePortOutput (legacy helper still used on docker path) ---------------------------
 
     @Test
     void parsePortOutput_standardTcpMapping() {
@@ -104,7 +103,6 @@ class FruitGrowerTest {
         assertThat(mappings).containsExactly(new Fruit.PortMapping(53, 53, "udp"));
     }
 
-    // --- CLI path ----------------------------------------------------------------------------
 
     @Test
     void growViaCli_happyPath_returnsRipeFruit() throws Exception {
@@ -259,7 +257,7 @@ class FruitGrowerTest {
 
     @Test
     void containerNameRegression_isPreservedAfterGrow() throws Exception {
-        // Regression test for spec Locked decision #18. The CLI may name the actual container
+        // Regression: the CLI may name the actual container
         // differently from Fruit.containerName (e.g. on regrow). FruitGrower MUST call
         // inspectContainerName and overwrite Fruit.containerName with the real value.
         DevcontainerCli cli = mock(DevcontainerCli.class);
@@ -283,7 +281,6 @@ class FruitGrowerTest {
         verify(cli).inspectContainerName(same(runner), eq("c-real"));
     }
 
-    // --- helpers -----------------------------------------------------------------------------
 
     private static Seed defaultSeed() {
         return Seed.devcontainer()

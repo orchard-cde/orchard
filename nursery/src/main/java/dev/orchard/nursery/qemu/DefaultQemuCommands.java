@@ -14,8 +14,7 @@ import java.util.Map;
 
 /**
  * Production {@link QemuCommands}: shells out to {@code qemu-img}, {@code genisoimage}/{@code
- * mkisofs}, and {@code qemu-system-*} on the local host. Method bodies are moved verbatim from
- * {@code QemuGroveProvider} — see that class's git history for prior behaviour.
+ * mkisofs}, and {@code qemu-system-*} on the local host.
  */
 class DefaultQemuCommands implements QemuCommands {
 
@@ -52,7 +51,6 @@ class DefaultQemuCommands implements QemuCommands {
     public void createCloudInitIso(Path isoPath, VmPlot plot) throws IOException, InterruptedException {
         Path tempDir = Files.createTempDirectory("cloud-init-");
         try {
-            // Create meta-data
             Files.writeString(tempDir.resolve("meta-data"),
                 "instance-id: " + plot.id() + "\n" +
                 "local-hostname: orchard-" + plot.id().toString().substring(0, 8) + "\n"
@@ -90,7 +88,6 @@ class DefaultQemuCommands implements QemuCommands {
                     "Install via: apt install genisoimage (Linux) or brew install cdrtools (macOS)");
             }
         } finally {
-            // Cleanup temp directory
             Files.walk(tempDir)
                 .sorted((a, b) -> b.compareTo(a))
                 .forEach(path -> {

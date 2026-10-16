@@ -51,7 +51,7 @@ class CultivatorAuthFilterTest {
 
         verifyNoInteractions(service);
         assertThat(request.getAttribute("cultivatorId")).isNull();
-        assertThat(chain.getRequest()).isSameAs(request); // chain continued
+        assertThat(chain.getRequest()).isSameAs(request);
         SecurityContextHolder.clearContext();
     }
 

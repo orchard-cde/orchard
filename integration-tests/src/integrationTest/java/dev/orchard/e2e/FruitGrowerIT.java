@@ -103,7 +103,7 @@ class FruitGrowerIT {
     /**
      * Resolves the command channel the same way production does — through the provider's
      * {@link dev.orchard.vine.Vine}, not by constructing an SSH client. Deliberately fresh per
-     * call: {@code vine()} rebuilds from the seedling's current endpoint (#86 stage 2), and a
+     * call: {@code vine()} rebuilds from the seedling's current endpoint (#86), and a
      * container-backed provider returns a non-SSH runner here without this test changing.
      */
     private CommandRunner commands() {
@@ -173,8 +173,7 @@ class FruitGrowerIT {
         ssh.execute("echo " + b64 + " | base64 -d > /workspace/.devcontainer/devcontainer.json");
 
         // Build the Seed/Fruit mirroring how SeedParser would shape them. We only need image +
-        // features here — the CLI path reads the on-disk devcontainer.json for everything else
-        // (Locked decision #1).
+        // features here — the CLI path reads the on-disk devcontainer.json for everything else.
         Map<String, Map<String, Object>> features = new LinkedHashMap<>();
         features.put(FEATURE_ID, Map.of("username", FEATURE_USERNAME));
 
