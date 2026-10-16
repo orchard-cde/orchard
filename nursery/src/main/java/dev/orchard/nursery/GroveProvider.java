@@ -28,7 +28,7 @@ public interface GroveProvider {
 
     boolean isAvailable();
 
-    /** The machine-size tiers this provider offers. Override when the substrate sizes differently. */
+    /** Override when this provider's substrate sizes differently from {@link PlotSizes#DEFAULT}. */
     default PlotSizes sizes() {
         return PlotSizes.DEFAULT;
     }

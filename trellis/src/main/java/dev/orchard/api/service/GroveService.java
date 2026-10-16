@@ -95,9 +95,9 @@ public class GroveService {
         GroveProvider provider = providerRegistry.getDefault();
         PlotSizes sizes = provider.sizes();
         PlotRequest plotRequest = switch (request.machineSize()) {
-            case "medium" -> plotRequest("medium", sizes.medium(), request.serialOutput());
-            case "large" -> plotRequest("large", sizes.large(), request.serialOutput());
-            default -> plotRequest("small", sizes.small(), request.serialOutput());
+            case "medium" -> PlotRequest.of("medium", sizes.medium(), request.serialOutput());
+            case "large" -> PlotRequest.of("large", sizes.large(), request.serialOutput());
+            default -> PlotRequest.of("small", sizes.small(), request.serialOutput());
         };
 
         Seedling seedling = PlotBridge.toSeedling(provider.reserve(grove.id(), plotRequest));
@@ -716,21 +716,16 @@ public class GroveService {
         return PlotBridge.toPlot(seedling, provider.getProviderId());
     }
 
-    private static PlotRequest plotRequest(String machineType, PlotResources resources, String serialOutput) {
-        return new PlotRequest(machineType, resources.cpuCores(), resources.memoryMb(), resources.diskGb(),
-            serialOutput);
-    }
-
     private Grove entityToModel(GroveEntity entity) {
         Seedling seedling = null;
         if (entity.getSeedlingId() != null) {
-            PlotResources fallback = PlotSizes.DEFAULT.small();
+            VmSpec fallback = VmSpec.small();
             var spec = new VmSpec(
                 entity.getSeedlingCpuCores() != null ? entity.getSeedlingCpuCores() : fallback.cpuCores(),
                 entity.getSeedlingMemoryMb() != null ? entity.getSeedlingMemoryMb() : fallback.memoryMb(),
                 entity.getSeedlingDiskGb() != null ? entity.getSeedlingDiskGb() : fallback.diskGb(),
-                "small",
-                null
+                fallback.machineType(),
+                fallback.serialOutput()
             );
             seedling = new Seedling(
                 entity.getSeedlingId(),

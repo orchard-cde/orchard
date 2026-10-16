@@ -1,9 +1,6 @@
 package dev.orchard.core.model;
 
-/**
- * The machine-size tiers a provider offers. The defaults are the built-in tiers; a provider whose
- * substrate sizes differently overrides only the tiers that differ.
- */
+/** A provider whose substrate sizes differently overrides only the tiers that differ. */
 public interface PlotSizes {
 
     PlotSizes DEFAULT = new PlotSizes() {};
