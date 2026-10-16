@@ -6,15 +6,15 @@ public interface PlotSizes {
     PlotSizes DEFAULT = new PlotSizes() {};
 
     default PlotResources small() {
-        return new PlotResources(2, 4096, 20);
+        return custom(2, 4096, 20);
     }
 
     default PlotResources medium() {
-        return new PlotResources(4, 8192, 40);
+        return custom(4, 8192, 40);
     }
 
     default PlotResources large() {
-        return new PlotResources(8, 16384, 80);
+        return custom(8, 16384, 80);
     }
 
     default PlotResources custom(int cpuCores, int memoryMb, int diskGb) {
