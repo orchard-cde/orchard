@@ -573,13 +573,23 @@ class AbstractGroveProviderTest {
     void reserve_stampsThisProviderAndMapsTheRequest() {
         NoHookProvider provider = new NoHookProvider(executor);
         PlotRequest sentinel = new PlotRequest("sentinel-type", 3, 5000, 77, "sentinel-serial");
+        UUID groveId = UUID.randomUUID();
 
-        Plot reserved = provider.reserve(UUID.randomUUID(), sentinel);
+        Plot reserved = provider.reserve(groveId, sentinel);
 
         assertThat(reserved).isInstanceOf(VmPlot.class);
         VmPlot vm = (VmPlot) reserved;
         assertThat(vm.providerId()).isEqualTo("no-hook");
         assertThat(vm.state()).isEqualTo(PlotState.GERMINATING);
         assertThat(vm.spec()).isEqualTo(new VmSpec(3, 5000, 77, "sentinel-type", "sentinel-serial"));
+        assertThat(vm.groveId()).isEqualTo(groveId);
+        assertThat(vm.authorizedKeys()).isEmpty();
+        assertThat(vm.host()).isNull();
+        assertThat(vm.providerInstanceId()).isNull();
+
+        Plot second = provider.reserve(groveId, sentinel);
+
+        assertThat(vm.id()).isNotNull();
+        assertThat(second.id()).isNotNull().isNotEqualTo(vm.id());
     }
 }
