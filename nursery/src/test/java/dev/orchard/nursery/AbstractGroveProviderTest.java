@@ -8,6 +8,7 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotRequest;
 import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
 import dev.orchard.core.model.ProviderHandle;
@@ -110,6 +111,11 @@ class AbstractGroveProviderTest {
         }
 
         @Override
+        public ProviderType type() {
+            return ProviderType.QEMU_LOCAL;
+        }
+
+        @Override
         public String getProviderId() {
             return "fake";
         }
@@ -163,6 +169,11 @@ class AbstractGroveProviderTest {
 
         @Override
         protected void awaitReachable(VmPlot plot, VmEndpoint endpoint) {
+        }
+
+        @Override
+        public ProviderType type() {
+            return ProviderType.QEMU_LOCAL;
         }
 
         @Override
@@ -406,6 +417,11 @@ class AbstractGroveProviderTest {
         }
 
         @Override
+        public ProviderType type() {
+            return ProviderType.QEMU_LOCAL;
+        }
+
+        @Override
         public String getProviderId() {
             return "thread-name-capture";
         }
@@ -486,6 +502,11 @@ class AbstractGroveProviderTest {
         protected String failureContext(FakeLaunch launched) {
             capturedFailureContextArg = launched;
             return super.failureContext(launched);
+        }
+
+        @Override
+        public ProviderType type() {
+            return ProviderType.QEMU_LOCAL;
         }
 
         @Override

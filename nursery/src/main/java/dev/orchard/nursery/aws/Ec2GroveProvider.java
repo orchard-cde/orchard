@@ -1,6 +1,7 @@
 package dev.orchard.nursery.aws;
 
 import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
@@ -37,7 +38,6 @@ import java.util.concurrent.Executors;
 public class Ec2GroveProvider extends AbstractGroveProvider<String> implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Ec2GroveProvider.class);
-    private static final String PROVIDER_ID = "aws-ec2";
     private static final int SSH_PORT = 22;
 
     private final Ec2Config config;
@@ -55,8 +55,8 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
     }
 
     @Override
-    public String getProviderId() {
-        return PROVIDER_ID;
+    public ProviderType type() {
+        return ProviderType.AWS_EC2;
     }
 
     @Override

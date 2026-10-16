@@ -2,6 +2,7 @@ package dev.orchard.nursery.gcp;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.AbstractGroveProvider;
@@ -26,7 +27,6 @@ import java.util.concurrent.Executors;
 public class GoogleComputeGroveProvider extends AbstractGroveProvider<Void> {
 
     private static final Logger log = LoggerFactory.getLogger(GoogleComputeGroveProvider.class);
-    private static final String PROVIDER_ID = "gcp-compute";
 
     /** Unread until this provider is implemented — kept so the wiring is already correct then. */
     private final GoogleComputeConfig config;
@@ -37,8 +37,8 @@ public class GoogleComputeGroveProvider extends AbstractGroveProvider<Void> {
     }
 
     @Override
-    public String getProviderId() {
-        return PROVIDER_ID;
+    public ProviderType type() {
+        return ProviderType.GCP_COMPUTE;
     }
 
     @Override

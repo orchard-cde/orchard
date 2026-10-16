@@ -4,6 +4,7 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotRequest;
 import dev.orchard.core.model.PlotSizes;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -129,6 +130,7 @@ class ProviderRegistryTest {
             this.providerId = providerId;
         }
 
+        @Override public ProviderType type() { return ProviderType.QEMU_LOCAL; }
         @Override public String getProviderId() { return providerId; }
         @Override public boolean isAvailable() { return true; }
         @Override public Plot reserve(UUID groveId, PlotRequest r) { throw new UnsupportedOperationException(); }

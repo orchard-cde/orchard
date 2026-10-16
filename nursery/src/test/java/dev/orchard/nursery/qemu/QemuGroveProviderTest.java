@@ -9,6 +9,7 @@ import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
 import dev.orchard.core.model.ProviderHandle;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
@@ -84,6 +85,11 @@ class QemuGroveProviderTest {
         return p;
     }
 
+    @Test
+    void type_isQemuLocal_andTheProviderIdDerivesFromIt() {
+        assertThat(provider.type()).isEqualTo(ProviderType.QEMU_LOCAL);
+        assertThat(provider.getProviderId()).isEqualTo("qemu-local");
+    }
 
     @Test
     void reattachSurvivingVms_noStorageDir_isNoop() {

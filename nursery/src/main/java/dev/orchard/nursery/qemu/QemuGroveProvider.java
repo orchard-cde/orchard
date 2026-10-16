@@ -1,6 +1,7 @@
 package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
@@ -34,7 +35,6 @@ import java.util.concurrent.TimeoutException;
 public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.QemuLaunch> {
 
     private static final Logger log = LoggerFactory.getLogger(QemuGroveProvider.class);
-    private static final String PROVIDER_ID = "qemu-local";
 
     /**
      * How long {@link #uproot} waits for {@code destroyForcibly()} before treating the VM as
@@ -70,8 +70,8 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
     }
 
     @Override
-    public String getProviderId() {
-        return PROVIDER_ID;
+    public ProviderType type() {
+        return ProviderType.QEMU_LOCAL;
     }
 
     @Override

@@ -1,5 +1,6 @@
 package dev.orchard.trellis.config;
 
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.nursery.DevcontainerCli;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
@@ -237,10 +238,10 @@ public class NurseryConfig {
      */
     private String resolveProviderId(String shortName) {
         return switch (shortName) {
-            case "qemu" -> "qemu-local";
-            case "aws", "ec2", "aws-ec2" -> "aws-ec2";
-            case "gcp", "gce", "gcp-compute" -> "gcp-compute";
-            case "azure", "azure-vm" -> "azure-vm";
+            case "qemu" -> ProviderType.QEMU_LOCAL.id();
+            case "aws", "ec2", "aws-ec2" -> ProviderType.AWS_EC2.id();
+            case "gcp", "gce", "gcp-compute" -> ProviderType.GCP_COMPUTE.id();
+            case "azure", "azure-vm" -> ProviderType.AZURE_VM.id();
             default -> shortName;
         };
     }

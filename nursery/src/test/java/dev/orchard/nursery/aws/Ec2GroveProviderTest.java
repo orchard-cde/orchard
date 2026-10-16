@@ -8,6 +8,7 @@ import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
 import dev.orchard.core.model.ProviderHandle;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
@@ -81,6 +82,11 @@ class Ec2GroveProviderTest {
     void getProviderId_returnsAwsEc2() {
         assertThat(providerWith(configWith(Ec2Config.IpMode.AUTO)).getProviderId())
             .isEqualTo("aws-ec2");
+    }
+
+    @Test
+    void type_isAwsEc2() {
+        assertThat(providerWith(configWith(Ec2Config.IpMode.AUTO)).type()).isEqualTo(ProviderType.AWS_EC2);
     }
 
     @Test

@@ -4,6 +4,7 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotRequest;
 import dev.orchard.core.model.PlotSizes;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 
@@ -24,7 +25,11 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface GroveProvider {
 
-    String getProviderId();
+    ProviderType type();
+
+    default String getProviderId() {
+        return type().id();
+    }
 
     boolean isAvailable();
 
