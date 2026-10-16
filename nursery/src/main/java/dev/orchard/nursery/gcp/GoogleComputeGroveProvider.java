@@ -2,10 +2,10 @@ package dev.orchard.nursery.gcp;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
-import dev.orchard.nursery.PlantedSeedling;
 import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,12 +46,12 @@ public class GoogleComputeGroveProvider extends AbstractGroveProvider<Void> {
     }
 
     @Override
-    protected PlantedSeedling resolveEndpoint(Seedling seedling, Void launched) {
+    protected VmEndpoint resolveEndpoint(Seedling seedling, Void launched) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
-    protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+    protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 

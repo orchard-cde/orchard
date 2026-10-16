@@ -2,11 +2,13 @@ package dev.orchard.nursery.aws;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.VmEndpoint;
+import dev.orchard.core.model.VmEndpoint.Host;
+import dev.orchard.core.model.VmEndpoint.InstanceId;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
-import dev.orchard.nursery.PlantedSeedling;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceNotFoundException;
 import dev.orchard.nursery.aws.Ec2Operations.RunInstanceParams;
@@ -85,14 +87,14 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
     }
 
     @Override
-    protected PlantedSeedling resolveEndpoint(Seedling seedling, String instanceId) {
+    protected VmEndpoint resolveEndpoint(Seedling seedling, String instanceId) {
         InstanceDescription desc = operations.describeInstance(instanceId);
-        return new PlantedSeedling(instanceId, selectIp(desc), SSH_PORT);
+        return new VmEndpoint(new InstanceId(instanceId), new Host(selectIp(desc)), SSH_PORT);
     }
 
     @Override
-    protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
-        waiter.awaitSshReady(planted.host(), planted.sshPort());
+    protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) {
+        waiter.awaitSshReady(endpoint.host().value(), endpoint.sshPort());
     }
 
     @Override

@@ -4,6 +4,9 @@ import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.VmEndpoint;
+import dev.orchard.core.model.VmEndpoint.Host;
+import dev.orchard.core.model.VmEndpoint.InstanceId;
 import dev.orchard.core.model.VmSpec;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.ExecTarget;
@@ -83,13 +86,13 @@ class AbstractGroveProviderTest {
         }
 
         @Override
-        protected PlantedSeedling resolveEndpoint(Seedling seedling, FakeLaunch launched) {
+        protected VmEndpoint resolveEndpoint(Seedling seedling, FakeLaunch launched) {
             step("resolveEndpoint");
-            return new PlantedSeedling(launched.instanceId(), "192.168.1.50", launched.port());
+            return new VmEndpoint(new InstanceId(launched.instanceId()), new Host("192.168.1.50"), launched.port());
         }
 
         @Override
-        protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+        protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) {
             step("awaitReachable");
         }
 
@@ -141,12 +144,12 @@ class AbstractGroveProviderTest {
         }
 
         @Override
-        protected PlantedSeedling resolveEndpoint(Seedling seedling, String launched) {
-            return new PlantedSeedling(launched, "172.16.0.9", 22);
+        protected VmEndpoint resolveEndpoint(Seedling seedling, String launched) {
+            return new VmEndpoint(new InstanceId(launched), new Host("172.16.0.9"), 22);
         }
 
         @Override
-        protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+        protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) {
         }
 
         @Override
@@ -381,12 +384,12 @@ class AbstractGroveProviderTest {
         }
 
         @Override
-        protected PlantedSeedling resolveEndpoint(Seedling seedling, FakeLaunch launched) {
-            return new PlantedSeedling(launched.instanceId(), "192.168.1.51", launched.port());
+        protected VmEndpoint resolveEndpoint(Seedling seedling, FakeLaunch launched) {
+            return new VmEndpoint(new InstanceId(launched.instanceId()), new Host("192.168.1.51"), launched.port());
         }
 
         @Override
-        protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+        protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) {
         }
 
         @Override
@@ -458,12 +461,12 @@ class AbstractGroveProviderTest {
         }
 
         @Override
-        protected PlantedSeedling resolveEndpoint(Seedling seedling, FakeLaunch launched) throws Exception {
+        protected VmEndpoint resolveEndpoint(Seedling seedling, FakeLaunch launched) throws Exception {
             throw new IllegalStateException("boom after launch succeeded");
         }
 
         @Override
-        protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+        protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) {
         }
 
         @Override

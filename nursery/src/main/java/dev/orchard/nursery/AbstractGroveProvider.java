@@ -3,6 +3,7 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.SshVine;
 import dev.orchard.vine.Vine;
@@ -63,10 +64,10 @@ public abstract class AbstractGroveProvider<L> implements GroveProvider {
             try {
                 launched = launch(seedling);
                 awaitRunning(seedling, launched);
-                PlantedSeedling planted = resolveEndpoint(seedling, launched);
-                awaitReachable(seedling, planted);
+                VmEndpoint endpoint = resolveEndpoint(seedling, launched);
+                awaitReachable(seedling, endpoint);
                 return seedling
-                    .withEndpoint(planted.providerInstanceId(), planted.host(), planted.sshPort())
+                    .withEndpoint(endpoint.instanceId().value(), endpoint.host().value(), endpoint.sshPort())
                     .withState(SeedlingState.SAPLING);
             } catch (Exception e) {
                 log.error("Failed to plant seedling {} via {}{}",
@@ -87,10 +88,10 @@ public abstract class AbstractGroveProvider<L> implements GroveProvider {
     }
 
     /** Resolves the provider-side identity and reachable address of the launched substrate. */
-    protected abstract PlantedSeedling resolveEndpoint(Seedling seedling, L launched) throws Exception;
+    protected abstract VmEndpoint resolveEndpoint(Seedling seedling, L launched) throws Exception;
 
     /** Blocks until the resolved endpoint accepts connections. */
-    protected abstract void awaitReachable(Seedling seedling, PlantedSeedling planted) throws Exception;
+    protected abstract void awaitReachable(Seedling seedling, VmEndpoint endpoint) throws Exception;
 
     /**
      * Substrate identifiers to append to a planting-failure log line. A failure after

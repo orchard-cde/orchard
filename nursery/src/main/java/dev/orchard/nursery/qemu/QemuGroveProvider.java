@@ -2,10 +2,12 @@ package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.VmEndpoint;
+import dev.orchard.core.model.VmEndpoint.Host;
+import dev.orchard.core.model.VmEndpoint.InstanceId;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
-import dev.orchard.nursery.PlantedSeedling;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -94,13 +96,14 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
     }
 
     @Override
-    protected PlantedSeedling resolveEndpoint(Seedling seedling, QemuLaunch launched) {
-        return new PlantedSeedling(seedling.id().toString(), "127.0.0.1", launched.sshPort());
+    protected VmEndpoint resolveEndpoint(Seedling seedling, QemuLaunch launched) {
+        return new VmEndpoint(new InstanceId(seedling.id().toString()), new Host("127.0.0.1"),
+            launched.sshPort());
     }
 
     @Override
-    protected void awaitReachable(Seedling seedling, PlantedSeedling planted) throws IOException {
-        commands.awaitReachable(planted.host(), planted.sshPort());
+    protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) throws IOException {
+        commands.awaitReachable(endpoint.host().value(), endpoint.sshPort());
     }
 
     @Override
