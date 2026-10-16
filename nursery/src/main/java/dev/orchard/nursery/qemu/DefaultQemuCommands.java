@@ -1,6 +1,6 @@
 package dev.orchard.nursery.qemu;
 
-import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.CloudInitTemplate;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.vine.SshCommandBuilder;
@@ -49,13 +49,13 @@ class DefaultQemuCommands implements QemuCommands {
     }
 
     @Override
-    public void createCloudInitIso(Path isoPath, Seedling seedling) throws IOException, InterruptedException {
+    public void createCloudInitIso(Path isoPath, VmPlot plot) throws IOException, InterruptedException {
         Path tempDir = Files.createTempDirectory("cloud-init-");
         try {
             // Create meta-data
             Files.writeString(tempDir.resolve("meta-data"),
-                "instance-id: " + seedling.id() + "\n" +
-                "local-hostname: orchard-" + seedling.id().toString().substring(0, 8) + "\n"
+                "instance-id: " + plot.id() + "\n" +
+                "local-hostname: orchard-" + plot.id().toString().substring(0, 8) + "\n"
             );
 
             // Resolve SSH public key: config property, then fallback to well-known file
@@ -70,7 +70,7 @@ class DefaultQemuCommands implements QemuCommands {
 
             // Build user-data from the classpath template. The SSH block is conditional —
             // when no key is configured, ${ssh_authorized_keys_block} substitutes to empty.
-            String sshBlock = QemuGroveProvider.buildSshAuthorizedKeysBlock(sshPubKey, seedling.authorizedKeys());
+            String sshBlock = QemuGroveProvider.buildSshAuthorizedKeysBlock(sshPubKey, plot.authorizedKeys());
             if (sshBlock.isEmpty()) {
                 log.warn("No SSH public key configured - VM will not be accessible via SSH key auth. " +
                     "Set orchard.qemu.ssh-public-key or place key at {}.pub", config.sshKeyPath());
@@ -139,12 +139,12 @@ class DefaultQemuCommands implements QemuCommands {
     }
 
     @Override
-    public Process startQemu(Seedling seedling, Path diskImage, Path cloudInitIso, int sshPort)
+    public Process startQemu(VmPlot plot, Path diskImage, Path cloudInitIso, int sshPort)
             throws IOException {
-        var spec = seedling.spec();
+        var spec = plot.spec();
         var cmd = new java.util.ArrayList<String>();
         cmd.add(config.qemuBinary().toString());
-        cmd.add("-name"); cmd.add("orchard-" + seedling.id().toString().substring(0, 8));
+        cmd.add("-name"); cmd.add("orchard-" + plot.id().toString().substring(0, 8));
         cmd.add("-m"); cmd.add(spec.memoryMb() + "M");
         cmd.add("-smp"); cmd.add(String.valueOf(spec.cpuCores()));
 

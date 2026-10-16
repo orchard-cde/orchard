@@ -94,15 +94,14 @@ public class GroveService {
         grove = grove.withState(GroveState.PLANTING);
         grove = grove.withSeedSpec(seedSpec);
 
-        // Determine seedling spec
-        VmSpec spec = switch (request.machineSize()) {
-            case "medium" -> new VmSpec(4, 8192, 40, "medium", request.serialOutput());
-            case "large" -> new VmSpec(8, 16384, 80, "large", request.serialOutput());
-            default -> new VmSpec(2, 4096, 20, "small", request.serialOutput());
+        PlotRequest plotRequest = switch (request.machineSize()) {
+            case "medium" -> new PlotRequest("medium", 4, 8192, 40, request.serialOutput());
+            case "large" -> new PlotRequest("large", 8, 16384, 80, request.serialOutput());
+            default -> new PlotRequest("small", 2, 4096, 20, request.serialOutput());
         };
 
-        // Create seedling
-        Seedling seedling = Seedling.germinate(grove.id(), spec);
+        Seedling seedling = PlotBridge.toSeedling(
+            providerRegistry.getDefault().reserve(grove.id(), plotRequest));
         grove = grove.withSeedling(seedling);
 
         // Save initial state
@@ -136,7 +135,8 @@ public class GroveService {
 
             // Plant seedling (start VM)
             GroveProvider provider = providerRegistry.getDefault();
-            Seedling plantedSeedling = provider.plantSubstrate(seedlingToPlant).join();
+            Plot plantedPlot = provider.plantSubstrate(plotOf(provider, seedlingToPlant)).join();
+            Seedling plantedSeedling = PlotBridge.toSeedling(plantedPlot);
             grove = grove.withSeedling(plantedSeedling);
             grove = grove.withState(GroveState.GROWING);
             updateGroveState(grove);
@@ -151,7 +151,7 @@ public class GroveService {
             waitForCloudInit(plantedSeedling);
 
             // Verify devcontainer CLI was installed by cloud-init's runcmd block
-            provider.verifyDevcontainerCli(plantedSeedling, devcontainerCliConfig.version());
+            provider.verifyDevcontainerCli(plantedPlot, devcontainerCliConfig.version());
 
             // Clone repository to VM
             String commitSha = cloneRepository(plantedSeedling, grove.repositoryUrl(), grove.branch());
@@ -201,7 +201,8 @@ public class GroveService {
         saveFruits(grove.fruits());
         updateGroveState(grove);
 
-        Fruit grownFruit = providerRegistry.getDefault().growFruit(seedling, fruit).join();
+        GroveProvider provider = providerRegistry.getDefault();
+        Fruit grownFruit = provider.growFruit(plotOf(provider, seedling), fruit).join();
         grove = grove.withFruit(grownFruit);
         saveFruits(grove.fruits());
 
@@ -252,7 +253,8 @@ public class GroveService {
 
     private void waitForCloudInit(Seedling seedling) {
         log.info("Waiting for cloud-init to complete on seedling {}", seedling.id());
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+        GroveProvider provider = providerRegistry.getDefault();
+        CommandRunner ssh = provider.vine(plotOf(provider, seedling)).commands();
         int maxAttempts = 60; // up to ~5 minutes
         for (int i = 0; i < maxAttempts; i++) {
             try {
@@ -303,7 +305,8 @@ public class GroveService {
     private String cloneRepository(Seedling seedling, String repoUrl, String branch) {
         log.info("Cloning {} branch {} to seedling {}", repoUrl, branch, seedling.id());
         try {
-            CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+            GroveProvider provider = providerRegistry.getDefault();
+            CommandRunner ssh = provider.vine(plotOf(provider, seedling)).commands();
             ssh.execute("mkdir -p /workspace");
             ssh.execute("git clone --branch %s --depth 1 %s /workspace".formatted(branch, repoUrl));
             String commitSha = ssh.execute("git -C /workspace rev-parse HEAD").trim();
@@ -336,7 +339,8 @@ public class GroveService {
     private static final List<String> DEFAULT_SEED_PORTS = List.of("8080", "3000");
 
     private Seed discoverSeed(Seedling seedling, SeedSpec spec) {
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+        GroveProvider provider = providerRegistry.getDefault();
+        CommandRunner ssh = provider.vine(plotOf(provider, seedling)).commands();
         return resolveSeed(spec, ssh::readFile, devcontainerParser, devfileParser);
     }
 
@@ -444,7 +448,8 @@ public class GroveService {
      * does not fail with "Config not found".
      */
     private void ensureDevcontainerConfig(Seedling seedling, DevcontainerSeed seed) {
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+        GroveProvider provider = providerRegistry.getDefault();
+        CommandRunner ssh = provider.vine(plotOf(provider, seedling)).commands();
         try {
             if (ssh.execute("test -f /workspace/.devcontainer/devcontainer.json && echo yes || echo no")
                     .trim().equals("yes")) {
@@ -585,7 +590,8 @@ public class GroveService {
 
             if (grove.seedling() != null) {
                 log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
-                providerRegistry.getDefault().uproot(grove.seedling()).join();
+                GroveProvider provider = providerRegistry.getDefault();
+                provider.uproot(plotOf(provider, grove.seedling())).join();
             }
         } catch (Exception e) {
             log.error("Substrate teardown failed for grove {} — marking ORPHANED and retaining "
@@ -639,10 +645,11 @@ public class GroveService {
             }
         }
         if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
+            GroveProvider provider = providerRegistry.getDefault();
             for (Fruit fruit : grove.fruits()) {
                 if (fruit.containerId() != null) {
                     log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                    providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
+                    provider.compostFruit(plotOf(provider, grove.seedling()), fruit).join();
                 }
             }
         }
@@ -695,7 +702,8 @@ public class GroveService {
 
             log.info("Starting grove {}", groveId);
             Grove grove = entityToModel(entity);
-            Seedling seedling = Seedling.germinate(grove.id(), grove.seedling().spec());
+            Seedling seedling = PlotBridge.toSeedling(providerRegistry.getDefault()
+                .reserve(grove.id(), PlotRequest.from(grove.seedling().spec())));
             grove = grove.withSeedling(seedling);
             grove = grove.withState(GroveState.PLANTING);
             updateGroveState(grove);
@@ -711,6 +719,10 @@ public class GroveService {
 
             return grove;
         });
+    }
+
+    private static Plot plotOf(GroveProvider provider, Seedling seedling) {
+        return PlotBridge.toPlot(seedling, provider.getProviderId());
     }
 
     private Grove entityToModel(GroveEntity entity) {

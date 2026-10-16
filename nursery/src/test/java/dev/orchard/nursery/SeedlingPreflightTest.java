@@ -1,6 +1,7 @@
 package dev.orchard.nursery;
 
-import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.vine.CommandRunner;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * (SAPLING), the caller must confirm {@code devcontainer --version} matches the pinned
  * {@link DevcontainerCliConfig#version()}.
  *
- * <p>Exercises {@link GroveProvider#verifyDevcontainerCli(Seedling, String, CommandRunner)},
+ * <p>Exercises {@link GroveProvider#verifyDevcontainerCli(Plot, String, CommandRunner)},
  * the sole production path, against a canned {@link CommandRunner} rather than a real substrate
  * connection — reaching the substrate is {@link GroveProvider}'s business (see
  * {@link GroveProvider#vine}), which is covered by the integration tests.
@@ -57,25 +58,25 @@ class SeedlingPreflightTest {
         }
     }
 
-    private static Seedling stubSeedling() {
-        return TestSeedlings.fake();
+    private static VmPlot stubPlot() {
+        return TestPlots.fake();
     }
 
     @Test
     void correctVersionPasses() {
-        Seedling seedling = stubSeedling();
+        VmPlot plot = stubPlot();
         CommandRunner runner = new CannedVersionRunner("0.87.0", false);
 
-        assertThatCode(() -> GroveProvider.verifyDevcontainerCli(seedling, "0.87.0", runner))
+        assertThatCode(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))
             .doesNotThrowAnyException();
     }
 
     @Test
     void wrongVersionThrows() {
-        Seedling seedling = stubSeedling();
+        VmPlot plot = stubPlot();
         CommandRunner runner = new CannedVersionRunner("0.86.0", false);
 
-        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(seedling, "0.87.0", runner))
+        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))
             .isInstanceOf(SeedlingProvisioningException.class)
             .hasMessageContaining("version mismatch")
             .hasMessageContaining("expected 0.87.0")
@@ -84,10 +85,10 @@ class SeedlingPreflightTest {
 
     @Test
     void cliMissingThrows() {
-        Seedling seedling = stubSeedling();
+        VmPlot plot = stubPlot();
         CommandRunner runner = new CannedVersionRunner("(unused)", true);
 
-        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(seedling, "0.87.0", runner))
+        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))
             .isInstanceOf(SeedlingProvisioningException.class)
             .hasMessageContaining("missing devcontainer CLI")
             .hasRootCauseInstanceOf(IOException.class);

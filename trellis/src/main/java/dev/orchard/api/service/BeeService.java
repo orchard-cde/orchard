@@ -6,6 +6,7 @@ import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
 import dev.orchard.apiary.BeeKeeperRegistry;
 import dev.orchard.core.model.*;
+import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.roots.entity.BeeEntity;
@@ -294,24 +295,26 @@ public class BeeService {
     }
 
     private CommandRunner commandRunnerFor(GroveEntity groveEntity) {
-        VmSpec spec = new VmSpec(
-            groveEntity.getSeedlingCpuCores() != null ? groveEntity.getSeedlingCpuCores() : 0,
-            groveEntity.getSeedlingMemoryMb() != null ? groveEntity.getSeedlingMemoryMb() : 0,
-            groveEntity.getSeedlingDiskGb() != null ? groveEntity.getSeedlingDiskGb() : 0,
-            null,
-            null
-        );
-        Seedling seedling = new Seedling(
+        GroveProvider provider = providerRegistry.getDefault();
+        VmPlot plot = new VmPlot(
             groveEntity.getSeedlingId(),
             groveEntity.getId(),
+            provider.getProviderId(),
             groveEntity.getSeedlingProviderInstanceId(),
+            groveEntity.getSeedlingState() != null
+                ? PlotState.valueOf(groveEntity.getSeedlingState().name()) : null,
+            groveEntity.getPlantedAt(),
+            null,
             groveEntity.getSeedlingIpAddress(),
             groveEntity.getSeedlingSshPort() != null ? groveEntity.getSeedlingSshPort() : 22,
-            groveEntity.getSeedlingState(),
-            spec,
-            groveEntity.getPlantedAt(),
-            null
+            List.of(),
+            new VmSpec(
+                groveEntity.getSeedlingCpuCores() != null ? groveEntity.getSeedlingCpuCores() : 0,
+                groveEntity.getSeedlingMemoryMb() != null ? groveEntity.getSeedlingMemoryMb() : 0,
+                groveEntity.getSeedlingDiskGb() != null ? groveEntity.getSeedlingDiskGb() : 0,
+                null,
+                null)
         );
-        return providerRegistry.getDefault().vine(seedling).commands();
+        return provider.vine(plot).commands();
     }
 }

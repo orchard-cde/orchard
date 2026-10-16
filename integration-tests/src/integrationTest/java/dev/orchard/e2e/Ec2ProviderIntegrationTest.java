@@ -1,8 +1,9 @@
 package dev.orchard.e2e;
 
-import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotRequest;
 import dev.orchard.core.model.VmSpec;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.aws.DefaultEc2Operations;
@@ -122,15 +123,15 @@ class Ec2ProviderIntegrationTest {
 
     @Test
     void provider_plantSubstrate_completesWithoutUnhandledExceptionAgainstLocalStack() {
-        Seedling germinated = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
+        Plot germinated = provider.reserve(UUID.randomUUID(), PlotRequest.from(VmSpec.small()));
 
         // LocalStack does not bind a real socket on the instance's IP, so the SSH wait
         // (phase 1: TCP port) will time out. plant() handles that by returning BLIGHTED.
         // SAPLING is acceptable if LocalStack happens to expose a reachable port; either
         // outcome means the provider survived the full call-chain without throwing.
-        Seedling planted = provider.plantSubstrate(germinated).join();
+        Plot planted = provider.plantSubstrate(germinated).join();
 
-        assertThat(planted.state()).isIn(SeedlingState.SAPLING, SeedlingState.BLIGHTED);
+        assertThat(planted.state()).isIn(PlotState.SAPLING, PlotState.BLIGHTED);
     }
 
     @Test

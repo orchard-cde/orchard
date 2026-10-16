@@ -1,7 +1,9 @@
 package dev.orchard.nursery.qemu;
 
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
@@ -40,7 +42,7 @@ class QemuPlantTest {
         }
 
         @Override
-        public void createCloudInitIso(Path iso, Seedling seedling) throws IOException {
+        public void createCloudInitIso(Path iso, VmPlot plot) throws IOException {
             order.add("createCloudInitIso");
             cloudInitIsoArg = iso;
             Files.createFile(iso);
@@ -53,7 +55,7 @@ class QemuPlantTest {
         }
 
         @Override
-        public Process startQemu(Seedling s, Path diskImage, Path cloudInitIso, int sshPort) {
+        public Process startQemu(VmPlot s, Path diskImage, Path cloudInitIso, int sshPort) {
             order.add("startQemu");
             startDiskArg = diskImage;
             startIsoArg = cloudInitIso;
@@ -78,8 +80,8 @@ class QemuPlantTest {
         }
     }
 
-    private static Seedling germinated() {
-        return Seedling.germinate(UUID.randomUUID(), VmSpec.small());
+    private static VmPlot germinated() {
+        return VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
     }
 
     private QemuGroveProvider provider(QemuCommands commands) {
@@ -91,11 +93,11 @@ class QemuPlantTest {
     @Test
     void launch_writesDiskAndIsoIntoTheSeedlingsOwnDirectory() throws Exception {
         RecordingCommands commands = new RecordingCommands();
-        Seedling seedling = germinated();
+        VmPlot plot = germinated();
 
-        provider(commands).plantSubstrate(seedling).join();
+        provider(commands).plantSubstrate(plot).join();
 
-        Path expectedDir = vmStorage.resolve(seedling.id().toString());
+        Path expectedDir = vmStorage.resolve(plot.id().toString());
         assertThat(commands.diskImageArg).isEqualTo(expectedDir.resolve("disk.qcow2"));
         assertThat(commands.cloudInitIsoArg).isEqualTo(expectedDir.resolve("cloud-init.iso"));
     }
@@ -105,9 +107,9 @@ class QemuPlantTest {
         // The regression guard: startQemu(seedling, diskImage, cloudInitIso, port). Transposing the
         // two Path arguments compiles cleanly and no other test would notice.
         RecordingCommands commands = new RecordingCommands();
-        Seedling seedling = germinated();
+        VmPlot plot = germinated();
 
-        provider(commands).plantSubstrate(seedling).join();
+        provider(commands).plantSubstrate(plot).join();
 
         assertThat(commands.startDiskArg).hasFileName("disk.qcow2");
         assertThat(commands.startIsoArg).hasFileName("cloud-init.iso");
@@ -139,11 +141,11 @@ class QemuPlantTest {
     @Test
     void launch_recordsThePidForReattachment() throws Exception {
         RecordingCommands commands = new RecordingCommands();
-        Seedling seedling = germinated();
+        VmPlot plot = germinated();
 
-        provider(commands).plantSubstrate(seedling).join();
+        provider(commands).plantSubstrate(plot).join();
 
-        Path pidFile = vmStorage.resolve(seedling.id().toString()).resolve("qemu.pid");
+        Path pidFile = vmStorage.resolve(plot.id().toString()).resolve("qemu.pid");
         assertThat(pidFile).exists();
         assertThat(Files.readString(pidFile).trim()).isNotEmpty();
     }
@@ -157,8 +159,41 @@ class QemuPlantTest {
             }
         };
 
-        Seedling result = provider(failing).plantSubstrate(germinated()).join();
+        Plot result = provider(failing).plantSubstrate(germinated()).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
+        assertThat(result.state()).isEqualTo(PlotState.BLIGHTED);
+    }
+
+    @Test
+    void plantSubstrate_keysDirectoryProcessAndEndpointOnTheReservedPlotId() throws Exception {
+        List<Process> started = new ArrayList<>();
+        RecordingCommands longLived = new RecordingCommands() {
+            @Override
+            public Process startQemu(VmPlot s, Path diskImage, Path cloudInitIso, int sshPort) {
+                super.startQemu(s, diskImage, cloudInitIso, sshPort);
+                try {
+                    Process p = new ProcessBuilder("sleep", "30").start();
+                    started.add(p);
+                    return p;
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+        };
+        QemuGroveProvider provider = provider(longLived);
+        Plot reserved = provider.reserve(UUID.randomUUID(), PlotRequest.from(VmSpec.small()));
+
+        try {
+            VmPlot planted = (VmPlot) provider.plantSubstrate(reserved).join();
+
+            assertThat(planted.id()).isEqualTo(reserved.id());
+            assertThat(vmStorage.resolve(reserved.id().toString())).isDirectory();
+            assertThat(planted.providerInstanceId()).isEqualTo(reserved.id().toString());
+            assertThat(provider.inspect(planted).join().state())
+                .as("inspect finds the live process only if runningVms is keyed on the plot id")
+                .isEqualTo(PlotState.SAPLING);
+        } finally {
+            started.forEach(Process::destroyForcibly);
+        }
     }
 }

@@ -3,7 +3,10 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.Seed;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
 import dev.orchard.vine.CommandRunner;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -294,7 +298,7 @@ class FruitGrowerTest {
 
     private static CommandRunner runner() {
         // 127.0.0.255 / port 1 — guaranteed to refuse on any host the test runs on.
-        return new SshVine("127.0.0.255", 1, SEEDLING_ID).commands();
+        return new SshVine(new VmPlot(SEEDLING_ID, UUID.randomUUID(), "test", null, PlotState.SAPLING, Instant.now(), null, "127.0.0.255", 1, List.of(), VmSpec.small())).commands();
     }
 
     private static ExecTarget execTarget(CommandRunner runner) {

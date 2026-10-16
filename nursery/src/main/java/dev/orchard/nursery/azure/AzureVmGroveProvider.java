@@ -1,8 +1,9 @@
 package dev.orchard.nursery.azure;
 
 import dev.orchard.core.model.Fruit;
-import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.VmEndpoint;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
@@ -42,37 +43,37 @@ public class AzureVmGroveProvider extends AbstractGroveProvider<Void> {
     }
 
     @Override
-    protected Void launch(Seedling seedling) {
+    protected Void launch(VmPlot plot) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    protected VmEndpoint resolveEndpoint(Seedling seedling, Void launched) {
+    protected VmEndpoint resolveEndpoint(VmPlot plot, Void launched) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) {
+    protected void awaitReachable(VmPlot plot, VmEndpoint endpoint) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Seedling> water(Seedling seedling) {
+    public CompletableFuture<Plot> water(Plot plot) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Seedling> dormant(Seedling seedling) {
+    public CompletableFuture<Plot> dormant(Plot plot) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Void> uproot(Seedling seedling) {
+    public CompletableFuture<Void> uproot(Plot plot) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Seedling> inspect(Seedling seedling) {
+    public CompletableFuture<Plot> inspect(Plot plot) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
@@ -80,22 +81,22 @@ public class AzureVmGroveProvider extends AbstractGroveProvider<Void> {
     // AbstractGroveProvider's working implementations. Delete them once this provider is implemented.
 
     @Override
-    public CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit) {
+    public CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit) {
+    public CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    public Vine vine(Seedling seedling) {
+    public Vine vine(Plot plot) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 
     @Override
-    public void verifyDevcontainerCli(Seedling seedling, String expectedVersion) {
+    public void verifyDevcontainerCli(Plot plot, String expectedVersion) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 

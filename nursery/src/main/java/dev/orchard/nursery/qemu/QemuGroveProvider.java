@@ -1,10 +1,11 @@
 package dev.orchard.nursery.qemu;
 
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.VmEndpoint.Host;
 import dev.orchard.core.model.VmEndpoint.InstanceId;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
@@ -74,66 +75,69 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
     }
 
     @Override
-    protected QemuLaunch launch(Seedling seedling) throws IOException, InterruptedException {
-        log.info("Planting seedling {} with spec: {}", seedling.id(), seedling.spec());
+    protected QemuLaunch launch(VmPlot plot) throws IOException, InterruptedException {
+        log.info("Planting plot {} with spec: {}", plot.id(), plot.spec());
 
-        Path vmDir = config.vmStoragePath().resolve(seedling.id().toString());
+        Path vmDir = config.vmStoragePath().resolve(plot.id().toString());
         Files.createDirectories(vmDir);
 
         Path diskImage = vmDir.resolve("disk.qcow2");
-        commands.createDiskImage(diskImage, seedling.spec().diskGb());
+        commands.createDiskImage(diskImage, plot.spec().diskGb());
 
         Path cloudInitIso = vmDir.resolve("cloud-init.iso");
-        commands.createCloudInitIso(cloudInitIso, seedling);
+        commands.createCloudInitIso(cloudInitIso, plot);
 
         int sshPort = commands.allocateSshPort();
 
-        Process vmProcess = commands.startQemu(seedling, diskImage, cloudInitIso, sshPort);
+        Process vmProcess = commands.startQemu(plot, diskImage, cloudInitIso, sshPort);
         Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(vmProcess.pid()));
-        runningVms.put(seedling.id(), vmProcess.toHandle());
+        runningVms.put(plot.id(), vmProcess.toHandle());
 
         return new QemuLaunch(sshPort);
     }
 
     @Override
-    protected VmEndpoint resolveEndpoint(Seedling seedling, QemuLaunch launched) {
-        return new VmEndpoint(new InstanceId(seedling.id().toString()), new Host("127.0.0.1"),
+    protected VmEndpoint resolveEndpoint(VmPlot plot, QemuLaunch launched) {
+        return new VmEndpoint(new InstanceId(plot.id().toString()), new Host("127.0.0.1"),
             launched.sshPort());
     }
 
     @Override
-    protected void awaitReachable(Seedling seedling, VmEndpoint endpoint) throws IOException {
+    protected void awaitReachable(VmPlot plot, VmEndpoint endpoint) throws IOException {
         commands.awaitReachable(endpoint.host().value(), endpoint.sshPort());
     }
 
     @Override
-    public CompletableFuture<Seedling> water(Seedling seedling) {
+    public CompletableFuture<Plot> water(Plot plot) {
+        VmPlot vm = requireVm(plot);
         return CompletableFuture.supplyAsync(() -> {
-            log.info("Watering (resuming) seedling {}", seedling.id());
+            log.info("Watering (resuming) plot {}", vm.id());
             // TODO: Implement resume from suspended state
-            return seedling.withState(SeedlingState.SAPLING);
+            return vm.withState(PlotState.SAPLING);
         }, executor);
     }
 
     @Override
-    public CompletableFuture<Seedling> dormant(Seedling seedling) {
+    public CompletableFuture<Plot> dormant(Plot plot) {
+        VmPlot vm = requireVm(plot);
         return CompletableFuture.supplyAsync(() -> {
-            log.info("Setting seedling {} to dormant", seedling.id());
-            return seedling.withState(SeedlingState.WILTING);
+            log.info("Setting plot {} to dormant", vm.id());
+            return vm.withState(PlotState.WILTING);
         }, executor);
     }
 
     @Override
-    public CompletableFuture<Void> uproot(Seedling seedling) {
+    public CompletableFuture<Void> uproot(Plot plot) {
+        VmPlot vm = requireVm(plot);
         return CompletableFuture.runAsync(() -> {
-            log.info("Uprooting seedling {}", seedling.id());
-            ProcessHandle handle = runningVms.remove(seedling.id());
+            log.info("Uprooting plot {}", vm.id());
+            ProcessHandle handle = runningVms.remove(vm.id());
             if (handle != null) {
-                confirmTerminated(seedling, handle);
+                confirmTerminated(vm, handle);
             }
 
             // Clean up VM directory (PID file is inside, deleted with the rest)
-            Path vmDir = config.vmStoragePath().resolve(seedling.id().toString());
+            Path vmDir = config.vmStoragePath().resolve(vm.id().toString());
             try {
                 if (Files.exists(vmDir)) {
                     Files.walk(vmDir)
@@ -160,7 +164,7 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
      *
      * @throws CompletionException if the process has not exited within {@link #DESTROY_FORCIBLY_TIMEOUT}
      */
-    private void confirmTerminated(Seedling seedling, ProcessHandle handle) {
+    private void confirmTerminated(VmPlot plot, ProcessHandle handle) {
         handle.destroyForcibly();
         try {
             handle.onExit().get(DESTROY_FORCIBLY_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
@@ -168,33 +172,34 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
             Thread.currentThread().interrupt();
             throw new CompletionException(
                 "Interrupted while waiting for QEMU process (pid " + handle.pid()
-                    + ") for seedling " + seedling.id() + " to exit after destroyForcibly()", e);
+                    + ") for plot " + plot.id() + " to exit after destroyForcibly()", e);
         } catch (ExecutionException e) {
             throw new CompletionException(
                 "Failed while waiting for QEMU process (pid " + handle.pid()
-                    + ") for seedling " + seedling.id() + " to exit after destroyForcibly()",
+                    + ") for plot " + plot.id() + " to exit after destroyForcibly()",
                 e.getCause() != null ? e.getCause() : e);
         } catch (TimeoutException e) {
             throw new CompletionException(
-                "QEMU process (pid " + handle.pid() + ") for seedling " + seedling.id()
+                "QEMU process (pid " + handle.pid() + ") for plot " + plot.id()
                     + " did not exit within " + DESTROY_FORCIBLY_TIMEOUT
                     + " of destroyForcibly() — treating substrate as not released", e);
         }
         if (handle.isAlive()) {
-            String message = "QEMU process (pid " + handle.pid() + ") for seedling " + seedling.id()
+            String message = "QEMU process (pid " + handle.pid() + ") for plot " + plot.id()
                 + " is still alive after destroyForcibly() reported exit — treating substrate as not released";
             throw new CompletionException(message, new IllegalStateException(message));
         }
     }
 
     @Override
-    public CompletableFuture<Seedling> inspect(Seedling seedling) {
+    public CompletableFuture<Plot> inspect(Plot plot) {
+        VmPlot vm = requireVm(plot);
         return CompletableFuture.supplyAsync(() -> {
-            ProcessHandle handle = runningVms.get(seedling.id());
+            ProcessHandle handle = runningVms.get(vm.id());
             if (handle != null && handle.isAlive()) {
-                return seedling.withState(SeedlingState.SAPLING);
+                return vm.withState(PlotState.SAPLING);
             }
-            return seedling.withState(SeedlingState.WITHERED);
+            return vm.withState(PlotState.WITHERED);
         }, executor);
     }
 

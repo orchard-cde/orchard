@@ -1,11 +1,13 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.Fruit;
-import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotRequest;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,14 +125,15 @@ class ProviderRegistryTest {
 
         @Override public String getProviderId() { return providerId; }
         @Override public boolean isAvailable() { return true; }
-        @Override public CompletableFuture<Seedling> plantSubstrate(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Seedling> water(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Seedling> dormant(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Void> uproot(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Seedling> inspect(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Fruit> growFruit(Seedling s, Fruit f) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Void> compostFruit(Seedling s, Fruit f) { throw new UnsupportedOperationException(); }
-        @Override public Vine vine(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public void verifyDevcontainerCli(Seedling s, String expectedVersion) { throw new UnsupportedOperationException(); }
+        @Override public Plot reserve(UUID groveId, PlotRequest r) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Plot> plantSubstrate(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Plot> water(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Plot> dormant(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Void> uproot(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Plot> inspect(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Fruit> growFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Void> compostFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public Vine vine(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public void verifyDevcontainerCli(Plot s, String expectedVersion) { throw new UnsupportedOperationException(); }
     }
 }

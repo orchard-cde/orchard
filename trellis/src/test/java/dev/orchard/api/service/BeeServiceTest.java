@@ -117,6 +117,32 @@ class BeeServiceTest {
     }
 
     @Test
+    void commandRunnerFor_nullPortAndState_buildsVmPlotOnPort22() {
+        GroveEntity groveEntity = mock(GroveEntity.class);
+        when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
+        when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
+        when(groveEntity.getSeedlingSshPort()).thenReturn(null);
+        setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        GroveProvider provider = mock(GroveProvider.class);
+        Vine vine = mock(Vine.class);
+        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(provider.vine(any())).thenReturn(vine);
+        when(vine.commands()).thenReturn(mock(CommandRunner.class));
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            beeService.attachBee(groveId, cultivatorId,
+                new CreateBeeRequest(BeeType.CLAUDE_CODE, "1.0", null));
+        }
+
+        ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
+        verify(provider).vine(plotCaptor.capture());
+        VmPlot plot = (VmPlot) plotCaptor.getValue();
+        assertThat(plot.sshPort()).isEqualTo(22);
+        assertThat(plot.state()).isNull();
+    }
+
+    @Test
     void attachBee_registersAfterCommitCallback() {
         setupFlourishingGrove();
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
