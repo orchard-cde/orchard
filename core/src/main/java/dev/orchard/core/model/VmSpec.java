@@ -7,15 +7,19 @@ public record VmSpec(
     String machineType,
     String serialOutput
 ) {
+    public static VmSpec of(String machineType, PlotResources resources) {
+        return new VmSpec(resources.cpuCores(), resources.memoryMb(), resources.diskGb(), machineType, null);
+    }
+
     public static VmSpec small() {
-        return new VmSpec(2, 4096, 20, "small", null);
+        return of("small", PlotSizes.DEFAULT.small());
     }
 
     public static VmSpec medium() {
-        return new VmSpec(4, 8192, 40, "medium", null);
+        return of("medium", PlotSizes.DEFAULT.medium());
     }
 
     public static VmSpec large() {
-        return new VmSpec(8, 16384, 80, "large", null);
+        return of("large", PlotSizes.DEFAULT.large());
     }
 }

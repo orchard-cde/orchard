@@ -3,6 +3,7 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.PlotSizes;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -114,6 +115,11 @@ class ProviderRegistryTest {
 
         assertThat(registry.getDefault()).isSameAs(provider);
         assertThat(registry.get("qemu-local")).contains(provider);
+    }
+
+    @Test
+    void sizes_defaultsToTheDefaultCatalogue() {
+        assertThat(new StubProvider("x").sizes()).isSameAs(PlotSizes.DEFAULT);
     }
 
     private static class StubProvider implements GroveProvider {

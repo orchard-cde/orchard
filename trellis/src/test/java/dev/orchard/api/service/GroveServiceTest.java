@@ -56,6 +56,7 @@ class GroveServiceTest {
         );
         lenient().when(providerRegistry.getDefault()).thenReturn(defaultProvider);
         lenient().when(defaultProvider.getProviderId()).thenReturn("test-default");
+        lenient().when(defaultProvider.sizes()).thenReturn(PlotSizes.DEFAULT);
         lenient().when(defaultProvider.reserve(any(), any())).thenAnswer(inv ->
             VmPlot.germinate(inv.getArgument(0), "test-default", inv.getArgument(1)));
     }
@@ -134,6 +135,54 @@ class GroveServiceTest {
 
             assertThat(result.seedling().spec()).isEqualTo(VmSpec.large());
         }
+    }
+
+    @Test
+    void plantGrove_takesTierResourcesFromTheDefaultProvidersCatalogue() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            when(defaultProvider.sizes()).thenReturn(new PlotSizes() {
+                @Override
+                public PlotResources medium() {
+                    return new PlotResources(6, 6000, 60);
+                }
+            });
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, "medium", "ttyS1");
+
+            groveService.plantGrove(UUID.randomUUID(), request);
+
+            ArgumentCaptor<PlotRequest> captor = ArgumentCaptor.forClass(PlotRequest.class);
+            verify(defaultProvider).reserve(any(), captor.capture());
+            assertThat(captor.getValue()).isEqualTo(new PlotRequest("medium", 6, 6000, 60, "ttyS1"));
+        }
+    }
+
+    @Test
+    void plantGrove_unknownMachineSize_fallsBackToSmall() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, "unknown", "ttyS1");
+
+            groveService.plantGrove(UUID.randomUUID(), request);
+
+            ArgumentCaptor<PlotRequest> captor = ArgumentCaptor.forClass(PlotRequest.class);
+            verify(defaultProvider).reserve(any(), captor.capture());
+            assertThat(captor.getValue()).isEqualTo(new PlotRequest("small", 2, 4096, 20, "ttyS1"));
+        }
+    }
+
+    @Test
+    void getGrove_legacyRowWithNullResources_fallsBackToTheSmallTier() {
+        UUID groveId = UUID.randomUUID();
+        GroveEntity entity = mock(GroveEntity.class);
+        when(entity.getId()).thenReturn(groveId);
+        when(entity.getSeedlingId()).thenReturn(UUID.randomUUID());
+        when(entity.getSeedlingCpuCores()).thenReturn(null);
+        when(entity.getSeedlingMemoryMb()).thenReturn(null);
+        when(entity.getSeedlingDiskGb()).thenReturn(null);
+        when(groveRepository.findById(groveId)).thenReturn(Optional.of(entity));
+
+        Grove grove = groveService.getGrove(groveId).orElseThrow();
+
+        assertThat(grove.seedling().spec()).isEqualTo(new VmSpec(2, 4096, 20, "small", null));
     }
 
     @Test

@@ -92,14 +92,15 @@ public class GroveService {
         grove = grove.withState(GroveState.PLANTING);
         grove = grove.withSeedSpec(seedSpec);
 
+        GroveProvider provider = providerRegistry.getDefault();
+        PlotSizes sizes = provider.sizes();
         PlotRequest plotRequest = switch (request.machineSize()) {
-            case "medium" -> new PlotRequest("medium", 4, 8192, 40, request.serialOutput());
-            case "large" -> new PlotRequest("large", 8, 16384, 80, request.serialOutput());
-            default -> new PlotRequest("small", 2, 4096, 20, request.serialOutput());
+            case "medium" -> plotRequest("medium", sizes.medium(), request.serialOutput());
+            case "large" -> plotRequest("large", sizes.large(), request.serialOutput());
+            default -> plotRequest("small", sizes.small(), request.serialOutput());
         };
 
-        Seedling seedling = PlotBridge.toSeedling(
-            providerRegistry.getDefault().reserve(grove.id(), plotRequest));
+        Seedling seedling = PlotBridge.toSeedling(provider.reserve(grove.id(), plotRequest));
         grove = grove.withSeedling(seedling);
 
         GroveEntity entity = GroveEntity.fromModel(grove);
@@ -715,13 +716,19 @@ public class GroveService {
         return PlotBridge.toPlot(seedling, provider.getProviderId());
     }
 
+    private static PlotRequest plotRequest(String machineType, PlotResources resources, String serialOutput) {
+        return new PlotRequest(machineType, resources.cpuCores(), resources.memoryMb(), resources.diskGb(),
+            serialOutput);
+    }
+
     private Grove entityToModel(GroveEntity entity) {
         Seedling seedling = null;
         if (entity.getSeedlingId() != null) {
+            PlotResources fallback = PlotSizes.DEFAULT.small();
             var spec = new VmSpec(
-                entity.getSeedlingCpuCores() != null ? entity.getSeedlingCpuCores() : 2,
-                entity.getSeedlingMemoryMb() != null ? entity.getSeedlingMemoryMb() : 4096,
-                entity.getSeedlingDiskGb() != null ? entity.getSeedlingDiskGb() : 20,
+                entity.getSeedlingCpuCores() != null ? entity.getSeedlingCpuCores() : fallback.cpuCores(),
+                entity.getSeedlingMemoryMb() != null ? entity.getSeedlingMemoryMb() : fallback.memoryMb(),
+                entity.getSeedlingDiskGb() != null ? entity.getSeedlingDiskGb() : fallback.diskGb(),
                 "small",
                 null
             );

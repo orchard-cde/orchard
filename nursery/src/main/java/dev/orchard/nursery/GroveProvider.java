@@ -3,6 +3,7 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.PlotSizes;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 
@@ -26,6 +27,11 @@ public interface GroveProvider {
     String getProviderId();
 
     boolean isAvailable();
+
+    /** The machine-size tiers this provider offers. Override when the substrate sizes differently. */
+    default PlotSizes sizes() {
+        return PlotSizes.DEFAULT;
+    }
 
     /**
      * Stamps a new {@code GERMINATING} plot with a fresh id and this provider's id. Synchronous and
