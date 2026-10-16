@@ -1,7 +1,7 @@
 package dev.orchard.e2e;
 
 import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.Seedling.SeedlingSpec;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
@@ -122,7 +122,7 @@ class Ec2ProviderIntegrationTest {
 
     @Test
     void provider_plantSubstrate_completesWithoutUnhandledExceptionAgainstLocalStack() {
-        Seedling germinated = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling germinated = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
 
         // LocalStack does not bind a real socket on the instance's IP, so the SSH wait
         // (phase 1: TCP port) will time out. plant() handles that by returning BLIGHTED.

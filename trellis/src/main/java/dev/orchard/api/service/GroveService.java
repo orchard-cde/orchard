@@ -95,10 +95,10 @@ public class GroveService {
         grove = grove.withSeedSpec(seedSpec);
 
         // Determine seedling spec
-        Seedling.SeedlingSpec spec = switch (request.machineSize()) {
-            case "medium" -> new Seedling.SeedlingSpec(4, 8192, 40, "medium", request.serialOutput());
-            case "large" -> new Seedling.SeedlingSpec(8, 16384, 80, "large", request.serialOutput());
-            default -> new Seedling.SeedlingSpec(2, 4096, 20, "small", request.serialOutput());
+        VmSpec spec = switch (request.machineSize()) {
+            case "medium" -> new VmSpec(4, 8192, 40, "medium", request.serialOutput());
+            case "large" -> new VmSpec(8, 16384, 80, "large", request.serialOutput());
+            default -> new VmSpec(2, 4096, 20, "small", request.serialOutput());
         };
 
         // Create seedling
@@ -716,7 +716,7 @@ public class GroveService {
     private Grove entityToModel(GroveEntity entity) {
         Seedling seedling = null;
         if (entity.getSeedlingId() != null) {
-            var spec = new Seedling.SeedlingSpec(
+            var spec = new VmSpec(
                 entity.getSeedlingCpuCores() != null ? entity.getSeedlingCpuCores() : 2,
                 entity.getSeedlingMemoryMb() != null ? entity.getSeedlingMemoryMb() : 4096,
                 entity.getSeedlingDiskGb() != null ? entity.getSeedlingDiskGb() : 20,

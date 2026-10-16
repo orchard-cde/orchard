@@ -14,19 +14,19 @@ class SeedlingTest {
 
     @Test
     void germinate_createsInGerminatingState() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         assertThat(seedling.state()).isEqualTo(SeedlingState.GERMINATING);
     }
 
     @Test
     void germinate_setsDefaultPort22() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         assertThat(seedling.sshPort()).isEqualTo(22);
     }
 
     @Test
     void germinate_setsNullIpAndProviderInstanceId() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         assertThat(seedling.ipAddress()).isNull();
         assertThat(seedling.providerInstanceId()).isNull();
     }
@@ -34,20 +34,20 @@ class SeedlingTest {
     @Test
     void germinate_recordsPlantedAt() {
         Instant before = Instant.now();
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         Instant after = Instant.now();
         assertThat(seedling.plantedAt()).isBetween(before, after);
     }
 
     @Test
     void germinate_setsNullReadyAt() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         assertThat(seedling.readyAt()).isNull();
     }
 
     @Test
     void smallSpec_hasCorrectValues() {
-        var spec = Seedling.SeedlingSpec.small();
+        var spec = VmSpec.small();
         assertThat(spec.cpuCores()).isEqualTo(2);
         assertThat(spec.memoryMb()).isEqualTo(4096);
         assertThat(spec.diskGb()).isEqualTo(20);
@@ -56,7 +56,7 @@ class SeedlingTest {
 
     @Test
     void mediumSpec_hasCorrectValues() {
-        var spec = Seedling.SeedlingSpec.medium();
+        var spec = VmSpec.medium();
         assertThat(spec.cpuCores()).isEqualTo(4);
         assertThat(spec.memoryMb()).isEqualTo(8192);
         assertThat(spec.diskGb()).isEqualTo(40);
@@ -65,7 +65,7 @@ class SeedlingTest {
 
     @Test
     void largeSpec_hasCorrectValues() {
-        var spec = Seedling.SeedlingSpec.large();
+        var spec = VmSpec.large();
         assertThat(spec.cpuCores()).isEqualTo(8);
         assertThat(spec.memoryMb()).isEqualTo(16384);
         assertThat(spec.diskGb()).isEqualTo(80);
@@ -74,7 +74,7 @@ class SeedlingTest {
 
     @Test
     void withState_toSapling_setsReadyAt() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         Instant before = Instant.now();
         Seedling updated = seedling.withState(SeedlingState.SAPLING);
         Instant after = Instant.now();
@@ -85,7 +85,7 @@ class SeedlingTest {
 
     @Test
     void withState_toSprouting_doesNotSetReadyAt() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         Seedling updated = seedling.withState(SeedlingState.SPROUTING);
 
         assertThat(updated.state()).isEqualTo(SeedlingState.SPROUTING);
@@ -94,7 +94,7 @@ class SeedlingTest {
 
     @Test
     void withState_toBlighted_doesNotSetReadyAt() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         Seedling updated = seedling.withState(SeedlingState.BLIGHTED);
 
         assertThat(updated.state()).isEqualTo(SeedlingState.BLIGHTED);
@@ -103,7 +103,7 @@ class SeedlingTest {
 
     @Test
     void withProviderDetails_setsInstanceIdAndIp() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         Seedling updated = seedling.withProviderDetails("i-12345", "10.0.0.1");
 
         assertThat(updated.providerInstanceId()).isEqualTo("i-12345");
@@ -112,25 +112,25 @@ class SeedlingTest {
 
     @Test
     void withProviderDetails_preservesOtherFields() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.medium());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.medium());
         Seedling updated = seedling.withProviderDetails("i-12345", "10.0.0.1");
 
         assertThat(updated.id()).isEqualTo(seedling.id());
         assertThat(updated.groveId()).isEqualTo(groveId);
         assertThat(updated.sshPort()).isEqualTo(22);
         assertThat(updated.state()).isEqualTo(SeedlingState.GERMINATING);
-        assertThat(updated.spec()).isEqualTo(Seedling.SeedlingSpec.medium());
+        assertThat(updated.spec()).isEqualTo(VmSpec.medium());
     }
 
     @Test
     void germinate_setsEmptyAuthorizedKeys() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         assertThat(seedling.authorizedKeys()).isEmpty();
     }
 
     @Test
     void withAuthorizedKeys_setsKeys() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         Seedling updated = seedling.withAuthorizedKeys(List.of("ssh-ed25519 AAAA key1", "ssh-ed25519 AAAA key2"));
 
         assertThat(updated.authorizedKeys()).containsExactly("ssh-ed25519 AAAA key1", "ssh-ed25519 AAAA key2");
@@ -138,19 +138,19 @@ class SeedlingTest {
 
     @Test
     void withAuthorizedKeys_preservesOtherFields() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         Seedling updated = seedling.withAuthorizedKeys(List.of("ssh-ed25519 AAAA key1"));
 
         assertThat(updated.id()).isEqualTo(seedling.id());
         assertThat(updated.groveId()).isEqualTo(groveId);
         assertThat(updated.sshPort()).isEqualTo(22);
         assertThat(updated.state()).isEqualTo(SeedlingState.GERMINATING);
-        assertThat(updated.spec()).isEqualTo(Seedling.SeedlingSpec.small());
+        assertThat(updated.spec()).isEqualTo(VmSpec.small());
     }
 
     @Test
     void withState_preservesAuthorizedKeys() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small())
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small())
             .withAuthorizedKeys(List.of("ssh-ed25519 AAAA key1"));
 
         Seedling updated = seedling.withState(SeedlingState.SAPLING);
@@ -160,7 +160,7 @@ class SeedlingTest {
 
     @Test
     void withProviderDetails_preservesAuthorizedKeys() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small())
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small())
             .withAuthorizedKeys(List.of("ssh-ed25519 AAAA key1"));
 
         Seedling updated = seedling.withProviderDetails("i-12345", "10.0.0.1");
@@ -170,21 +170,21 @@ class SeedlingTest {
 
     @Test
     void isReady_trueOnlyWhenSapling() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small())
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small())
                 .withState(SeedlingState.SAPLING);
         assertThat(seedling.isReady()).isTrue();
     }
 
     @Test
     void isReady_falseForGerminating() {
-        Seedling seedling = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
         assertThat(seedling.isReady()).isFalse();
     }
 
     @Test
     void withEndpoint_setsInstanceIdHostAndPort_preservingEverythingElse() {
         Seedling germinated = Seedling
-            .germinate(groveId, Seedling.SeedlingSpec.small())
+            .germinate(groveId, VmSpec.small())
             .withAuthorizedKeys(List.of("ssh-ed25519 AAAAC3Nz key-one", "ssh-ed25519 AAAAC3Nz key-two"));
 
         Seedling located = germinated.withEndpoint("i-abc123", "10.1.2.3", 2222);

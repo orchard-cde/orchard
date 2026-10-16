@@ -1,7 +1,7 @@
 package dev.orchard.nursery.aws;
 
 import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.Seedling.SeedlingSpec;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
@@ -51,7 +51,7 @@ class Ec2GroveProviderTest {
         Files.writeString(keyPath, "private-fake");
         Files.writeString(Path.of(keyPath + ".pub"), "ssh-ed25519 AAAA testkey orchard@test");
 
-        germinated = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        germinated = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
     }
 
     private Ec2Config configWith(Ec2Config.IpMode mode) {

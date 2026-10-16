@@ -3,7 +3,7 @@ package dev.orchard.api.service;
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
-import dev.orchard.core.model.Seedling.SeedlingSpec;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
@@ -102,7 +102,7 @@ class GroveServiceTest {
             Grove result = groveService.plantGrove(cultivatorId, request);
 
             assertThat(result.seedling()).isNotNull();
-            assertThat(result.seedling().spec()).isEqualTo(SeedlingSpec.small());
+            assertThat(result.seedling().spec()).isEqualTo(VmSpec.small());
         }
     }
 
@@ -114,7 +114,7 @@ class GroveServiceTest {
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
-            assertThat(result.seedling().spec()).isEqualTo(SeedlingSpec.medium());
+            assertThat(result.seedling().spec()).isEqualTo(VmSpec.medium());
         }
     }
 
@@ -126,7 +126,7 @@ class GroveServiceTest {
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
-            assertThat(result.seedling().spec()).isEqualTo(SeedlingSpec.large());
+            assertThat(result.seedling().spec()).isEqualTo(VmSpec.large());
         }
     }
 
@@ -333,7 +333,7 @@ class GroveServiceTest {
     void provisionGrove_attachesRegisteredKeysToSeedlingBeforePlanting() {
         UUID cultivatorId = UUID.randomUUID();
         Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-            .withSeedling(Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small()));
+            .withSeedling(Seedling.germinate(UUID.randomUUID(), VmSpec.small()));
 
         SshPublicKey registered = SshPublicKey.register(cultivatorId, "laptop",
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINu3uCEBEcYqqjErEWRewbGZw8qrfWt/0inp+HfZR7MR test@orchard.dev");
@@ -356,7 +356,7 @@ class GroveServiceTest {
     void provisionGrove_withNoRegisteredKeys_plantsSeedlingWithoutKeys() {
         UUID cultivatorId = UUID.randomUUID();
         Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-            .withSeedling(Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small()));
+            .withSeedling(Seedling.germinate(UUID.randomUUID(), VmSpec.small()));
 
         when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of());
 
@@ -381,7 +381,7 @@ class GroveServiceTest {
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.GROWING)
                 .withSeedling(new Seedling(UUID.randomUUID(), null, null, "127.0.0.1", 22,
-                    SeedlingState.SAPLING, SeedlingSpec.small(), null, null));
+                    SeedlingState.SAPLING, VmSpec.small(), null, null));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -403,7 +403,7 @@ class GroveServiceTest {
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.FLOURISHING)
                 .withSeedling(new Seedling(UUID.randomUUID(), null, null, "127.0.0.1", 22,
-                    SeedlingState.SAPLING, SeedlingSpec.small(), null, null));
+                    SeedlingState.SAPLING, VmSpec.small(), null, null));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -445,7 +445,7 @@ class GroveServiceTest {
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.DORMANT)
                 .withSeedling(new Seedling(UUID.randomUUID(), null, null, null, 22,
-                    SeedlingState.WITHERED, SeedlingSpec.small(), null, null));
+                    SeedlingState.WITHERED, VmSpec.small(), null, null));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -532,7 +532,7 @@ class GroveServiceTest {
         Grove grove = Grove.plant(
             UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");
         Seedling seedling = Seedling
-            .germinate(grove.id(), new SeedlingSpec(2, 4096, 20, "small", null));
+            .germinate(grove.id(), new VmSpec(2, 4096, 20, "small", null));
         return grove.withSeedling(seedling);
     }
 

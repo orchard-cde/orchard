@@ -294,7 +294,7 @@ public class BeeService {
     }
 
     private CommandRunner commandRunnerFor(GroveEntity groveEntity) {
-        Seedling.SeedlingSpec spec = new Seedling.SeedlingSpec(
+        VmSpec spec = new VmSpec(
             groveEntity.getSeedlingCpuCores() != null ? groveEntity.getSeedlingCpuCores() : 0,
             groveEntity.getSeedlingMemoryMb() != null ? groveEntity.getSeedlingMemoryMb() : 0,
             groveEntity.getSeedlingDiskGb() != null ? groveEntity.getSeedlingDiskGb() : 0,

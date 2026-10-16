@@ -2,6 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.VmSpec;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -28,7 +29,7 @@ public final class TestSeedlings {
             "10.0.0.1",
             sshPort,
             SeedlingState.SAPLING,
-            Seedling.SeedlingSpec.small(),
+            VmSpec.small(),
             Instant.now(),
             Instant.now()
         );

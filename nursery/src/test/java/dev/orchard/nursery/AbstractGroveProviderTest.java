@@ -4,6 +4,7 @@ import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.SshVine;
@@ -49,7 +50,7 @@ class AbstractGroveProviderTest {
     }
 
     private static Seedling germinated() {
-        return Seedling.germinate(UUID.randomUUID(), Seedling.SeedlingSpec.small());
+        return Seedling.germinate(UUID.randomUUID(), VmSpec.small());
     }
 
     private record FakeLaunch(String instanceId, int port) {}
@@ -331,7 +332,7 @@ class AbstractGroveProviderTest {
     void vine_isAvailableBeforeTheSubstrateIsRoutable() {
         // A GERMINATING seedling has no endpoint yet. Obtaining a vine must not require one:
         // provisioning and diagnostic exec both run before the grove is routable (#215).
-        Seedling germinating = Seedling.germinate(UUID.randomUUID(), Seedling.SeedlingSpec.small());
+        Seedling germinating = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
 
         assertThat(germinating.state()).isEqualTo(SeedlingState.GERMINATING);
         assertThat(germinating.ipAddress()).isNull();

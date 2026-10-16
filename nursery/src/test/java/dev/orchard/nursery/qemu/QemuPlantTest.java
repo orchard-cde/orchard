@@ -2,6 +2,7 @@ package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import org.junit.jupiter.api.Test;
@@ -78,7 +79,7 @@ class QemuPlantTest {
     }
 
     private static Seedling germinated() {
-        return Seedling.germinate(UUID.randomUUID(), Seedling.SeedlingSpec.small());
+        return Seedling.germinate(UUID.randomUUID(), VmSpec.small());
     }
 
     private QemuGroveProvider provider(QemuCommands commands) {

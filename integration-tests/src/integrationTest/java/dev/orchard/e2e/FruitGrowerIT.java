@@ -7,6 +7,7 @@ import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
@@ -85,7 +86,7 @@ class FruitGrowerIT {
             .isEqualTo("qemu-local");
 
         UUID groveId = UUID.randomUUID();
-        Seedling germinated = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling germinated = Seedling.germinate(groveId, VmSpec.small());
 
         seedling = provider.plantSubstrate(germinated).join();
 

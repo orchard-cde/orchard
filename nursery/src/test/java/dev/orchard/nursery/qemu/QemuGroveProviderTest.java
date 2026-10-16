@@ -1,7 +1,7 @@
 package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.Seedling.SeedlingSpec;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
@@ -97,7 +97,7 @@ class QemuGroveProviderTest {
     @Test
     void reattachSurvivingVms_alivePidMatchingVm_seedlingBecomesInspectable() throws IOException {
         // Directory must be named after seedling.id(), matching what plantSubstrate() writes
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
         Path vmDir = tempDir.resolve(seedling.id().toString());
         Files.createDirectories(vmDir);
         // A live process whose command line identifies it as this seedling's VM (as QEMU's would,
@@ -116,7 +116,7 @@ class QemuGroveProviderTest {
         // PID reuse: the recorded PID is alive but now belongs to an unrelated process, not this
         // seedling's QEMU VM. It must NOT be adopted — otherwise inspect()/uproot() would act on,
         // and uproot() would destroyForcibly(), a process that isn't ours.
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
         Path vmDir = tempDir.resolve(seedling.id().toString());
         Files.createDirectories(vmDir);
         Process unrelated = startAliveProcessTaggedWith("some-other-unrelated-process");
@@ -130,7 +130,7 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_deadPid_seedlingRemainsWithered() throws IOException, InterruptedException {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
         Path vmDir = tempDir.resolve(seedling.id().toString());
         Files.createDirectories(vmDir);
 
@@ -148,7 +148,7 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_malformedPidFile_skipsEntry() throws IOException {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
         Path vmDir = tempDir.resolve(seedling.id().toString());
         Files.createDirectories(vmDir);
         Files.writeString(vmDir.resolve("qemu.pid"), "not-a-number");
@@ -161,7 +161,7 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_dirWithoutPidFile_skipsEntry() throws IOException {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
         Files.createDirectories(tempDir.resolve(seedling.id().toString()));
 
         provider.reattachSurvivingVms(); // must not throw
@@ -172,8 +172,8 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_multipleVms_reattachesOnlyAlive() throws IOException, InterruptedException {
-        Seedling aliveSeedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
-        Seedling deadSeedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling aliveSeedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
+        Seedling deadSeedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
 
         Path aliveDir = tempDir.resolve(aliveSeedling.id().toString());
         Path deadDir = tempDir.resolve(deadSeedling.id().toString());
@@ -200,7 +200,7 @@ class QemuGroveProviderTest {
 
     @Test
     void inspect_noEntryInMap_returnsWithered() {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small())
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small())
             .withProviderDetails("some-id", "127.0.0.1");
 
         Seedling result = provider.inspect(seedling).join();
@@ -216,7 +216,7 @@ class QemuGroveProviderTest {
      */
     @Test
     void uproot_noHandleRecorded_completesSuccessfully() {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
 
         assertThatCode(() -> provider.uproot(seedling).join()).doesNotThrowAnyException();
     }
@@ -255,7 +255,7 @@ class QemuGroveProviderTest {
         QemuConfig config = QemuConfig.builder().vmStoragePath(tempDir).build();
         QemuGroveProvider p = new QemuGroveProvider(
             config, new DevcontainerCliConfig("0.75.0", 600, 60), new FruitGrower(), neverExits);
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(UUID.randomUUID(), VmSpec.small());
         p.plantSubstrate(seedling).join();
 
         CompletableFuture<Void> result = p.uproot(seedling);
