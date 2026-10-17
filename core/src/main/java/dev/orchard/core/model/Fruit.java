@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A Fruit is a running devcontainer, grown from a Seed on a Seedling (VM).
+ * A Fruit is a running devcontainer, grown from a Seed on a plot.
  * It represents the actual development environment the Cultivator works in.
  */
 public record Fruit(

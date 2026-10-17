@@ -6,7 +6,7 @@ import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.Plot;
-import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
@@ -87,7 +87,7 @@ class FruitGrowerIT {
             .as("Default provider must be qemu-local for this IT")
             .isEqualTo("qemu-local");
 
-        Plot reserved = provider.reserve(UUID.randomUUID(), PlotRequest.from(VmSpec.small()));
+        Plot reserved = provider.reserve(UUID.randomUUID(), SeedlingSpec.from(VmSpec.small()));
         Plot planted = provider.plantSubstrate(reserved).join();
         assertThat(planted).isInstanceOf(VmPlot.class);
         plot = (VmPlot) planted;

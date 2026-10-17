@@ -3,7 +3,7 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
-import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.VmPlot;
@@ -52,8 +52,8 @@ public abstract class AbstractGroveProvider<L> implements GroveProvider {
     }
 
     @Override
-    public Plot reserve(UUID groveId, PlotRequest request) {
-        return VmPlot.germinate(groveId, getProviderId(), request);
+    public Plot reserve(UUID groveId, SeedlingSpec seedlingSpec) {
+        return VmPlot.germinate(groveId, getProviderId(), seedlingSpec);
     }
 
     /**

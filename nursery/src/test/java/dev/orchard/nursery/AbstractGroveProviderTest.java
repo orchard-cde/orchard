@@ -6,7 +6,7 @@ import dev.orchard.core.model.ContainerSpec;
 import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
-import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.VmEndpoint;
@@ -67,7 +67,7 @@ class AbstractGroveProviderTest {
     }
 
     private static VmPlot germinated() {
-        return VmPlot.germinate(UUID.randomUUID(), "test", PlotRequest.from(VmSpec.small()));
+        return VmPlot.germinate(UUID.randomUUID(), "test", SeedlingSpec.from(VmSpec.small()));
     }
 
     private record FakeLaunch(String instanceId, int port) {}
@@ -359,7 +359,7 @@ class AbstractGroveProviderTest {
     void vine_isAvailableBeforeTheSubstrateIsRoutable() {
         // A GERMINATING seedling has no endpoint yet. Obtaining a vine must not require one:
         // provisioning and diagnostic exec both run before the grove is routable (#215).
-        VmPlot germinating = VmPlot.germinate(UUID.randomUUID(), "test", PlotRequest.from(VmSpec.small()));
+        VmPlot germinating = VmPlot.germinate(UUID.randomUUID(), "test", SeedlingSpec.from(VmSpec.small()));
 
         assertThat(germinating.state()).isEqualTo(PlotState.GERMINATING);
         assertThat(germinating.host()).isNull();
@@ -593,7 +593,7 @@ class AbstractGroveProviderTest {
     @Test
     void reserve_stampsThisProviderAndMapsTheRequest() {
         NoHookProvider provider = new NoHookProvider(executor);
-        PlotRequest sentinel = new PlotRequest("sentinel-type", 3, 5000, 77, "sentinel-serial");
+        SeedlingSpec sentinel = new SeedlingSpec("sentinel-type", 3, 5000, 77, "sentinel-serial");
         UUID groveId = UUID.randomUUID();
 
         Plot reserved = provider.reserve(groveId, sentinel);

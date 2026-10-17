@@ -80,7 +80,7 @@ trowel grove list
 trowel grove show <grove-id>
 ```
 
-This shows the grove's state, seedling (VM) info, fruit (container) status, and SSH connection details.
+This shows the grove's state, plot (VM) info, fruit (container) status, and SSH connection details.
 
 ## Connecting to a Grove
 

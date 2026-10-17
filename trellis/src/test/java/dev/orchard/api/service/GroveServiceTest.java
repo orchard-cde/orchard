@@ -150,9 +150,9 @@ class GroveServiceTest {
 
             groveService.plantGrove(UUID.randomUUID(), request);
 
-            ArgumentCaptor<PlotRequest> captor = ArgumentCaptor.forClass(PlotRequest.class);
+            ArgumentCaptor<SeedlingSpec> captor = ArgumentCaptor.forClass(SeedlingSpec.class);
             verify(defaultProvider).reserve(any(), captor.capture());
-            assertThat(captor.getValue()).isEqualTo(new PlotRequest("medium", 6, 6000, 60, "ttyS1"));
+            assertThat(captor.getValue()).isEqualTo(new SeedlingSpec("medium", 6, 6000, 60, "ttyS1"));
         }
     }
 
@@ -163,9 +163,9 @@ class GroveServiceTest {
 
             groveService.plantGrove(UUID.randomUUID(), request);
 
-            ArgumentCaptor<PlotRequest> captor = ArgumentCaptor.forClass(PlotRequest.class);
+            ArgumentCaptor<SeedlingSpec> captor = ArgumentCaptor.forClass(SeedlingSpec.class);
             verify(defaultProvider).reserve(any(), captor.capture());
-            assertThat(captor.getValue()).isEqualTo(new PlotRequest("small", 2, 4096, 20, "ttyS1"));
+            assertThat(captor.getValue()).isEqualTo(new SeedlingSpec("small", 2, 4096, 20, "ttyS1"));
         }
     }
 

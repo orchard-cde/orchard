@@ -10,8 +10,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class VmPlotTest {
 
-    private static final PlotRequest SENTINEL =
-        new PlotRequest("sentinel-type", 3, 5000, 77, "sentinel-serial");
+    private static final SeedlingSpec SENTINEL =
+        new SeedlingSpec("sentinel-type", 3, 5000, 77, "sentinel-serial");
 
     @Test
     void germinate_mapsEveryRequestFieldIntoTheSpec() {

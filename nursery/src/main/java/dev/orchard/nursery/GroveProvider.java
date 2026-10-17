@@ -2,7 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
-import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
 import dev.orchard.vine.CommandRunner;
@@ -39,10 +39,11 @@ public interface GroveProvider {
     }
 
     /**
-     * Stamps a new {@code GERMINATING} plot with a fresh id and this provider's id. Synchronous and
-     * acquires nothing; {@link #plantSubstrate} acquires the substrate.
+     * Reserves a plot for a seedling: a new {@code GERMINATING} plot with a fresh id and this
+     * provider's id, sized from the seedling spec. Synchronous and acquires nothing;
+     * {@link #plantSubstrate} acquires the substrate.
      */
-    Plot reserve(UUID groveId, PlotRequest request);
+    Plot reserve(UUID groveId, SeedlingSpec seedlingSpec);
 
     /** Acquires the substrate. Resolves to SAPLING on success, BLIGHTED on failure. */
     CompletableFuture<Plot> plantSubstrate(Plot draft);

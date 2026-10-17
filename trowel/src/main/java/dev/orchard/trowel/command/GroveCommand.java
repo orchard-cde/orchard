@@ -338,7 +338,7 @@ public class GroveCommand implements Callable<Integer> {
 
         if (grove.seedling() != null) {
             System.out.println();
-            System.out.println("  Seedling (VM):");
+            System.out.println("  Plot (VM):");
             System.out.println("    State:     " + grove.seedling().state());
             System.out.println("    IP:        " + grove.seedling().ipAddress());
             System.out.println("    SSH Port:  " + grove.seedling().sshPort());

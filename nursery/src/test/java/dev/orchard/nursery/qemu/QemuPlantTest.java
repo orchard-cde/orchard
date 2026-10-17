@@ -1,7 +1,7 @@
 package dev.orchard.nursery.qemu;
 
 import dev.orchard.core.model.Plot;
-import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
@@ -81,7 +81,7 @@ class QemuPlantTest {
     }
 
     private static VmPlot germinated() {
-        return VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        return VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
     }
 
     private QemuGroveProvider provider(QemuCommands commands) {
@@ -181,7 +181,7 @@ class QemuPlantTest {
             }
         };
         QemuGroveProvider provider = provider(longLived);
-        Plot reserved = provider.reserve(UUID.randomUUID(), PlotRequest.from(VmSpec.small()));
+        Plot reserved = provider.reserve(UUID.randomUUID(), SeedlingSpec.from(VmSpec.small()));
 
         try {
             VmPlot planted = (VmPlot) provider.plantSubstrate(reserved).join();

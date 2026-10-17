@@ -19,7 +19,7 @@ public record VmPlot(
 ) implements Plot {
 
     /** A {@code GERMINATING} plot with nothing acquired. Mirrors {@link Seedling#germinate}. */
-    public static VmPlot germinate(UUID groveId, String providerId, PlotRequest request) {
+    public static VmPlot germinate(UUID groveId, String providerId, SeedlingSpec seedlingSpec) {
         return new VmPlot(
             UUID.randomUUID(),
             groveId,
@@ -31,8 +31,8 @@ public record VmPlot(
             null,
             22,
             List.of(),
-            new VmSpec(request.cpuCores(), request.memoryMb(), request.diskGb(),
-                request.machineType(), request.serialOutput())
+            new VmSpec(seedlingSpec.cpuCores(), seedlingSpec.memoryMb(), seedlingSpec.diskGb(),
+                seedlingSpec.machineType(), seedlingSpec.serialOutput())
         );
     }
 

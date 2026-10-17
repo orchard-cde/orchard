@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Downloads and prepares an Ubuntu 22.04 cloud image as the base seedling (VM) image.
+# Downloads and prepares an Ubuntu 22.04 cloud image as the base VM plot image.
 
 ARCH="$(uname -m)"
 if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
@@ -205,7 +205,7 @@ else
     echo " WARNING: Neither genisoimage nor mkisofs was found."
     echo ""
     echo " One of these tools is required to generate cloud-init ISO images for"
-    echo " seedling (VM) provisioning. Without it, Orchard cannot inject SSH keys"
+    echo " VM plot provisioning. Without it, Orchard cannot inject SSH keys"
     echo " and configuration into new VMs."
     echo ""
     echo " Install with:"

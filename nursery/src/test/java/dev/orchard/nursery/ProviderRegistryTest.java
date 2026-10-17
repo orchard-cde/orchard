@@ -2,7 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
-import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
 import dev.orchard.vine.Vine;
@@ -133,7 +133,7 @@ class ProviderRegistryTest {
         @Override public ProviderType type() { return ProviderType.QEMU_LOCAL; }
         @Override public String getProviderId() { return providerId; }
         @Override public boolean isAvailable() { return true; }
-        @Override public Plot reserve(UUID groveId, PlotRequest r) { throw new UnsupportedOperationException(); }
+        @Override public Plot reserve(UUID groveId, SeedlingSpec r) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Plot> plantSubstrate(Plot s) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Plot> water(Plot s) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Plot> dormant(Plot s) { throw new UnsupportedOperationException(); }

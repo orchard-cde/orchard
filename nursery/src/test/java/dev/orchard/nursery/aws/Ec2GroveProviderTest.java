@@ -3,7 +3,7 @@ package dev.orchard.nursery.aws;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.ContainerSpec;
-import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
@@ -62,7 +62,7 @@ class Ec2GroveProviderTest {
         Files.writeString(keyPath, "private-fake");
         Files.writeString(Path.of(keyPath + ".pub"), "ssh-ed25519 AAAA testkey orchard@test");
 
-        germinated = VmPlot.germinate(UUID.randomUUID(), "aws-ec2", PlotRequest.from(VmSpec.small()));
+        germinated = VmPlot.germinate(UUID.randomUUID(), "aws-ec2", SeedlingSpec.from(VmSpec.small()));
     }
 
     private Ec2Config configWith(Ec2Config.IpMode mode) {

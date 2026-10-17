@@ -5,8 +5,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A Seedling is a VM that hosts Fruit (containers).
- * It grows from GERMINATING through to SAPLING state when fully ready.
+ * The VM record a {@link Grove} holds until it moves onto {@link Plot}; {@link VmPlot} is its
+ * replacement. Despite the name this describes the plot (where fruit grows), not what is planted:
+ * once {@code Grove} holds a {@code Plot}, the {@code Seedling} name passes to what is planted into
+ * a plot, described by {@link SeedlingSpec} (#86).
  */
 public record Seedling(
     UUID id,

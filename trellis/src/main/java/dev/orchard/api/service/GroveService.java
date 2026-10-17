@@ -94,13 +94,13 @@ public class GroveService {
 
         GroveProvider provider = providerRegistry.getDefault();
         PlotSizes sizes = provider.sizes();
-        PlotRequest plotRequest = switch (request.machineSize()) {
-            case "medium" -> PlotRequest.of("medium", sizes.medium(), request.serialOutput());
-            case "large" -> PlotRequest.of("large", sizes.large(), request.serialOutput());
-            default -> PlotRequest.of("small", sizes.small(), request.serialOutput());
+        SeedlingSpec seedlingSpec = switch (request.machineSize()) {
+            case "medium" -> SeedlingSpec.of("medium", sizes.medium(), request.serialOutput());
+            case "large" -> SeedlingSpec.of("large", sizes.large(), request.serialOutput());
+            default -> SeedlingSpec.of("small", sizes.small(), request.serialOutput());
         };
 
-        Seedling seedling = PlotBridge.toSeedling(provider.reserve(grove.id(), plotRequest));
+        Seedling seedling = PlotBridge.toSeedling(provider.reserve(grove.id(), seedlingSpec));
         grove = grove.withSeedling(seedling);
 
         GroveEntity entity = GroveEntity.fromModel(grove);
@@ -694,7 +694,7 @@ public class GroveService {
             log.info("Starting grove {}", groveId);
             Grove grove = entityToModel(entity);
             Seedling seedling = PlotBridge.toSeedling(providerRegistry.getDefault()
-                .reserve(grove.id(), PlotRequest.from(grove.seedling().spec())));
+                .reserve(grove.id(), SeedlingSpec.from(grove.seedling().spec())));
             grove = grove.withSeedling(seedling);
             grove = grove.withState(GroveState.PLANTING);
             updateGroveState(grove);

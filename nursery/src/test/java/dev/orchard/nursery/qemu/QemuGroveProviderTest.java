@@ -4,7 +4,7 @@ import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.ContainerSpec;
 import dev.orchard.core.model.Plot;
-import dev.orchard.core.model.PlotRequest;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
@@ -112,7 +112,7 @@ class QemuGroveProviderTest {
     @Test
     void reattachSurvivingVms_alivePidMatchingVm_seedlingBecomesInspectable() throws IOException {
         // Directory must be named after plot.id(), matching what plantSubstrate() writes
-        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
         Path vmDir = tempDir.resolve(plot.id().toString());
         Files.createDirectories(vmDir);
         // A live process whose command line identifies it as this plot's VM (as QEMU's would,
@@ -131,7 +131,7 @@ class QemuGroveProviderTest {
         // PID reuse: the recorded PID is alive but now belongs to an unrelated process, not this
         // plot's QEMU VM. It must NOT be adopted — otherwise inspect()/uproot() would act on,
         // and uproot() would destroyForcibly(), a process that isn't ours.
-        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
         Path vmDir = tempDir.resolve(plot.id().toString());
         Files.createDirectories(vmDir);
         Process unrelated = startAliveProcessTaggedWith("some-other-unrelated-process");
@@ -145,7 +145,7 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_deadPid_seedlingRemainsWithered() throws IOException, InterruptedException {
-        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
         Path vmDir = tempDir.resolve(plot.id().toString());
         Files.createDirectories(vmDir);
 
@@ -163,7 +163,7 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_malformedPidFile_skipsEntry() throws IOException {
-        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
         Path vmDir = tempDir.resolve(plot.id().toString());
         Files.createDirectories(vmDir);
         Files.writeString(vmDir.resolve("qemu.pid"), "not-a-number");
@@ -176,7 +176,7 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_dirWithoutPidFile_skipsEntry() throws IOException {
-        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
         Files.createDirectories(tempDir.resolve(plot.id().toString()));
 
         provider.reattachSurvivingVms(); // must not throw
@@ -187,8 +187,8 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_multipleVms_reattachesOnlyAlive() throws IOException, InterruptedException {
-        VmPlot alivePlot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
-        VmPlot deadPlot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot alivePlot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        VmPlot deadPlot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
 
         Path aliveDir = tempDir.resolve(alivePlot.id().toString());
         Path deadDir = tempDir.resolve(deadPlot.id().toString());
@@ -214,7 +214,7 @@ class QemuGroveProviderTest {
 
     @Test
     void inspect_noEntryInMap_returnsWithered() {
-        VmPlot germinated = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot germinated = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
         VmPlot plot = germinated.withEndpoint(
             new VmEndpoint(new ProviderHandle("some-id"), new Host("127.0.0.1"), germinated.sshPort()));
 
@@ -250,7 +250,7 @@ class QemuGroveProviderTest {
      */
     @Test
     void uproot_noHandleRecorded_completesSuccessfully() {
-        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
 
         assertThatCode(() -> provider.uproot(plot).join()).doesNotThrowAnyException();
     }
@@ -289,7 +289,7 @@ class QemuGroveProviderTest {
         QemuConfig config = QemuConfig.builder().vmStoragePath(tempDir).build();
         QemuGroveProvider p = new QemuGroveProvider(
             config, new DevcontainerCliConfig("0.75.0", 600, 60), new FruitGrower(), neverExits);
-        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", PlotRequest.from(VmSpec.small()));
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
         p.plantSubstrate(plot).join();
 
         CompletableFuture<Void> result = p.uproot(plot);
