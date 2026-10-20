@@ -73,7 +73,7 @@ class AbstractGroveProviderTest {
     private record FakeLaunch(String instanceId, int port) {}
 
     /** Records step order and can be told to fail at a named step. */
-    private static class RecordingProvider extends AbstractGroveProvider<FakeLaunch> {
+    private static class RecordingProvider extends AbstractVmGroveProvider<FakeLaunch> {
         final List<String> calls = new ArrayList<>();
         String throwAtStep;
 
@@ -147,7 +147,7 @@ class AbstractGroveProviderTest {
     }
 
     /** Implements only the three abstract steps — deliberately does not override awaitRunning. */
-    private static class NoHookProvider extends AbstractGroveProvider<String> {
+    private static class NoHookProvider extends AbstractVmGroveProvider<String> {
 
         NoHookProvider(ExecutorService executor) {
             this(executor, new FruitGrower());
@@ -394,7 +394,7 @@ class AbstractGroveProviderTest {
     }
 
     /** Captures the thread name a step ran on, to prove {@code plantSubstrate()} dispatches onto the executor. */
-    private static class ThreadNameCapturingProvider extends AbstractGroveProvider<FakeLaunch> {
+    private static class ThreadNameCapturingProvider extends AbstractVmGroveProvider<FakeLaunch> {
         volatile String capturedThreadName;
 
         ThreadNameCapturingProvider(ExecutorService executor) {
@@ -476,7 +476,7 @@ class AbstractGroveProviderTest {
      * with, to prove the launch result reaches the failure log rather than just being reachable
      * via a direct call.
      */
-    private static class PostLaunchFailureProvider extends AbstractGroveProvider<FakeLaunch> {
+    private static class PostLaunchFailureProvider extends AbstractVmGroveProvider<FakeLaunch> {
         private static final FakeLaunch NOT_CAPTURED = new FakeLaunch("not-captured", -1);
         volatile FakeLaunch capturedFailureContextArg = NOT_CAPTURED;
 

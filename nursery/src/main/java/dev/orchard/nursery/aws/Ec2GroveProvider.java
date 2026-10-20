@@ -7,7 +7,7 @@ import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
 import dev.orchard.core.model.ProviderHandle;
 import dev.orchard.core.model.VmPlot;
-import dev.orchard.nursery.AbstractGroveProvider;
+import dev.orchard.nursery.AbstractVmGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
@@ -35,7 +35,7 @@ import java.util.concurrent.Executors;
  * <i>not</i> terminated (matches QEMU's leak-and-return-BLIGHTED behavior;
  * operators are expected to clean up via the AWS console).
  */
-public class Ec2GroveProvider extends AbstractGroveProvider<String> implements AutoCloseable {
+public class Ec2GroveProvider extends AbstractVmGroveProvider<String> implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Ec2GroveProvider.class);
     private static final int SSH_PORT = 22;
@@ -105,7 +105,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
 
     @Override
     public CompletableFuture<Plot> water(Plot plot) {
-        VmPlot vm = requireVm(plot);
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             try {
                 operations.startInstance(vm.providerInstanceId());
@@ -126,7 +126,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
 
     @Override
     public CompletableFuture<Plot> dormant(Plot plot) {
-        VmPlot vm = requireVm(plot);
+        VmPlot vm = narrow(plot);
         // TODO: implement real StopInstances (matches current QemuGroveProvider stub).
         log.info("dormant() requested for plot {} — returning WILTING without calling AWS", vm.id());
         return CompletableFuture.completedFuture(vm.withState(PlotState.WILTING));
@@ -134,7 +134,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
 
     @Override
     public CompletableFuture<Void> uproot(Plot plot) {
-        VmPlot vm = requireVm(plot);
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             try {
                 operations.terminateInstance(vm.providerInstanceId());
@@ -151,7 +151,7 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
 
     @Override
     public CompletableFuture<Plot> inspect(Plot plot) {
-        VmPlot vm = requireVm(plot);
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             try {
                 InstanceDescription desc = operations.describeInstance(vm.providerInstanceId());

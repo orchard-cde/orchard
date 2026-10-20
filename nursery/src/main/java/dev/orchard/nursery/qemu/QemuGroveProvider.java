@@ -7,7 +7,7 @@ import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.Host;
 import dev.orchard.core.model.ProviderHandle;
 import dev.orchard.core.model.VmPlot;
-import dev.orchard.nursery.AbstractGroveProvider;
+import dev.orchard.nursery.AbstractVmGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import org.slf4j.Logger;
@@ -32,7 +32,7 @@ import java.util.concurrent.TimeoutException;
  * QEMU-based grove provider for local VM provisioning.
  * Uses QEMU/KVM to run VMs with cloud-init for initial configuration.
  */
-public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.QemuLaunch> {
+public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider.QemuLaunch> {
 
     private static final Logger log = LoggerFactory.getLogger(QemuGroveProvider.class);
 
@@ -109,7 +109,7 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
 
     @Override
     public CompletableFuture<Plot> water(Plot plot) {
-        VmPlot vm = requireVm(plot);
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             log.info("Watering (resuming) plot {}", vm.id());
             // TODO: Implement resume from suspended state
@@ -119,7 +119,7 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
 
     @Override
     public CompletableFuture<Plot> dormant(Plot plot) {
-        VmPlot vm = requireVm(plot);
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             log.info("Setting plot {} to dormant", vm.id());
             return vm.withState(PlotState.WILTING);
@@ -128,7 +128,7 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
 
     @Override
     public CompletableFuture<Void> uproot(Plot plot) {
-        VmPlot vm = requireVm(plot);
+        VmPlot vm = narrow(plot);
         return CompletableFuture.runAsync(() -> {
             log.info("Uprooting plot {}", vm.id());
             ProcessHandle handle = runningVms.remove(vm.id());
@@ -193,7 +193,7 @@ public class QemuGroveProvider extends AbstractGroveProvider<QemuGroveProvider.Q
 
     @Override
     public CompletableFuture<Plot> inspect(Plot plot) {
-        VmPlot vm = requireVm(plot);
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             ProcessHandle handle = runningVms.get(vm.id());
             if (handle != null && handle.isAlive()) {
