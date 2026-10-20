@@ -73,13 +73,9 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
      * {@code SAPLING} transition, and the failure-to-{@code BLIGHTED} mapping are the contract this
      * class exists to guarantee, and an override would silently forfeit all three.
      *
-     * <p>A substrate that genuinely cannot express itself as these steps should implement
-     * {@link GroveProvider} directly rather than extending this class — that is the escape hatch,
-     * and it keeps the guarantee intact for every provider that does extend.
-     *
-     * <p>A returned {@code SAPLING} means the substrate is reachable (e.g. SSH accepts connections);
-     * it does not mean the devcontainer CLI is installed yet, since cloud-init may still be running.
-     * Verifying the CLI is the caller's responsibility, performed after cloud-init completes — see
+     * <p>A returned {@code SAPLING} means {@link #ready} completed, i.e. the substrate is usable.
+     * It does not mean the devcontainer CLI is installed yet; a VM, for instance, may still be
+     * running cloud-init. Verifying the CLI is the caller's responsibility — see
      * {@link GroveProvider#verifyDevcontainerCli}.
      */
     @Override
@@ -105,7 +101,10 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
     /** Acquires the substrate. Returns whatever the later steps need to know about it. */
     protected abstract L launch(P plot) throws Exception;
 
-    /** Waits until the launched substrate is reachable and returns the plot carrying its endpoint. */
+    /**
+     * Waits until the launched substrate is usable and returns the launched plot, carrying whatever
+     * identity later operations need. Its state is ignored; the base sets {@code SAPLING}.
+     */
     protected abstract P ready(P plot, L launched) throws Exception;
 
     /**
@@ -121,8 +120,10 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
         return launched == null ? "" : " (" + launched + ")";
     }
 
+    /** Returns the vine for the plot. Called on every use; implementations should not assume it is cached. */
     protected abstract Vine vineFor(P plot);
 
+    /** The workspace folder as seen by whatever executes the vine's commands, not necessarily the host. */
     protected abstract String workspacePath(P plot);
 
     @Override

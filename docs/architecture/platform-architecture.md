@@ -200,10 +200,16 @@ public interface GroveProvider {
 
 All operations return `CompletableFuture` for non-blocking async provisioning.
 
-`AbstractGroveProvider<L>` holds the shared VM behaviour: the `plantSubstrate` template (`launch`
-→ `awaitRunning` → `resolveEndpoint` → `awaitReachable`, mapped to `SAPLING` or `BLIGHTED`), fruit
-forwarding to the shared `FruitGrower`, and an SSH-backed `Vine`. `plantSubstrate` is `final`; a
-substrate that cannot express itself as those steps implements `GroveProvider` directly instead.
+`AbstractGroveProvider<P extends Plot, L>` is the substrate-agnostic base: the `plantSubstrate`
+template (`launch` → `ready`, mapped to `SAPLING` or `BLIGHTED`), `reserve` via `draft`, fruit
+forwarding to the shared `FruitGrower`, and `vine`/`verifyDevcontainerCli`. A substrate supplies
+`draft`, `launch`, `ready`, `vineFor` and `workspacePath`; the guarantee-bearing methods are `final`,
+so container and other non-VM substrates extend the base rather than implementing `GroveProvider`
+directly.
+
+`AbstractVmGroveProvider<L>` is the VM layer on top of it: `ready` becomes `awaitRunning` →
+`resolveEndpoint` → `awaitReachable`, `vineFor` returns an SSH-backed `Vine`, and the workspace
+path is `/workspace`.
 
 ### 2.2 ProviderRegistry
 

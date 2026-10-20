@@ -90,6 +90,23 @@ class GenericGroveProviderTest {
     }
 
     @Test
+    void compostFruit_usesTheSubstratesWorkspacePath() {
+        FruitGrower grower = mock(FruitGrower.class);
+        when(grower.compost(any(), any())).thenReturn(new CompletableFuture<>());
+        ContainerTestProvider provider = new ContainerTestProvider(executor, grower);
+        ContainerPlot plot = (ContainerPlot) provider.reserve(UUID.randomUUID(), spec());
+        Fruit fruit = Fruit.bud(plot.groveId(), plot.id(),
+            DevcontainerSeed.builder().name("test").image("alpine:3").build());
+
+        provider.compostFruit(plot, fruit);
+
+        ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(grower).compost(target.capture(), any());
+        assertThat(target.getValue().workspacePath()).isEqualTo("/tmp/orchard-ws");
+        assertThat(target.getValue().targetId()).isEqualTo(plot.id());
+    }
+
+    @Test
     void reserve_returnsTheSubstratesDraft() {
         ContainerTestProvider provider = new ContainerTestProvider(executor, new FruitGrower());
         UUID groveId = UUID.randomUUID();
