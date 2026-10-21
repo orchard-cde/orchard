@@ -1,14 +1,25 @@
 package dev.orchard.nursery.qemu;
 
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.Seedling.SeedlingSpec;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.ContainerPlot;
+import dev.orchard.core.model.ContainerRuntime;
+import dev.orchard.core.model.ContainerSpec;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmEndpoint;
+import dev.orchard.core.model.Host;
+import dev.orchard.core.model.ProviderHandle;
+import dev.orchard.core.model.ProviderType;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -74,7 +85,11 @@ class QemuGroveProviderTest {
         return p;
     }
 
-    // --- reattachSurvivingVms ---
+    @Test
+    void type_isQemuLocal_andTheProviderIdDerivesFromIt() {
+        assertThat(provider.type()).isEqualTo(ProviderType.QEMU_LOCAL);
+        assertThat(provider.getProviderId()).isEqualTo("qemu-local");
+    }
 
     @Test
     void reattachSurvivingVms_noStorageDir_isNoop() {
@@ -96,42 +111,42 @@ class QemuGroveProviderTest {
 
     @Test
     void reattachSurvivingVms_alivePidMatchingVm_seedlingBecomesInspectable() throws IOException {
-        // Directory must be named after seedling.id(), matching what plantSubstrate() writes
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
-        Path vmDir = tempDir.resolve(seedling.id().toString());
+        // Directory must be named after plot.id(), matching what plantSubstrate() writes
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        Path vmDir = tempDir.resolve(plot.id().toString());
         Files.createDirectories(vmDir);
-        // A live process whose command line identifies it as this seedling's VM (as QEMU's would,
-        // via the disk path that embeds the seedling id).
-        Process vm = startAliveProcessTaggedWith(seedling.id().toString());
+        // A live process whose command line identifies it as this plot's VM (as QEMU's would,
+        // via the disk path that embeds the plot id).
+        Process vm = startAliveProcessTaggedWith(plot.id().toString());
         Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(vm.pid()));
 
         provider.reattachSurvivingVms();
 
-        Seedling result = provider.inspect(seedling.withProviderDetails(seedling.id().toString(), "127.0.0.1")).join();
-        assertThat(result.state()).isEqualTo(SeedlingState.SAPLING);
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        assertThat(result.state()).isEqualTo(PlotState.SAPLING);
     }
 
     @Test
     void reattachSurvivingVms_aliveButUnrelatedPid_isNotAdopted() throws IOException {
         // PID reuse: the recorded PID is alive but now belongs to an unrelated process, not this
-        // seedling's QEMU VM. It must NOT be adopted — otherwise inspect()/uproot() would act on,
+        // plot's QEMU VM. It must NOT be adopted — otherwise inspect()/uproot() would act on,
         // and uproot() would destroyForcibly(), a process that isn't ours.
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
-        Path vmDir = tempDir.resolve(seedling.id().toString());
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        Path vmDir = tempDir.resolve(plot.id().toString());
         Files.createDirectories(vmDir);
         Process unrelated = startAliveProcessTaggedWith("some-other-unrelated-process");
         Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(unrelated.pid()));
 
         provider.reattachSurvivingVms();
 
-        Seedling result = provider.inspect(seedling.withProviderDetails(seedling.id().toString(), "127.0.0.1")).join();
-        assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
     @Test
     void reattachSurvivingVms_deadPid_seedlingRemainsWithered() throws IOException, InterruptedException {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
-        Path vmDir = tempDir.resolve(seedling.id().toString());
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        Path vmDir = tempDir.resolve(plot.id().toString());
         Files.createDirectories(vmDir);
 
         // Spawn a process and wait for it to exit so we get a guaranteed dead PID
@@ -142,45 +157,45 @@ class QemuGroveProviderTest {
 
         provider.reattachSurvivingVms();
 
-        Seedling result = provider.inspect(seedling.withProviderDetails(seedling.id().toString(), "127.0.0.1")).join();
-        assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
     @Test
     void reattachSurvivingVms_malformedPidFile_skipsEntry() throws IOException {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
-        Path vmDir = tempDir.resolve(seedling.id().toString());
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        Path vmDir = tempDir.resolve(plot.id().toString());
         Files.createDirectories(vmDir);
         Files.writeString(vmDir.resolve("qemu.pid"), "not-a-number");
 
         provider.reattachSurvivingVms(); // must not throw
 
-        Seedling result = provider.inspect(seedling.withProviderDetails(seedling.id().toString(), "127.0.0.1")).join();
-        assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
     @Test
     void reattachSurvivingVms_dirWithoutPidFile_skipsEntry() throws IOException {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
-        Files.createDirectories(tempDir.resolve(seedling.id().toString()));
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        Files.createDirectories(tempDir.resolve(plot.id().toString()));
 
         provider.reattachSurvivingVms(); // must not throw
 
-        Seedling result = provider.inspect(seedling.withProviderDetails(seedling.id().toString(), "127.0.0.1")).join();
-        assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
+        Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
+        assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
     @Test
     void reattachSurvivingVms_multipleVms_reattachesOnlyAlive() throws IOException, InterruptedException {
-        Seedling aliveSeedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
-        Seedling deadSeedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        VmPlot alivePlot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        VmPlot deadPlot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
 
-        Path aliveDir = tempDir.resolve(aliveSeedling.id().toString());
-        Path deadDir = tempDir.resolve(deadSeedling.id().toString());
+        Path aliveDir = tempDir.resolve(alivePlot.id().toString());
+        Path deadDir = tempDir.resolve(deadPlot.id().toString());
         Files.createDirectories(aliveDir);
         Files.createDirectories(deadDir);
 
-        Process aliveVm = startAliveProcessTaggedWith(aliveSeedling.id().toString());
+        Process aliveVm = startAliveProcessTaggedWith(alivePlot.id().toString());
         Files.writeString(aliveDir.resolve("qemu.pid"), String.valueOf(aliveVm.pid()));
 
         Process dead = new ProcessBuilder("true").start();
@@ -190,25 +205,44 @@ class QemuGroveProviderTest {
 
         provider.reattachSurvivingVms();
 
-        assertThat(provider.inspect(aliveSeedling.withProviderDetails(aliveSeedling.id().toString(), "127.0.0.1")).join().state())
-            .isEqualTo(SeedlingState.SAPLING);
-        assertThat(provider.inspect(deadSeedling.withProviderDetails(deadSeedling.id().toString(), "127.0.0.1")).join().state())
-            .isEqualTo(SeedlingState.WITHERED);
+        assertThat(provider.inspect(alivePlot.withEndpoint(new VmEndpoint(new ProviderHandle(alivePlot.id().toString()), new Host("127.0.0.1"), alivePlot.sshPort()))).join().state())
+            .isEqualTo(PlotState.SAPLING);
+        assertThat(provider.inspect(deadPlot.withEndpoint(new VmEndpoint(new ProviderHandle(deadPlot.id().toString()), new Host("127.0.0.1"), deadPlot.sshPort()))).join().state())
+            .isEqualTo(PlotState.WITHERED);
     }
 
-    // --- inspect ---
 
     @Test
     void inspect_noEntryInMap_returnsWithered() {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small())
-            .withProviderDetails("some-id", "127.0.0.1");
+        VmPlot germinated = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        VmPlot plot = germinated.withEndpoint(
+            new VmEndpoint(new ProviderHandle("some-id"), new Host("127.0.0.1"), germinated.sshPort()));
 
-        Seedling result = provider.inspect(seedling).join();
+        Plot result = provider.inspect(plot).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
+        assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
-    // --- uproot ---
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"water", "dormant", "uproot", "inspect"})
+    void ownedMethod_containerPlot_isRefusedOnTheCallingThread(String method) {
+        ContainerPlot container = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
+            "c-1", PlotState.SAPLING, Instant.now(), null, Path.of("/tmp/ws"),
+            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048));
+        Runnable call = switch (method) {
+            case "water" -> () -> provider.water(container);
+            case "dormant" -> () -> provider.dormant(container);
+            case "uproot" -> () -> provider.uproot(container);
+            case "inspect" -> () -> provider.inspect(container);
+            default -> throw new IllegalArgumentException(method);
+        };
+
+        assertThatThrownBy(call::run)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("qemu-local")
+            .hasMessageContaining(container.id().toString());
+    }
+
 
     /**
      * A missing handle is the already-gone case and must stay a success path, so uproot remains
@@ -216,9 +250,9 @@ class QemuGroveProviderTest {
      */
     @Test
     void uproot_noHandleRecorded_completesSuccessfully() {
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
 
-        assertThatCode(() -> provider.uproot(seedling).join()).doesNotThrowAnyException();
+        assertThatCode(() -> provider.uproot(plot).join()).doesNotThrowAnyException();
     }
 
     /**
@@ -234,7 +268,7 @@ class QemuGroveProviderTest {
             }
 
             @Override
-            public void createCloudInitIso(Path iso, Seedling seedling) throws IOException {
+            public void createCloudInitIso(Path iso, VmPlot plot) throws IOException {
                 Files.createFile(iso);
             }
 
@@ -244,7 +278,7 @@ class QemuGroveProviderTest {
             }
 
             @Override
-            public Process startQemu(Seedling s, Path diskImage, Path cloudInitIso, int sshPort) {
+            public Process startQemu(VmPlot s, Path diskImage, Path cloudInitIso, int sshPort) {
                 return new NeverExitsProcess();
             }
 
@@ -255,10 +289,10 @@ class QemuGroveProviderTest {
         QemuConfig config = QemuConfig.builder().vmStoragePath(tempDir).build();
         QemuGroveProvider p = new QemuGroveProvider(
             config, new DevcontainerCliConfig("0.75.0", 600, 60), new FruitGrower(), neverExits);
-        Seedling seedling = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
-        p.plantSubstrate(seedling).join();
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+        p.plantSubstrate(plot).join();
 
-        CompletableFuture<Void> result = p.uproot(seedling);
+        CompletableFuture<Void> result = p.uproot(plot);
 
         assertThatThrownBy(result::join)
             .isInstanceOf(CompletionException.class)

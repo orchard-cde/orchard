@@ -46,7 +46,6 @@ public class QemuPrerequisiteExtension implements ExecutionCondition {
         }
 
         if (hasIsoTool()) {
-            // ISO tool is available
         } else {
             missing.add("No ISO creation tool found (install genisoimage or mkisofs)");
         }

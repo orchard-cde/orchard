@@ -19,8 +19,7 @@ class DevfileParserTest {
 
     private final DevfileParser parser = new DevfileParser();
 
-    // --- parseYaml: happy paths --------------------------------------------------------------
-
+    // parseYaml: happy paths
     @Test
     void parseYaml_minimalContainer() {
         Optional<DevfileSeed> result = parser.parseYaml("""
@@ -154,8 +153,7 @@ class DevfileParserTest {
         assertThat(result.get().image()).isEqualTo("alpine:3.19");
     }
 
-    // --- parseYaml: failure / edge cases ----------------------------------------------------
-
+    // parseYaml: failure / edge cases
     @Test
     void parseYaml_returnsEmpty_whenContentBlank() {
         assertThat(parser.parseYaml("")).isEmpty();
@@ -216,8 +214,7 @@ class DevfileParserTest {
         assertThat(result).isEmpty();
     }
 
-    // --- discover (file-system) -------------------------------------------------------------
-
+    // discover (file-system)
     @Test
     void discover_findsDevfileYaml(@TempDir Path repo) throws IOException {
         Files.writeString(repo.resolve("devfile.yaml"), """
@@ -305,8 +302,7 @@ class DevfileParserTest {
             .hasMessageContaining("No parseable container component");
     }
 
-    // --- commands / events lifecycle mapping ------------------------------------------------
-
+    // commands / events lifecycle mapping
     @Test
     void parseYaml_singlePostStartCommand() {
         Optional<DevfileSeed> result = parser.parseYaml("""

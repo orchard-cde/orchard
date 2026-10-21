@@ -3,7 +3,10 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.Seed;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
 import dev.orchard.vine.CommandRunner;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,7 +48,6 @@ class FruitGrowerTest {
     private static final UUID SEEDLING_ID = UUID.randomUUID();
     private static final String WORKSPACE_PATH = "/workspace";
 
-    // --- parsePortOutput (legacy helper still used on docker path) ---------------------------
 
     @Test
     void parsePortOutput_standardTcpMapping() {
@@ -100,7 +103,6 @@ class FruitGrowerTest {
         assertThat(mappings).containsExactly(new Fruit.PortMapping(53, 53, "udp"));
     }
 
-    // --- CLI path ----------------------------------------------------------------------------
 
     @Test
     void growViaCli_happyPath_returnsRipeFruit() throws Exception {
@@ -255,7 +257,7 @@ class FruitGrowerTest {
 
     @Test
     void containerNameRegression_isPreservedAfterGrow() throws Exception {
-        // Regression test for spec Locked decision #18. The CLI may name the actual container
+        // Regression: the CLI may name the actual container
         // differently from Fruit.containerName (e.g. on regrow). FruitGrower MUST call
         // inspectContainerName and overwrite Fruit.containerName with the real value.
         DevcontainerCli cli = mock(DevcontainerCli.class);
@@ -279,7 +281,6 @@ class FruitGrowerTest {
         verify(cli).inspectContainerName(same(runner), eq("c-real"));
     }
 
-    // --- helpers -----------------------------------------------------------------------------
 
     private static Seed defaultSeed() {
         return Seed.devcontainer()
@@ -294,7 +295,7 @@ class FruitGrowerTest {
 
     private static CommandRunner runner() {
         // 127.0.0.255 / port 1 — guaranteed to refuse on any host the test runs on.
-        return new SshVine("127.0.0.255", 1, SEEDLING_ID).commands();
+        return new SshVine(new VmPlot(SEEDLING_ID, UUID.randomUUID(), "test", null, PlotState.SAPLING, Instant.now(), null, "127.0.0.255", 1, List.of(), VmSpec.small())).commands();
     }
 
     private static ExecTarget execTarget(CommandRunner runner) {

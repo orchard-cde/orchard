@@ -15,7 +15,6 @@ import java.util.function.Consumer;
 
 /**
  * Drives {@code @devcontainers/cli} over SSH via an injected {@link CommandRunner}.
- * Spec: Locked decisions #1-19 of {@code docs/superpowers/specs/2026-06-15-issue-74-features-runtime-design.md}.
  *
  * <p>The CLI's stdout (with {@code --log-format json}) is a stream of JSON objects, one per
  * line. Each log line has a {@code type} field; the terminal line has an {@code outcome}

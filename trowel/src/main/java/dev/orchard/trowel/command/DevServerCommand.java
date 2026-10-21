@@ -228,7 +228,7 @@ public class DevServerCommand implements Callable<Integer> {
                     System.out.println("Skipping gateway: disabled via --no-gateway.");
                 }
 
-                // ADJ-1: resolve UI binary BEFORE launching anything (fail fast -> nothing started)
+                // Resolve the UI binary before launching anything so a failure starts nothing
                 Path uiBinary = null;
                 if (!noUi && !foreground) {
                     try {
@@ -237,16 +237,15 @@ public class DevServerCommand implements Callable<Integer> {
                         uiBinary = new dev.orchard.trowel.devserver.UiBackendResolver(uiBackendBinary(), v).resolve();
                     } catch (dev.orchard.trowel.devserver.UiBackendUnavailableException e) {
                         System.err.println(e.getMessage());
-                        return 1;   // nothing launched
+                        return 1;
                     }
                 }
 
-                // ADJ-3: foreground can't run the UI (it blocks on core inheritIO)
+                // Foreground can't run the UI: it blocks on core's inheritIO
                 if (foreground && !noUi) {
                     System.out.println("foreground mode runs core only (:" + corePort + "); omit -f to also run the UI");
                 }
 
-                // Start fence before core when auth is enabled
                 Process fenceProcess = null;
                 if (!noAuth) {
                     fenceProcess = startFence();
@@ -367,7 +366,6 @@ public class DevServerCommand implements Callable<Integer> {
             System.out.println("  Core PID: " + pid);
             System.out.println("  Core logs: " + logFile());
 
-            // Wait for health check
             System.out.print("  Waiting for server to start");
             boolean coreHealthy = waitForHealth(process, corePort, "/api/health", 30);
 
@@ -405,7 +403,7 @@ public class DevServerCommand implements Callable<Integer> {
                 }
             }
 
-            if (uiBinary != null) {   // i.e. !noUi && !foreground
+            if (uiBinary != null) {
                 int r = startUiBackend(uiBinary, process);
                 if (r != 0) {
                     if (fenceProcess != null && fenceProcess.isAlive()) {
@@ -418,14 +416,13 @@ public class DevServerCommand implements Callable<Integer> {
                     }
                     return r;
                 }
-                printConnectionInfo(port);   // BFF URL is what to open
+                printConnectionInfo(port);
             } else {
                 printCoreOnlyInfo(corePort);
             }
             return 0;
         }
 
-        // ADJ-2: package-visible, gains Process param and bails if it died
         boolean waitForHealth(Process process, int port, String healthPath, int timeoutSeconds) {
             HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
@@ -434,7 +431,7 @@ public class DevServerCommand implements Callable<Integer> {
             long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
 
             while (System.currentTimeMillis() < deadline) {
-                // ADJ-2: bail fast if the process already died
+                // Bail fast if the process already died
                 if (process != null && !process.isAlive()) {
                     System.out.println(" exited.");
                     return false;
@@ -454,7 +451,6 @@ public class DevServerCommand implements Callable<Integer> {
                         return true;
                     }
                 } catch (Exception e) {
-                    // Server not ready yet
                 }
             }
             return false;
@@ -487,7 +483,6 @@ public class DevServerCommand implements Callable<Integer> {
             }
             System.out.println(" ready!");
 
-            // ADJ-4: optional browser open
             if (open) {
                 String url = "http://localhost:" + port;
                 String os = System.getProperty("os.name").toLowerCase();
@@ -674,7 +669,6 @@ public class DevServerCommand implements Callable<Integer> {
                 System.out.println("Orchard dev-server: \u001B[1;32mrunning\u001B[0m");
                 System.out.println("  PID: " + info.pid());
 
-                // Try health endpoint to get more info
                 try {
                     HttpClient client = HttpClient.newBuilder()
                         .connectTimeout(Duration.ofSeconds(2))

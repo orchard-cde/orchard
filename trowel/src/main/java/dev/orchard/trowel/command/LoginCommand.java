@@ -39,13 +39,11 @@ public class LoginCommand implements Callable<Integer> {
 
             FenceClient fenceClient = new FenceClient(fenceUrl, clientId);
 
-            // Step 1: Request device authorization
             System.out.println();
             System.out.println("Requesting device authorization...");
 
             var deviceAuth = fenceClient.requestDeviceAuthorization();
 
-            // Step 2: Display user code and verification URI
             System.out.println();
             System.out.println("Open this URL in your browser:");
             System.out.println();
@@ -75,17 +73,14 @@ public class LoginCommand implements Callable<Integer> {
                 }
             }
 
-            // Step 3: Poll for token
             var tokenResponse = pollForToken(fenceClient, deviceAuth.deviceCode(), deviceAuth.interval());
 
-            // Step 4: Fetch cultivator info
             System.out.println();
             System.out.println("Authenticated! Fetching user info...");
 
             var orchardClient = new OrchardClient(getOrchardServerUrl(), () -> "Bearer " + tokenResponse.accessToken());
             var cultivator = orchardClient.getCurrentCultivator();
 
-            // Step 5: Persist to config
             persistLoginResult(tokenResponse, fenceUrl, cultivator.id());
 
             String greetingName = cultivator.displayName() != null ? cultivator.displayName() : cultivator.email();

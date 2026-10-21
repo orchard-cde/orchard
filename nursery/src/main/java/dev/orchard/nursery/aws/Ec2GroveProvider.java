@@ -1,12 +1,16 @@
 package dev.orchard.nursery.aws;
 
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
-import dev.orchard.nursery.AbstractGroveProvider;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.ProviderType;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmEndpoint;
+import dev.orchard.core.model.Host;
+import dev.orchard.core.model.ProviderHandle;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.nursery.AbstractVmGroveProvider;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
-import dev.orchard.nursery.PlantedSeedling;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceNotFoundException;
 import dev.orchard.nursery.aws.Ec2Operations.RunInstanceParams;
@@ -26,15 +30,14 @@ import java.util.concurrent.Executors;
  * <p>Provisions EC2 instances using cloud-init for initial bootstrap. Each method
  * runs on a virtual-thread executor matching {@code QemuGroveProvider}'s pattern.
  *
- * <p><b>Failure semantics:</b> on any exception during {@link #plantSubstrate(Seedling)},
- * the seedling moves to {@link SeedlingState#BLIGHTED} and the instance is
+ * <p><b>Failure semantics:</b> on any exception during {@link #plantSubstrate(Plot)},
+ * the plot moves to {@link PlotState#BLIGHTED} and the instance is
  * <i>not</i> terminated (matches QEMU's leak-and-return-BLIGHTED behavior;
  * operators are expected to clean up via the AWS console).
  */
-public class Ec2GroveProvider extends AbstractGroveProvider<String> implements AutoCloseable {
+public class Ec2GroveProvider extends AbstractVmGroveProvider<String> implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(Ec2GroveProvider.class);
-    private static final String PROVIDER_ID = "aws-ec2";
     private static final int SSH_PORT = 22;
 
     private final Ec2Config config;
@@ -52,22 +55,22 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
     }
 
     @Override
-    public String getProviderId() {
-        return PROVIDER_ID;
+    public ProviderType type() {
+        return ProviderType.AWS_EC2;
     }
 
     @Override
-    protected String launch(Seedling seedling) {
+    protected String launch(VmPlot plot) {
         String publicKey = readPublicKey();
 
         String userDataBase64 = Ec2UserData.renderBase64(
-            publicKey, seedling.authorizedKeys(), devcontainerCliConfig.version());
-        String instanceType = config.resolveInstanceType(seedling.spec().cpuCores());
+            publicKey, plot.authorizedKeys(), devcontainerCliConfig.version());
+        String instanceType = config.resolveInstanceType(plot.spec().cpuCores());
 
         Map<String, String> tags = Map.of(
-            "Name", "orchard-" + seedling.id(),
-            "orchard:grove-id", seedling.groveId().toString(),
-            "orchard:seedling-id", seedling.id().toString()
+            "Name", "orchard-" + plot.id(),
+            "orchard:grove-id", plot.groveId().toString(),
+            "orchard:seedling-id", plot.id().toString()
         );
 
         RunInstanceParams params = new RunInstanceParams(
@@ -75,24 +78,24 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
             config.securityGroupId(), config.subnetId(), userDataBase64, tags);
 
         String instanceId = operations.runInstance(params);
-        log.info("Launched EC2 instance {} for seedling {}", instanceId, seedling.id());
+        log.info("Launched EC2 instance {} for plot {}", instanceId, plot.id());
         return instanceId;
     }
 
     @Override
-    protected void awaitRunning(Seedling seedling, String instanceId) {
+    protected void awaitRunning(VmPlot plot, String instanceId) {
         waiter.awaitRunning(instanceId);
     }
 
     @Override
-    protected PlantedSeedling resolveEndpoint(Seedling seedling, String instanceId) {
+    protected VmEndpoint resolveEndpoint(VmPlot plot, String instanceId) {
         InstanceDescription desc = operations.describeInstance(instanceId);
-        return new PlantedSeedling(instanceId, selectIp(desc), SSH_PORT);
+        return new VmEndpoint(new ProviderHandle(instanceId), new Host(selectIp(desc)), SSH_PORT);
     }
 
     @Override
-    protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
-        waiter.awaitSshReady(planted.host(), planted.sshPort());
+    protected void awaitReachable(VmPlot plot, VmEndpoint endpoint) {
+        waiter.awaitSshReady(endpoint.host().value(), endpoint.sshPort());
     }
 
     @Override
@@ -101,43 +104,45 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
     }
 
     @Override
-    public CompletableFuture<Seedling> water(Seedling seedling) {
+    public CompletableFuture<Plot> water(Plot plot) {
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             try {
-                operations.startInstance(seedling.providerInstanceId());
-                waiter.awaitRunning(seedling.providerInstanceId());
-                InstanceDescription desc = operations.describeInstance(seedling.providerInstanceId());
-                String ip = selectIp(desc);
-                return seedling.withProviderDetails(seedling.providerInstanceId(), ip)
-                    .withState(SeedlingState.SAPLING);
+                operations.startInstance(vm.providerInstanceId());
+                waiter.awaitRunning(vm.providerInstanceId());
+                InstanceDescription desc = operations.describeInstance(vm.providerInstanceId());
+                return vm.withEndpoint(new VmEndpoint(
+                        new ProviderHandle(vm.providerInstanceId()), new Host(selectIp(desc)), vm.sshPort()))
+                    .withState(PlotState.SAPLING);
             // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
             // and surface as RuntimeException, caught below.
             } catch (Exception e) {
-                log.error("Failed to water seedling {} (instance={}): {}",
-                    seedling.id(), seedling.providerInstanceId(), e.getMessage(), e);
-                return seedling.withState(SeedlingState.BLIGHTED);
+                log.error("Failed to water plot {} (instance={}): {}",
+                    vm.id(), vm.providerInstanceId(), e.getMessage(), e);
+                return vm.withState(PlotState.BLIGHTED);
             }
         }, executor);
     }
 
     @Override
-    public CompletableFuture<Seedling> dormant(Seedling seedling) {
+    public CompletableFuture<Plot> dormant(Plot plot) {
+        VmPlot vm = narrow(plot);
         // TODO: implement real StopInstances (matches current QemuGroveProvider stub).
-        log.info("dormant() requested for seedling {} — returning WILTING without calling AWS",
-            seedling.id());
-        return CompletableFuture.completedFuture(seedling.withState(SeedlingState.WILTING));
+        log.info("dormant() requested for plot {} — returning WILTING without calling AWS", vm.id());
+        return CompletableFuture.completedFuture(vm.withState(PlotState.WILTING));
     }
 
     @Override
-    public CompletableFuture<Void> uproot(Seedling seedling) {
+    public CompletableFuture<Void> uproot(Plot plot) {
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             try {
-                operations.terminateInstance(seedling.providerInstanceId());
-                log.info("Uprooted seedling {} (instance={})",
-                    seedling.id(), seedling.providerInstanceId());
+                operations.terminateInstance(vm.providerInstanceId());
+                log.info("Uprooted plot {} (instance={})",
+                    vm.id(), vm.providerInstanceId());
             } catch (Exception e) {
-                log.error("Failed to uproot seedling {} (instance={}): {}",
-                    seedling.id(), seedling.providerInstanceId(), e.getMessage(), e);
+                log.error("Failed to uproot plot {} (instance={}): {}",
+                    vm.id(), vm.providerInstanceId(), e.getMessage(), e);
                 throw new CompletionException(e);
             }
             return (Void) null;
@@ -145,24 +150,25 @@ public class Ec2GroveProvider extends AbstractGroveProvider<String> implements A
     }
 
     @Override
-    public CompletableFuture<Seedling> inspect(Seedling seedling) {
+    public CompletableFuture<Plot> inspect(Plot plot) {
+        VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             try {
-                InstanceDescription desc = operations.describeInstance(seedling.providerInstanceId());
-                SeedlingState mapped = switch (desc.state()) {
-                    case RUNNING -> SeedlingState.SAPLING;
-                    case STOPPED, STOPPING -> SeedlingState.WILTING;
-                    case TERMINATED, SHUTTING_DOWN -> SeedlingState.WITHERED;
-                    case PENDING -> SeedlingState.SPROUTING;
-                    case UNKNOWN -> seedling.state();
+                InstanceDescription desc = operations.describeInstance(vm.providerInstanceId());
+                PlotState mapped = switch (desc.state()) {
+                    case RUNNING -> PlotState.SAPLING;
+                    case STOPPED, STOPPING -> PlotState.WILTING;
+                    case TERMINATED, SHUTTING_DOWN -> PlotState.WITHERED;
+                    case PENDING -> PlotState.SPROUTING;
+                    case UNKNOWN -> vm.state();
                 };
-                return seedling.withState(mapped);
+                return vm.withState(mapped);
             } catch (InstanceNotFoundException e) {
-                return seedling.withState(SeedlingState.WITHERED);
+                return vm.withState(PlotState.WITHERED);
             } catch (Exception e) {
-                log.warn("Failed to inspect seedling {} (instance={}): {}",
-                    seedling.id(), seedling.providerInstanceId(), e.getMessage());
-                return seedling;
+                log.warn("Failed to inspect plot {} (instance={}): {}",
+                    vm.id(), vm.providerInstanceId(), e.getMessage());
+                return vm;
             }
         }, executor);
     }

@@ -35,11 +35,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit-level coverage of the wiring the brief calls out explicitly: doInit must resolve
+ * Unit-level coverage of the wiring: doInit must resolve
  * the route from the server session, open the tunnel on the gateway->seedling client
  * session (never raw TCP), and use the correct originator/target addresses parsed off
  * the wire. The real byte relay (client -> tunnel -> target and back) is exercised by
- * Task 8's end-to-end integration test.
+ * RelayIntegrationTest.
  */
 class RelayDirectTcpipChannelTest {
 
