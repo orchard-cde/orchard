@@ -1,10 +1,10 @@
 package dev.orchard.nursery;
 
-import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.azure.AzureVmGroveProvider;
 import dev.orchard.nursery.gcp.GoogleComputeGroveProvider;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -27,16 +27,15 @@ class UnimplementedVmProvidersTest {
     @MethodSource("providers")
     void vmOperations_throwNotYetImplemented(GroveProvider provider, String expected) {
         VmPlot plot = TestPlots.fake();
-        Fruit fruit = Fruit.bud(plot.groveId(), plot.id(),
-            DevcontainerSeed.builder().name("test").image("alpine:3").build());
+        Fruit fruit = TestPlots.budded(plot);
 
-        assertThatThrownBy(() -> provider.growFruit(plot, fruit))
-            .isInstanceOf(UnsupportedOperationException.class).hasMessage(expected);
-        assertThatThrownBy(() -> provider.compostFruit(plot, fruit))
-            .isInstanceOf(UnsupportedOperationException.class).hasMessage(expected);
-        assertThatThrownBy(() -> provider.vine(plot))
-            .isInstanceOf(UnsupportedOperationException.class).hasMessage(expected);
-        assertThatThrownBy(() -> provider.verifyDevcontainerCli(plot, "0.87.0"))
-            .isInstanceOf(UnsupportedOperationException.class).hasMessage(expected);
+        assertUnimplemented(() -> provider.growFruit(plot, fruit), expected);
+        assertUnimplemented(() -> provider.compostFruit(plot, fruit), expected);
+        assertUnimplemented(() -> provider.vine(plot), expected);
+        assertUnimplemented(() -> provider.verifyDevcontainerCli(plot, "0.87.0"), expected);
+    }
+
+    private static void assertUnimplemented(ThrowingCallable call, String expected) {
+        assertThatThrownBy(call).isInstanceOf(UnsupportedOperationException.class).hasMessage(expected);
     }
 }

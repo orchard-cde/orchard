@@ -10,8 +10,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 
 /**
- * VM template over {@link AbstractGroveProvider}: a VM substrate is launched, awaited running,
- * resolved to an endpoint, and awaited reachable, and the grove is reached over SSH.
+ * VM layer over {@link AbstractGroveProvider}: VM plots, reached over SSH, with the workspace at
+ * {@code /workspace}.
  *
  * @param <L> the provider's own launch-result type; see {@link AbstractGroveProvider}
  */

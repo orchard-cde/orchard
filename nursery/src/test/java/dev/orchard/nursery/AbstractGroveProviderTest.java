@@ -3,7 +3,6 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.ContainerSpec;
-import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.SeedlingSpec;
@@ -277,12 +276,6 @@ class AbstractGroveProviderTest {
 
     // --- Shared VM behaviour ---
 
-    private static Fruit budded(VmPlot plot) {
-        // Seed must be non-null: Fruit.bud dereferences seed.name().
-        return Fruit.bud(plot.groveId(), plot.id(),
-            DevcontainerSeed.builder().name("test").image("alpine:3").build());
-    }
-
     /**
      * Matches an {@link ExecTarget} built the way {@link AbstractGroveProvider} builds one for a
      * VM substrate: an SSH-backed runner, the fixed {@code "/workspace"} path, and the given
@@ -298,7 +291,7 @@ class AbstractGroveProviderTest {
     void growFruit_delegatesToTheInjectedFruitGrower() {
         FruitGrower fruitGrower = mock(FruitGrower.class);
         VmPlot s = TestPlots.fake();
-        Fruit f = budded(s);
+        Fruit f = TestPlots.budded(s);
         when(fruitGrower.grow(argThat(execTargetFor(s)), eq(f)))
             .thenReturn(CompletableFuture.completedFuture(f));
 
@@ -310,7 +303,7 @@ class AbstractGroveProviderTest {
     void compostFruit_delegatesToTheInjectedFruitGrower() {
         FruitGrower fruitGrower = mock(FruitGrower.class);
         VmPlot s = TestPlots.fake();
-        Fruit f = budded(s);
+        Fruit f = TestPlots.budded(s);
         when(fruitGrower.compost(argThat(execTargetFor(s)), eq(f)))
             .thenReturn(CompletableFuture.completedFuture(null));
 
@@ -329,7 +322,7 @@ class AbstractGroveProviderTest {
         FruitGrower realFruitGrower = new FruitGrower(cli, true, null);
         FruitGrower fruitGrowerSpy = spy(realFruitGrower);
         VmPlot s = TestPlots.fake();
-        Fruit f = budded(s);
+        Fruit f = TestPlots.budded(s);
 
         when(cli.up(any(), eq("/workspace"), eq(f.id()), eq(f.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c-identity", null, "vscode", "/workspace"));
@@ -561,8 +554,7 @@ class AbstractGroveProviderTest {
     }
 
     static Stream<Arguments> templateMethods() {
-        Fruit fruit = Fruit.bud(UUID.randomUUID(), UUID.randomUUID(),
-            DevcontainerSeed.builder().name("test").image("alpine:3").build());
+        Fruit fruit = TestPlots.budded(TestPlots.fake());
         return Stream.of(
             Arguments.of("plantSubstrate",
                 (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.plantSubstrate(c)),

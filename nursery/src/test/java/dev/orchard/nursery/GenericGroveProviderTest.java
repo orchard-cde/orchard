@@ -3,10 +3,10 @@ package dev.orchard.nursery;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.ContainerSpec;
-import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.vine.CommandRunner;
@@ -16,6 +16,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -78,15 +79,12 @@ class GenericGroveProviderTest {
         when(grower.grow(any(), any())).thenReturn(new CompletableFuture<>());
         ContainerTestProvider provider = new ContainerTestProvider(executor, grower);
         ContainerPlot plot = (ContainerPlot) provider.reserve(UUID.randomUUID(), spec());
-        Fruit fruit = Fruit.bud(plot.groveId(), plot.id(),
-            DevcontainerSeed.builder().name("test").image("alpine:3").build());
 
-        provider.growFruit(plot, fruit);
+        provider.growFruit(plot, TestPlots.budded(plot));
 
         ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
         verify(grower).grow(target.capture(), any());
-        assertThat(target.getValue().workspacePath()).isEqualTo("/tmp/orchard-ws");
-        assertThat(target.getValue().targetId()).isEqualTo(plot.id());
+        assertTargetsTheSubstrateWorkspace(target.getValue(), plot);
     }
 
     @Test
@@ -95,15 +93,17 @@ class GenericGroveProviderTest {
         when(grower.compost(any(), any())).thenReturn(new CompletableFuture<>());
         ContainerTestProvider provider = new ContainerTestProvider(executor, grower);
         ContainerPlot plot = (ContainerPlot) provider.reserve(UUID.randomUUID(), spec());
-        Fruit fruit = Fruit.bud(plot.groveId(), plot.id(),
-            DevcontainerSeed.builder().name("test").image("alpine:3").build());
 
-        provider.compostFruit(plot, fruit);
+        provider.compostFruit(plot, TestPlots.budded(plot));
 
         ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
         verify(grower).compost(target.capture(), any());
-        assertThat(target.getValue().workspacePath()).isEqualTo("/tmp/orchard-ws");
-        assertThat(target.getValue().targetId()).isEqualTo(plot.id());
+        assertTargetsTheSubstrateWorkspace(target.getValue(), plot);
+    }
+
+    private static void assertTargetsTheSubstrateWorkspace(ExecTarget target, ContainerPlot plot) {
+        assertThat(target.workspacePath()).isEqualTo("/tmp/orchard-ws");
+        assertThat(target.targetId()).isEqualTo(plot.id());
     }
 
     @Test
@@ -128,14 +128,17 @@ class GenericGroveProviderTest {
     void guaranteeBearingMethods_areFinal() throws Exception {
         Class<?> base = AbstractGroveProvider.class;
 
-        assertThat(Modifier.isFinal(base.getMethod("plantSubstrate", Plot.class).getModifiers())).isTrue();
-        assertThat(Modifier.isFinal(base.getMethod("reserve", UUID.class, SeedlingSpec.class).getModifiers())).isTrue();
-        assertThat(Modifier.isFinal(base.getMethod("growFruit", Plot.class, Fruit.class).getModifiers())).isTrue();
-        assertThat(Modifier.isFinal(base.getMethod("compostFruit", Plot.class, Fruit.class).getModifiers())).isTrue();
-        assertThat(Modifier.isFinal(base.getMethod("vine", Plot.class).getModifiers())).isTrue();
-        assertThat(Modifier.isFinal(base.getMethod("verifyDevcontainerCli", Plot.class, String.class).getModifiers()))
-            .isTrue();
-        assertThat(Modifier.isFinal(base.getDeclaredMethod("narrow", Plot.class).getModifiers())).isTrue();
+        assertFinal(base.getMethod("plantSubstrate", Plot.class));
+        assertFinal(base.getMethod("reserve", UUID.class, SeedlingSpec.class));
+        assertFinal(base.getMethod("growFruit", Plot.class, Fruit.class));
+        assertFinal(base.getMethod("compostFruit", Plot.class, Fruit.class));
+        assertFinal(base.getMethod("vine", Plot.class));
+        assertFinal(base.getMethod("verifyDevcontainerCli", Plot.class, String.class));
+        assertFinal(base.getDeclaredMethod("narrow", Plot.class));
+    }
+
+    private static void assertFinal(Method method) {
+        assertThat(Modifier.isFinal(method.getModifiers())).as("%s is final", method.getName()).isTrue();
     }
 
     private static SeedlingSpec spec() {
@@ -152,8 +155,8 @@ class GenericGroveProviderTest {
         }
 
         @Override
-        public dev.orchard.core.model.ProviderType type() {
-            return dev.orchard.core.model.ProviderType.QEMU_LOCAL;
+        public ProviderType type() {
+            return ProviderType.QEMU_LOCAL;
         }
 
         @Override

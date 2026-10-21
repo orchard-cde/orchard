@@ -61,11 +61,11 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
      * @throws IllegalArgumentException if handed a plot of another substrate
      */
     protected final P narrow(Plot plot) {
-        if (plotType.isInstance(plot)) {
-            return plotType.cast(plot);
+        if (!plotType.isInstance(plot)) {
+            throw new IllegalArgumentException(
+                getProviderId() + " cannot operate on " + plot.getClass().getSimpleName() + " " + plot.id());
         }
-        throw new IllegalArgumentException(
-            getProviderId() + " cannot operate on " + plot.getClass().getSimpleName() + " " + plot.id());
+        return plotType.cast(plot);
     }
 
     /**
@@ -80,17 +80,16 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
      */
     @Override
     public final CompletableFuture<Plot> plantSubstrate(Plot draft) {
-        P p = narrow(draft);
+        P plot = narrow(draft);
         return CompletableFuture.supplyAsync(() -> {
             L launched = null;
             try {
-                launched = launch(p);
-                P r = ready(p, launched);
-                return r.withState(PlotState.SAPLING);
+                launched = launch(plot);
+                return ready(plot, launched).withState(PlotState.SAPLING);
             } catch (Exception e) {
                 log.error("Failed to plant plot {} via {}{}",
-                    p.id(), getProviderId(), failureContext(launched), e);
-                return p.withState(PlotState.BLIGHTED);
+                    plot.id(), getProviderId(), failureContext(launched), e);
+                return plot.withState(PlotState.BLIGHTED);
             }
         }, executor);
     }
@@ -128,14 +127,17 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
 
     @Override
     public final CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit) {
-        P n = narrow(plot);
-        return fruitGrower.grow(new ExecTarget(vineFor(n).commands(), workspacePath(n), n.id()), fruit);
+        return fruitGrower.grow(execTarget(plot), fruit);
     }
 
     @Override
     public final CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit) {
-        P n = narrow(plot);
-        return fruitGrower.compost(new ExecTarget(vineFor(n).commands(), workspacePath(n), n.id()), fruit);
+        return fruitGrower.compost(execTarget(plot), fruit);
+    }
+
+    private ExecTarget execTarget(Plot plot) {
+        P narrowed = narrow(plot);
+        return new ExecTarget(vineFor(narrowed).commands(), workspacePath(narrowed), narrowed.id());
     }
 
     @Override
