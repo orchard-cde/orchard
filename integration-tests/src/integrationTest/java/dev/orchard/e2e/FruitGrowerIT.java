@@ -103,7 +103,7 @@ class FruitGrowerIT {
     /**
      * Resolves the command channel the same way production does — through the provider's
      * {@link dev.orchard.vine.Vine}, not by constructing an SSH client. Deliberately fresh per
-     * call: {@code vine()} rebuilds from the seedling's current endpoint (#86), and a
+     * call: {@code vine()} rebuilds from the plot's current endpoint (#86), and a
      * container-backed provider returns a non-SSH runner here without this test changing.
      */
     private CommandRunner commands() {

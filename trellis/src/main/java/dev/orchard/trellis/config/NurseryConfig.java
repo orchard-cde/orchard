@@ -173,7 +173,6 @@ public class NurseryConfig {
 
         ProviderRegistry registry = new ProviderRegistry();
 
-        // reattach VMs that survived the previous server run
         QemuGroveProvider qemuProvider =
             new QemuGroveProvider(qemuConfig, devcontainerCliConfig, fruitGrower);
         qemuProvider.reattachSurvivingVms();

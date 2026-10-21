@@ -13,7 +13,10 @@ public sealed interface Plot permits VmPlot, ContainerPlot {
 
     UUID groveId();
 
-    /** Which provider owns this plot (#228). */
+    /**
+     * The provider this plot was handed to. Until ownership is persisted and dispatched on (#228),
+     * callers stamp it with the default provider's id, so it is not yet a record of who planted it.
+     */
     String providerId();
 
     /** The provider's own handle: an EC2 instance id, a container id. */

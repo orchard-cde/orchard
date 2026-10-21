@@ -16,7 +16,7 @@ public enum ProviderType {
         this.id = id;
     }
 
-    /** The id used as the registry key, in configuration, and on persisted plots. */
+    /** The id used as the registry key and in configuration. */
     public String id() {
         return id;
     }
