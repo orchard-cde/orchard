@@ -24,7 +24,6 @@ public final class DevcontainerSeed extends Seed {
     private final String service;
     private final List<String> runServices;
 
-    // --- features (existing) -----------------------------------------------------------------
 
     private final Map<String, Map<String, Object>> features;
     private final List<String> overrideFeatureInstallOrder;  // issue #105
@@ -63,7 +62,6 @@ public final class DevcontainerSeed extends Seed {
 
     private final Map<String, SecretDeclaration> secrets;
 
-    // --- lifecycle commands (existing) -------------------------------------------------------
 
     private final LifecycleCommand initializeCommand;
     private final LifecycleCommand onCreateCommand;
@@ -73,7 +71,6 @@ public final class DevcontainerSeed extends Seed {
     private final LifecycleCommand postAttachCommand;
     private final WaitFor waitFor;
 
-    // --- VS Code customizations (existing) ---------------------------------------------------
 
     private final VsCodeCustomizations vscodeCustomizations;
 
@@ -162,7 +159,6 @@ public final class DevcontainerSeed extends Seed {
         this.vscodeCustomizations = vscodeCustomizations;
     }
 
-    // --- accessors ---------------------------------------------------------------------------
 
     public String dockerfilePath() { return dockerfilePath; }
     public String buildContext() { return buildContext; }
@@ -218,7 +214,6 @@ public final class DevcontainerSeed extends Seed {
         return waitFor != null ? waitFor : WaitFor.UPDATE_CONTENT_COMMAND;
     }
 
-    // --- nested types ------------------------------------------------------------------------
 
     public record VsCodeCustomizations(
         List<String> extensions,
@@ -284,7 +279,6 @@ public final class DevcontainerSeed extends Seed {
         String documentationUrl
     ) {}
 
-    // --- builder -----------------------------------------------------------------------------
 
     public static Builder builder() {
         return new Builder();

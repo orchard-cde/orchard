@@ -17,8 +17,8 @@ import java.util.*;
 /**
  * Parses {@code devfile.yaml} files into {@link DevfileSeed} objects.
  *
- * <p>Supports devfile schema versions 2.x. Only {@code container} components are mapped in
- * this slice; {@code kubernetes} / {@code openshift} components are tracked separately (#86).
+ * <p>Supports devfile schema versions 2.x. Only {@code container} components are mapped;
+ * {@code kubernetes} / {@code openshift} components are tracked separately (#86).
  *
  * <p>The first {@code container} component (in document order) is treated as the primary
  * development container. Its fields map to the common {@link DevfileSeed} fields that drive
@@ -36,7 +36,7 @@ public class DevfileParser {
 
     private static final Logger log = LoggerFactory.getLogger(DevfileParser.class);
 
-    /** Only devfile 2.x is supported in this slice. */
+    /** Only devfile 2.x is supported. */
     private static final String SUPPORTED_SCHEMA_PREFIX = "2.";
 
     private static final ObjectMapper yamlMapper = YAMLMapper.builder().build();
@@ -94,7 +94,7 @@ public class DevfileParser {
     private Optional<DevfileSeed> doParse(String yamlContent) {
         JsonNode root = yamlMapper.readTree(yamlContent);
 
-        // schemaVersion is required; only 2.x is supported in this slice
+        // schemaVersion is required; only 2.x is supported
         String schemaVersion = root.path("schemaVersion").asText(null);
         if (schemaVersion == null || schemaVersion.isBlank()) {
             throw new DevfileParseException("Missing schemaVersion — not a valid devfile");
@@ -104,7 +104,6 @@ public class DevfileParser {
                 "Unsupported devfile schemaVersion '%s'; only 2.x is supported".formatted(schemaVersion));
         }
 
-        // Workspace name from metadata
         String workspaceName = root.path("metadata").path("name").asText(null);
 
         // Top-level commands/events → preStart/postStart LifecycleCommands (shared across
@@ -115,7 +114,6 @@ public class DevfileParser {
         LifecycleCommand preStartCommand = resolveEventCommand(eventsNode, "preStart", commandLineById);
         LifecycleCommand postStartCommand = resolveEventCommand(eventsNode, "postStart", commandLineById);
 
-        // Find the first container component
         JsonNode components = root.path("components");
         if (!components.isArray() || components.isEmpty()) {
             log.debug("Devfile has no components array");
@@ -139,7 +137,7 @@ public class DevfileParser {
     /**
      * Maps the top-level {@code commands} array to a {@code commandId -> commandLine} lookup.
      * Only {@code exec} commands are resolved; {@code apply}/{@code composite} commands are
-     * skipped (out of scope for this slice — see {@link DevfileSeed} class Javadoc).
+     * skipped (unsupported — see {@link DevfileSeed} class Javadoc).
      */
     private Map<String, String> parseExecCommands(JsonNode root) {
         Map<String, String> commandLineById = new LinkedHashMap<>();

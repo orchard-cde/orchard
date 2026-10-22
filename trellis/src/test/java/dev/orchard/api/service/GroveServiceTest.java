@@ -3,7 +3,7 @@ package dev.orchard.api.service;
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
-import dev.orchard.core.model.Seedling.SeedlingSpec;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
@@ -30,6 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -42,6 +43,7 @@ class GroveServiceTest {
     @Mock private CultivatorService cultivatorService;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private SshPublicKeyService sshPublicKeyService;
+    @Mock private GroveProvider defaultProvider;
 
     private GroveService groveService;
 
@@ -52,6 +54,11 @@ class GroveServiceTest {
             new DevcontainerCliConfig("0.87.0", 0, 0),
             cultivatorService, eventPublisher, sshPublicKeyService
         );
+        lenient().when(providerRegistry.getDefault()).thenReturn(defaultProvider);
+        lenient().when(defaultProvider.getProviderId()).thenReturn("test-default");
+        lenient().when(defaultProvider.sizes()).thenReturn(PlotSizes.DEFAULT);
+        lenient().when(defaultProvider.reserve(any(), any())).thenAnswer(inv ->
+            VmPlot.germinate(inv.getArgument(0), "test-default", inv.getArgument(1)));
     }
 
     @Test
@@ -102,7 +109,7 @@ class GroveServiceTest {
             Grove result = groveService.plantGrove(cultivatorId, request);
 
             assertThat(result.seedling()).isNotNull();
-            assertThat(result.seedling().spec()).isEqualTo(SeedlingSpec.small());
+            assertThat(result.seedling().spec()).isEqualTo(VmSpec.small());
         }
     }
 
@@ -114,7 +121,7 @@ class GroveServiceTest {
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
-            assertThat(result.seedling().spec()).isEqualTo(SeedlingSpec.medium());
+            assertThat(result.seedling().spec()).isEqualTo(VmSpec.medium());
         }
     }
 
@@ -126,8 +133,56 @@ class GroveServiceTest {
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
-            assertThat(result.seedling().spec()).isEqualTo(SeedlingSpec.large());
+            assertThat(result.seedling().spec()).isEqualTo(VmSpec.large());
         }
+    }
+
+    @Test
+    void plantGrove_takesTierResourcesFromTheDefaultProvidersCatalogue() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            when(defaultProvider.sizes()).thenReturn(new PlotSizes() {
+                @Override
+                public PlotResources medium() {
+                    return new PlotResources(6, 6000, 60);
+                }
+            });
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, "medium", "ttyS1");
+
+            groveService.plantGrove(UUID.randomUUID(), request);
+
+            ArgumentCaptor<SeedlingSpec> captor = ArgumentCaptor.forClass(SeedlingSpec.class);
+            verify(defaultProvider).reserve(any(), captor.capture());
+            assertThat(captor.getValue()).isEqualTo(new SeedlingSpec("medium", 6, 6000, 60, "ttyS1"));
+        }
+    }
+
+    @Test
+    void plantGrove_unknownMachineSize_fallsBackToSmall() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, "unknown", "ttyS1");
+
+            groveService.plantGrove(UUID.randomUUID(), request);
+
+            ArgumentCaptor<SeedlingSpec> captor = ArgumentCaptor.forClass(SeedlingSpec.class);
+            verify(defaultProvider).reserve(any(), captor.capture());
+            assertThat(captor.getValue()).isEqualTo(new SeedlingSpec("small", 2, 4096, 20, "ttyS1"));
+        }
+    }
+
+    @Test
+    void getGrove_legacyRowWithNullResources_fallsBackToTheSmallTier() {
+        UUID groveId = UUID.randomUUID();
+        GroveEntity entity = mock(GroveEntity.class);
+        when(entity.getId()).thenReturn(groveId);
+        when(entity.getSeedlingId()).thenReturn(UUID.randomUUID());
+        when(entity.getSeedlingCpuCores()).thenReturn(null);
+        when(entity.getSeedlingMemoryMb()).thenReturn(null);
+        when(entity.getSeedlingDiskGb()).thenReturn(null);
+        when(groveRepository.findById(groveId)).thenReturn(Optional.of(entity));
+
+        Grove grove = groveService.getGrove(groveId).orElseThrow();
+
+        assertThat(grove.seedling().spec()).isEqualTo(new VmSpec(2, 4096, 20, "small", null));
     }
 
     @Test
@@ -284,7 +339,7 @@ class GroveServiceTest {
         verify(eventPublisher, never()).publishEvent(any());
     }
 
-    // --- cloud-init status classification (issue #113) --------------------------------
+    // cloud-init status classification (issue #113)
     // The previous waitForCloudInit used `status.contains("done") || contains("not available")`,
     // which mistook a *failed* or unreadable cloud-init for completion and then surfaced the
     // missing devcontainer CLI downstream as a confusing `devcontainer: command not found`.
@@ -327,13 +382,13 @@ class GroveServiceTest {
             .isEqualTo(GroveService.CloudInitStatus.IN_PROGRESS);
     }
 
-    // --- provisionGrove: registered SSH keys baked into the seedling --------------------
+    // provisionGrove: registered SSH keys baked into the seedling
 
     @Test
     void provisionGrove_attachesRegisteredKeysToSeedlingBeforePlanting() {
         UUID cultivatorId = UUID.randomUUID();
         Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-            .withSeedling(Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small()));
+            .withSeedling(Seedling.germinate(UUID.randomUUID(), VmSpec.small()));
 
         SshPublicKey registered = SshPublicKey.register(cultivatorId, "laptop",
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINu3uCEBEcYqqjErEWRewbGZw8qrfWt/0inp+HfZR7MR test@orchard.dev");
@@ -341,14 +396,15 @@ class GroveServiceTest {
 
         GroveProvider provider = mock(GroveProvider.class);
         when(providerRegistry.getDefault()).thenReturn(provider);
-        ArgumentCaptor<Seedling> seedlingCaptor = ArgumentCaptor.forClass(Seedling.class);
-        when(provider.plantSubstrate(seedlingCaptor.capture()))
+        ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
+        when(provider.getProviderId()).thenReturn("p");
+        when(provider.plantSubstrate(plotCaptor.capture()))
             .thenReturn(CompletableFuture.completedFuture(
-                grove.seedling().withState(SeedlingState.BLIGHTED)));
+                PlotBridge.toPlot(grove.seedling().withState(SeedlingState.BLIGHTED), "p")));
 
         groveService.provisionGrove(grove, SeedSpec.AUTO);
 
-        assertThat(seedlingCaptor.getValue().authorizedKeys())
+        assertThat(((VmPlot) plotCaptor.getValue()).authorizedKeys())
             .containsExactly(registered.publicKey());
     }
 
@@ -356,23 +412,56 @@ class GroveServiceTest {
     void provisionGrove_withNoRegisteredKeys_plantsSeedlingWithoutKeys() {
         UUID cultivatorId = UUID.randomUUID();
         Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-            .withSeedling(Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small()));
+            .withSeedling(Seedling.germinate(UUID.randomUUID(), VmSpec.small()));
 
         when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of());
 
         GroveProvider provider = mock(GroveProvider.class);
         when(providerRegistry.getDefault()).thenReturn(provider);
-        ArgumentCaptor<Seedling> seedlingCaptor = ArgumentCaptor.forClass(Seedling.class);
-        when(provider.plantSubstrate(seedlingCaptor.capture()))
+        ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
+        when(provider.getProviderId()).thenReturn("p");
+        when(provider.plantSubstrate(plotCaptor.capture()))
             .thenReturn(CompletableFuture.completedFuture(
-                grove.seedling().withState(SeedlingState.BLIGHTED)));
+                PlotBridge.toPlot(grove.seedling().withState(SeedlingState.BLIGHTED), "p")));
 
         groveService.provisionGrove(grove, SeedSpec.AUTO);
 
-        assertThat(seedlingCaptor.getValue().authorizedKeys()).isEmpty();
+        assertThat(((VmPlot) plotCaptor.getValue()).authorizedKeys()).isEmpty();
     }
 
-    // --- stopGrove / startGrove ---
+    @Test
+    void plantGrove_noDefaultProvider_throwsAndSavesNothing() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            when(providerRegistry.getDefault())
+                .thenThrow(new IllegalStateException("No default grove provider configured"));
+            var request = new CreateGroveRequest("https://github.com/user/my-repo", "main", null, null, null);
+
+            assertThatThrownBy(() -> groveService.plantGrove(UUID.randomUUID(), request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("No default grove provider configured");
+            verify(groveRepository, never()).save(any());
+        }
+    }
+
+    @Test
+    void startGrove_noDefaultProvider_throwsAndDoesNotUpdate() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
+                .withState(GroveState.DORMANT)
+                .withSeedling(new Seedling(UUID.randomUUID(), null, null, null, 22,
+                    SeedlingState.WITHERED, VmSpec.small(), null, null));
+            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(GroveEntity.fromModel(grove)));
+            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+            when(providerRegistry.getDefault())
+                .thenThrow(new IllegalStateException("No default grove provider configured"));
+
+            assertThatThrownBy(() -> groveService.startGrove(grove.id()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("No default grove provider configured");
+            verify(groveRepository, never()).save(any());
+        }
+    }
+
 
     @Test
     void stopGrove_growingGrove_transitionsToDormant() {
@@ -381,7 +470,7 @@ class GroveServiceTest {
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.GROWING)
                 .withSeedling(new Seedling(UUID.randomUUID(), null, null, "127.0.0.1", 22,
-                    SeedlingState.SAPLING, SeedlingSpec.small(), null, null));
+                    SeedlingState.SAPLING, VmSpec.small(), null, null));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -403,7 +492,7 @@ class GroveServiceTest {
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.FLOURISHING)
                 .withSeedling(new Seedling(UUID.randomUUID(), null, null, "127.0.0.1", 22,
-                    SeedlingState.SAPLING, SeedlingSpec.small(), null, null));
+                    SeedlingState.SAPLING, VmSpec.small(), null, null));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -445,7 +534,7 @@ class GroveServiceTest {
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.DORMANT)
                 .withSeedling(new Seedling(UUID.randomUUID(), null, null, null, 22,
-                    SeedlingState.WITHERED, SeedlingSpec.small(), null, null));
+                    SeedlingState.WITHERED, VmSpec.small(), null, null));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -482,7 +571,6 @@ class GroveServiceTest {
         assertThat(groveService.startGrove(UUID.randomUUID())).isEmpty();
     }
 
-    // --- clearGrove ---
 
     @Test
     void clearGrove_clearingGrove_rejectedWithoutTeardown() {
@@ -532,7 +620,7 @@ class GroveServiceTest {
         Grove grove = Grove.plant(
             UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");
         Seedling seedling = Seedling
-            .germinate(grove.id(), new SeedlingSpec(2, 4096, 20, "small", null));
+            .germinate(grove.id(), new VmSpec(2, 4096, 20, "small", null));
         return grove.withSeedling(seedling);
     }
 
@@ -668,7 +756,7 @@ class GroveServiceTest {
 
     /**
      * Ordering guard: teardown must precede record deletion, which is what makes a failed
-     * teardown recoverable. Verified by mutation — deleting the rows first fails this test.
+     * teardown recoverable.
      */
     @Test
     void tearDownAndRecord_uprootsBeforeDeletingFruitRows() {

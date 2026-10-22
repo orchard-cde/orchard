@@ -1,6 +1,6 @@
 # Orchard Architecture
 
-This document describes the architecture of the Orchard CDE (Cloud Development Environment) platform, focusing on how clients communicate with the backend, how seedling providers are managed, and considerations for scalability.
+This document describes the architecture of the Orchard CDE (Cloud Development Environment) platform, focusing on how clients communicate with the backend, how grove providers are managed, and considerations for scalability.
 
 For the themed naming glossary, see [README.md](../../README.md#themed-glossary).
 
@@ -182,26 +182,34 @@ provider hierarchy.
 
 ```java
 public interface GroveProvider {
-    String getProviderId();
+    ProviderType type();                                            // getProviderId() defaults to type().id()
     boolean isAvailable();                                          // Health check
-    CompletableFuture<Seedling> plantSubstrate(Seedling seedling);  // Acquire substrate
-    CompletableFuture<Seedling> water(Seedling seedling);           // Resume stopped VM
-    CompletableFuture<Seedling> dormant(Seedling seedling);         // Suspend VM
-    CompletableFuture<Void> uproot(Seedling seedling);              // Destroy VM
-    CompletableFuture<Seedling> inspect(Seedling seedling);         // Check status
-    CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit);
-    CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit);
-    Vine vine(Seedling seedling);                                   // How to reach in
-    void verifyDevcontainerCli(Seedling seedling, String expectedVersion);
+    PlotSizes sizes();                                              // Machine-size tiers (default catalogue)
+    Plot reserve(UUID groveId, SeedlingSpec seedlingSpec);          // Stamp a GERMINATING plot; acquires nothing
+    CompletableFuture<Plot> plantSubstrate(Plot draft);             // Acquire substrate
+    CompletableFuture<Plot> water(Plot plot);                       // Resume stopped substrate
+    CompletableFuture<Plot> dormant(Plot plot);                     // Suspend substrate
+    CompletableFuture<Void> uproot(Plot plot);                      // Destroy substrate
+    CompletableFuture<Plot> inspect(Plot plot);                     // Check status
+    CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit);
+    CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit);
+    Vine vine(Plot plot);                                           // How to reach in
+    void verifyDevcontainerCli(Plot plot, String expectedVersion);
 }
 ```
 
 All operations return `CompletableFuture` for non-blocking async provisioning.
 
-`AbstractGroveProvider<L>` holds the shared VM behaviour: the `plantSubstrate` template (`launch`
-→ `awaitRunning` → `resolveEndpoint` → `awaitReachable`, mapped to `SAPLING` or `BLIGHTED`), fruit
-forwarding to the shared `FruitGrower`, and an SSH-backed `Vine`. `plantSubstrate` is `final`; a
-substrate that cannot express itself as those steps implements `GroveProvider` directly instead.
+`AbstractGroveProvider<P extends Plot, L>` is the substrate-agnostic base: the `plantSubstrate`
+template (`launch` → `ready`, mapped to `SAPLING` or `BLIGHTED`), `reserve` via `draft`, fruit
+forwarding to the shared `FruitGrower`, and `vine`/`verifyDevcontainerCli`. A substrate supplies
+`draft`, `launch`, `ready`, `vineFor` and `workspacePath`; the guarantee-bearing methods are `final`,
+so container and other non-VM substrates extend the base rather than implementing `GroveProvider`
+directly.
+
+`AbstractVmGroveProvider<L>` is the VM layer on top of it: `ready` becomes `awaitRunning` →
+`resolveEndpoint` → `awaitReachable`, `vineFor` returns an SSH-backed `Vine`, and the workspace
+path is `/workspace`.
 
 ### 2.2 ProviderRegistry
 
@@ -232,7 +240,7 @@ sequenceDiagram
     participant FS as Filesystem
     participant VM as QEMU Process
 
-    GS->>QP: plantSubstrate(seedling)
+    GS->>QP: plantSubstrate(plot)
     QP->>FS: Create VM directory
     QP->>FS: Create COW disk image (qemu-img create)
     QP->>FS: Generate cloud-init ISO
@@ -240,7 +248,7 @@ sequenceDiagram
     QP->>VM: Start QEMU process
     QP->>VM: Wait for SSH port open (TCP probe)
     QP->>VM: Wait for SSH auth ready
-    QP-->>GS: Seedling (SAPLING, ip + port)
+    QP-->>GS: Plot (SAPLING, host + port)
 ```
 
 **Cloud-init provisions the VM with**:
@@ -261,7 +269,7 @@ sequenceDiagram
 **Phase 1 — Synchronous (within transaction)**:
 1. Ensure cultivator exists
 2. Create `Grove` record (state: `PLANTING`)
-3. Create `Seedling` record (state: `GERMINATING`) with spec (small/medium/large)
+3. Reserve a plot via `GroveProvider.reserve` (state: `GERMINATING`), sized from the `SeedlingSpec` for the requested tier (small/medium/large); the grove still holds it as the legacy `Seedling` record
 4. Persist to database
 5. Register async callback via `TransactionSynchronization.afterCommit()`
 
@@ -281,12 +289,12 @@ sequenceDiagram
 
     GS->>PR: getDefault()
     PR-->>GS: GroveProvider
-    GS->>SP: plantSubstrate(seedling)
-    SP-->>GS: Seedling (SAPLING)
+    GS->>SP: plantSubstrate(plot)
+    SP-->>GS: Plot (SAPLING)
     GS->>DB: updateGroveState(GROWING)
     GS->>EP: GroveStateChangedEvent
 
-    Note over GS,CR: GroveService reaches the Grove via GroveProvider.vine(seedling).commands()
+    Note over GS,CR: GroveService reaches the Grove via GroveProvider.vine(plot).commands()
     GS->>CR: Poll cloud-init status (every 5s, max 60 attempts)
     CR-->>GS: "done"
 
@@ -299,13 +307,13 @@ sequenceDiagram
 
     Note over FG,SSH: FruitGrower still constructs SshExecutor directly (see #86)
     alt Single container
-        GS->>FG: grow(seedling, fruit)
+        GS->>FG: grow(target, fruit)
         FG->>SSH: docker pull/build + docker run
         FG-->>GS: Fruit (RIPE)
     else Docker Compose
         GS->>SSH: docker compose config --services
         SSH-->>GS: [service1, service2, ...]
-        GS->>FG: growCompose(seedling, fruits, composeFile)
+        GS->>FG: growCompose(target, fruits, composeFile)
         FG->>SSH: docker compose up -d
         FG-->>GS: List<Fruit> (RIPE)
     end
@@ -334,7 +342,7 @@ stateDiagram-v2
     FLOURISHING --> BLIGHTED : Reconciler detects unreachable
 ```
 
-#### Seedling States
+#### Plot States
 
 ```mermaid
 stateDiagram-v2
@@ -380,7 +388,7 @@ stateDiagram-v2
 
 `nursery/src/main/java/dev/orchard/nursery/FruitGrower.java`
 
-All container operations are executed remotely via SSH to the seedling VM.
+All container operations are executed remotely via SSH to the VM plot.
 
 ### Single Container Workflow
 1. If seed has `image`: `docker pull {image}` then `docker run -d` with env vars, port forwards, workspace mount at `/workspace`
@@ -397,13 +405,13 @@ All container operations are executed remotely via SSH to the seedling VM.
 
 ### SSH Execution
 
-`FruitGrower`'s container-management commands (this section) still go through `SshExecutor` directly, constructed inline per call — deliberately out of scope for the `Vine`/`GroveProvider` seam introduced in #86. Control-plane exec elsewhere (e.g. `GroveService`'s cloud-init polling, git clone, and devcontainer.json read/write in [§3.1](#31-end-to-end-sequence)) instead goes through `GroveProvider.vine(seedling).commands()`, a `CommandRunner`, whose only implementation today (`SshVine`) is backed by `SshExecutor` for VM substrates.
+`FruitGrower`'s container-management commands (this section) still go through `SshExecutor` directly, constructed inline per call — deliberately out of scope for the `Vine`/`GroveProvider` seam introduced in #86. Control-plane exec elsewhere (e.g. `GroveService`'s cloud-init polling, git clone, and devcontainer.json read/write in [§3.1](#31-end-to-end-sequence)) instead goes through `GroveProvider.vine(plot).commands()`, a `CommandRunner`, whose only implementation today (`SshVine`) is backed by `SshExecutor` for VM substrates.
 
 `SshExecutor` itself:
 - Invokes the local `ssh` binary via `ProcessBuilder`
 - Options: `StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`, `ConnectTimeout=10`
 - Key: `~/.ssh/orchard_ed25519`
-- Connects as user `cultivator` on the seedling's IP and SSH port
+- Connects as user `cultivator` on the VM plot's host and SSH port
 
 ---
 

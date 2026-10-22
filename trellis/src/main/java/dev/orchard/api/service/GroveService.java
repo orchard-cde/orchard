@@ -83,10 +83,8 @@ public class GroveService {
         // Parse --spec up front so an invalid value fails before any rows are created.
         final SeedSpec seedSpec = SeedSpec.fromFlag(request.spec());
 
-        // Ensure cultivator exists (auto-creates for local-dev)
         cultivatorService.ensureCultivator(cultivatorId);
 
-        // Create initial grove
         String name = request.name() != null ? request.name() :
             extractRepoName(request.repositoryUrl()) + "-" + request.branch();
 
@@ -94,18 +92,17 @@ public class GroveService {
         grove = grove.withState(GroveState.PLANTING);
         grove = grove.withSeedSpec(seedSpec);
 
-        // Determine seedling spec
-        Seedling.SeedlingSpec spec = switch (request.machineSize()) {
-            case "medium" -> new Seedling.SeedlingSpec(4, 8192, 40, "medium", request.serialOutput());
-            case "large" -> new Seedling.SeedlingSpec(8, 16384, 80, "large", request.serialOutput());
-            default -> new Seedling.SeedlingSpec(2, 4096, 20, "small", request.serialOutput());
+        GroveProvider provider = providerRegistry.getDefault();
+        PlotSizes sizes = provider.sizes();
+        SeedlingSpec seedlingSpec = switch (request.machineSize()) {
+            case "medium" -> SeedlingSpec.of("medium", sizes.medium(), request.serialOutput());
+            case "large" -> SeedlingSpec.of("large", sizes.large(), request.serialOutput());
+            default -> SeedlingSpec.of("small", sizes.small(), request.serialOutput());
         };
 
-        // Create seedling
-        Seedling seedling = Seedling.germinate(grove.id(), spec);
+        Seedling seedling = PlotBridge.toSeedling(provider.reserve(grove.id(), seedlingSpec));
         grove = grove.withSeedling(seedling);
 
-        // Save initial state
         GroveEntity entity = GroveEntity.fromModel(grove);
         groveRepository.save(entity);
 
@@ -134,9 +131,9 @@ public class GroveService {
                 .toList();
             Seedling seedlingToPlant = grove.seedling().withAuthorizedKeys(registeredKeys);
 
-            // Plant seedling (start VM)
             GroveProvider provider = providerRegistry.getDefault();
-            Seedling plantedSeedling = provider.plantSubstrate(seedlingToPlant).join();
+            Plot plantedPlot = provider.plantSubstrate(plotOf(provider, seedlingToPlant)).join();
+            Seedling plantedSeedling = PlotBridge.toSeedling(plantedPlot);
             grove = grove.withSeedling(plantedSeedling);
             grove = grove.withState(GroveState.GROWING);
             updateGroveState(grove);
@@ -151,9 +148,8 @@ public class GroveService {
             waitForCloudInit(plantedSeedling);
 
             // Verify devcontainer CLI was installed by cloud-init's runcmd block
-            provider.verifyDevcontainerCli(plantedSeedling, devcontainerCliConfig.version());
+            provider.verifyDevcontainerCli(plantedPlot, devcontainerCliConfig.version());
 
-            // Clone repository to VM
             String commitSha = cloneRepository(plantedSeedling, grove.repositoryUrl(), grove.branch());
             if (commitSha != null) {
                 grove = grove.withCommit(commitSha);
@@ -201,7 +197,8 @@ public class GroveService {
         saveFruits(grove.fruits());
         updateGroveState(grove);
 
-        Fruit grownFruit = providerRegistry.getDefault().growFruit(seedling, fruit).join();
+        GroveProvider provider = providerRegistry.getDefault();
+        Fruit grownFruit = provider.growFruit(plotOf(provider, seedling), fruit).join();
         grove = grove.withFruit(grownFruit);
         saveFruits(grove.fruits());
 
@@ -252,7 +249,8 @@ public class GroveService {
 
     private void waitForCloudInit(Seedling seedling) {
         log.info("Waiting for cloud-init to complete on seedling {}", seedling.id());
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+        GroveProvider provider = providerRegistry.getDefault();
+        CommandRunner ssh = provider.vine(plotOf(provider, seedling)).commands();
         int maxAttempts = 60; // up to ~5 minutes
         for (int i = 0; i < maxAttempts; i++) {
             try {
@@ -303,7 +301,8 @@ public class GroveService {
     private String cloneRepository(Seedling seedling, String repoUrl, String branch) {
         log.info("Cloning {} branch {} to seedling {}", repoUrl, branch, seedling.id());
         try {
-            CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+            GroveProvider provider = providerRegistry.getDefault();
+            CommandRunner ssh = provider.vine(plotOf(provider, seedling)).commands();
             ssh.execute("mkdir -p /workspace");
             ssh.execute("git clone --branch %s --depth 1 %s /workspace".formatted(branch, repoUrl));
             String commitSha = ssh.execute("git -C /workspace rev-parse HEAD").trim();
@@ -336,7 +335,8 @@ public class GroveService {
     private static final List<String> DEFAULT_SEED_PORTS = List.of("8080", "3000");
 
     private Seed discoverSeed(Seedling seedling, SeedSpec spec) {
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+        GroveProvider provider = providerRegistry.getDefault();
+        CommandRunner ssh = provider.vine(plotOf(provider, seedling)).commands();
         return resolveSeed(spec, ssh::readFile, devcontainerParser, devfileParser);
     }
 
@@ -444,7 +444,8 @@ public class GroveService {
      * does not fail with "Config not found".
      */
     private void ensureDevcontainerConfig(Seedling seedling, DevcontainerSeed seed) {
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+        GroveProvider provider = providerRegistry.getDefault();
+        CommandRunner ssh = provider.vine(plotOf(provider, seedling)).commands();
         try {
             if (ssh.execute("test -f /workspace/.devcontainer/devcontainer.json && echo yes || echo no")
                     .trim().equals("yes")) {
@@ -481,7 +482,6 @@ public class GroveService {
     @Transactional
     public void updateGroveState(Grove grove) {
         try {
-            // Look up previous state before persisting
             GroveState previousState = groveRepository.findById(grove.id())
                 .map(GroveEntity::getState)
                 .orElse(null);
@@ -489,7 +489,6 @@ public class GroveService {
             GroveEntity entity = GroveEntity.fromModel(grove);
             groveRepository.save(entity);
 
-            // Publish event if state actually changed
             if (previousState != null && previousState != grove.state()) {
                 eventPublisher.publishEvent(GroveStateChangedEvent.of(
                     grove.id(),
@@ -506,9 +505,6 @@ public class GroveService {
         }
     }
 
-    /**
-     * Saves all fruits for a grove to the database.
-     */
     @Transactional
     public void saveFruits(List<Fruit> fruits) {
         if (fruits == null || fruits.isEmpty()) {
@@ -585,7 +581,8 @@ public class GroveService {
 
             if (grove.seedling() != null) {
                 log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
-                providerRegistry.getDefault().uproot(grove.seedling()).join();
+                GroveProvider provider = providerRegistry.getDefault();
+                provider.uproot(plotOf(provider, grove.seedling())).join();
             }
         } catch (Exception e) {
             log.error("Substrate teardown failed for grove {} — marking ORPHANED and retaining "
@@ -622,9 +619,9 @@ public class GroveService {
     /**
      * Best-effort container cleanup, gated on a raw socket probe.
      *
-     * <p>The probe is a known defect carried forward deliberately: the spec's "Must-fix along the
-     * way" requires a substrate-aware reachability check obtained through the provider, which needs
-     * provider-owned inspection (#228). Do not opportunistically replace it here. A probe miss no
+     * <p>The probe is a known defect carried forward deliberately: a substrate-aware reachability
+     * check obtained through the provider would be correct, but needs provider-owned inspection
+     * (#228). Do not opportunistically replace it here. A probe miss no
      * longer masks an {@code uproot} failure.
      */
     private void compostFruitsIfReachable(UUID groveId, Grove grove) {
@@ -639,10 +636,11 @@ public class GroveService {
             }
         }
         if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
+            GroveProvider provider = providerRegistry.getDefault();
             for (Fruit fruit : grove.fruits()) {
                 if (fruit.containerId() != null) {
                     log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                    providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
+                    provider.compostFruit(plotOf(provider, grove.seedling()), fruit).join();
                 }
             }
         }
@@ -695,7 +693,8 @@ public class GroveService {
 
             log.info("Starting grove {}", groveId);
             Grove grove = entityToModel(entity);
-            Seedling seedling = Seedling.germinate(grove.id(), grove.seedling().spec());
+            Seedling seedling = PlotBridge.toSeedling(providerRegistry.getDefault()
+                .reserve(grove.id(), SeedlingSpec.from(grove.seedling().spec())));
             grove = grove.withSeedling(seedling);
             grove = grove.withState(GroveState.PLANTING);
             updateGroveState(grove);
@@ -713,15 +712,20 @@ public class GroveService {
         });
     }
 
+    private static Plot plotOf(GroveProvider provider, Seedling seedling) {
+        return PlotBridge.toPlot(seedling, provider.getProviderId());
+    }
+
     private Grove entityToModel(GroveEntity entity) {
         Seedling seedling = null;
         if (entity.getSeedlingId() != null) {
-            var spec = new Seedling.SeedlingSpec(
-                entity.getSeedlingCpuCores() != null ? entity.getSeedlingCpuCores() : 2,
-                entity.getSeedlingMemoryMb() != null ? entity.getSeedlingMemoryMb() : 4096,
-                entity.getSeedlingDiskGb() != null ? entity.getSeedlingDiskGb() : 20,
-                "small",
-                null
+            VmSpec fallback = VmSpec.small();
+            var spec = new VmSpec(
+                entity.getSeedlingCpuCores() != null ? entity.getSeedlingCpuCores() : fallback.cpuCores(),
+                entity.getSeedlingMemoryMb() != null ? entity.getSeedlingMemoryMb() : fallback.memoryMb(),
+                entity.getSeedlingDiskGb() != null ? entity.getSeedlingDiskGb() : fallback.diskGb(),
+                fallback.machineType(),
+                fallback.serialOutput()
             );
             seedling = new Seedling(
                 entity.getSeedlingId(),
@@ -736,7 +740,6 @@ public class GroveService {
             );
         }
 
-        // Load fruits from the separate fruits table
         List<Fruit> fruits = fruitRepository.findByGroveId(entity.getId())
             .stream()
             .map(FruitEntity::toModel)

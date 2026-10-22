@@ -5,8 +5,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A Seedling is a VM that hosts Fruit (containers).
- * It grows from GERMINATING through to SAPLING state when fully ready.
+ * The VM record a {@link Grove} holds until it moves onto {@link Plot}; {@link VmPlot} is its
+ * replacement. Despite the name this describes the plot (where fruit grows), not what is planted:
+ * once {@code Grove} holds a {@code Plot}, the {@code Seedling} name passes to what is planted into
+ * a plot, described by {@link SeedlingSpec} (#86).
  */
 public record Seedling(
     UUID id,
@@ -15,31 +17,11 @@ public record Seedling(
     String ipAddress,
     int sshPort,
     SeedlingState state,
-    SeedlingSpec spec,
+    VmSpec spec,
     Instant plantedAt,
     Instant readyAt,
     List<String> authorizedKeys
 ) {
-    public record SeedlingSpec(
-        int cpuCores,
-        int memoryMb,
-        int diskGb,
-        String machineType,
-        String serialOutput
-    ) {
-        public static SeedlingSpec small() {
-            return new SeedlingSpec(2, 4096, 20, "small", null);
-        }
-
-        public static SeedlingSpec medium() {
-            return new SeedlingSpec(4, 8192, 40, "medium", null);
-        }
-
-        public static SeedlingSpec large() {
-            return new SeedlingSpec(8, 16384, 80, "large", null);
-        }
-    }
-
     public Seedling(
         UUID id,
         UUID groveId,
@@ -47,14 +29,14 @@ public record Seedling(
         String ipAddress,
         int sshPort,
         SeedlingState state,
-        SeedlingSpec spec,
+        VmSpec spec,
         Instant plantedAt,
         Instant readyAt
     ) {
         this(id, groveId, providerInstanceId, ipAddress, sshPort, state, spec, plantedAt, readyAt, List.of());
     }
 
-    public static Seedling germinate(UUID groveId, SeedlingSpec spec) {
+    public static Seedling germinate(UUID groveId, VmSpec spec) {
         return new Seedling(
             UUID.randomUUID(),
             groveId,

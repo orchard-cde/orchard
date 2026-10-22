@@ -5,8 +5,11 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
@@ -74,7 +77,7 @@ class FruitGrowerIT {
     private DevcontainerCliConfig devcontainerCliConfig;
 
     private GroveProvider provider;
-    private Seedling seedling;
+    private VmPlot plot;
     private Fruit grown;
 
     @BeforeAll
@@ -84,16 +87,15 @@ class FruitGrowerIT {
             .as("Default provider must be qemu-local for this IT")
             .isEqualTo("qemu-local");
 
-        UUID groveId = UUID.randomUUID();
-        Seedling germinated = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
-
-        seedling = provider.plantSubstrate(germinated).join();
-
-        assertThat(seedling.state())
-            .as("Seedling must reach SAPLING — plant() returned %s", seedling.state())
-            .isEqualTo(SeedlingState.SAPLING);
-        assertThat(seedling.ipAddress()).isNotBlank();
-        assertThat(seedling.sshPort()).isPositive();
+        Plot reserved = provider.reserve(UUID.randomUUID(), SeedlingSpec.from(VmSpec.small()));
+        Plot planted = provider.plantSubstrate(reserved).join();
+        assertThat(planted).isInstanceOf(VmPlot.class);
+        plot = (VmPlot) planted;
+        assertThat(plot.state())
+            .as("Plot must reach SAPLING — plantSubstrate() returned %s", plot.state())
+            .isEqualTo(PlotState.SAPLING);
+        assertThat(plot.host()).isNotBlank();
+        assertThat(plot.sshPort()).isPositive();
 
         waitForCloudInit();
     }
@@ -101,11 +103,11 @@ class FruitGrowerIT {
     /**
      * Resolves the command channel the same way production does — through the provider's
      * {@link dev.orchard.vine.Vine}, not by constructing an SSH client. Deliberately fresh per
-     * call: {@code vine()} rebuilds from the seedling's current endpoint (#86 stage 2), and a
+     * call: {@code vine()} rebuilds from the plot's current endpoint (#86), and a
      * container-backed provider returns a non-SSH runner here without this test changing.
      */
     private CommandRunner commands() {
-        return provider.vine(seedling).commands();
+        return provider.vine(plot).commands();
     }
 
     /**
@@ -114,7 +116,7 @@ class FruitGrowerIT {
      * correlation.
      */
     private ExecTarget execTarget() {
-        return new ExecTarget(commands(), "/workspace", seedling.id());
+        return new ExecTarget(commands(), "/workspace", plot.id());
     }
 
     private void waitForCloudInit() {
@@ -171,8 +173,7 @@ class FruitGrowerIT {
         ssh.execute("echo " + b64 + " | base64 -d > /workspace/.devcontainer/devcontainer.json");
 
         // Build the Seed/Fruit mirroring how SeedParser would shape them. We only need image +
-        // features here — the CLI path reads the on-disk devcontainer.json for everything else
-        // (Locked decision #1).
+        // features here — the CLI path reads the on-disk devcontainer.json for everything else.
         Map<String, Map<String, Object>> features = new LinkedHashMap<>();
         features.put(FEATURE_ID, Map.of("username", FEATURE_USERNAME));
 
@@ -182,7 +183,7 @@ class FruitGrowerIT {
             .features(features)
             .build();
 
-        Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
+        Fruit budding = Fruit.bud(plot.groveId(), plot.id(), seed);
         String originallyAssignedName = budding.containerName();
         assertThat(originallyAssignedName).isNotBlank();
 
@@ -269,7 +270,7 @@ class FruitGrowerIT {
                     List.of("echo post-start-ran > /tmp/poststart-marker")))
                 .build();
 
-        Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
+        Fruit budding = Fruit.bud(plot.groveId(), plot.id(), seed);
 
         CommandRunner ssh = commands();
         Fruit devfileGrown = fruitGrower.grow(execTarget(), budding).join();
@@ -305,9 +306,9 @@ class FruitGrowerIT {
         }
 
         // Layer 2: uproot the VM via the provider so QEMU process + disk image are cleaned up.
-        if (seedling != null && provider != null) {
+        if (plot != null && provider != null) {
             try {
-                provider.uproot(seedling).join();
+                provider.uproot(plot).join();
             } catch (Exception ignored) {
                 // Fall through to process cleanup.
             }

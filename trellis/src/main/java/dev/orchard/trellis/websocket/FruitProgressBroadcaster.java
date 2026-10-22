@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  *   <li>{@code /topic/grove.{groveId}.fruits} — clients watching a grove's fruits (dashboard)</li>
  * </ul>
  * Best-effort: {@code convertAndSend} failures are logged and swallowed — progress events are
- * observability, not correctness (see spec Locked decision #17). A broker outage must never
+ * observability, not correctness. A broker outage must never
  * cause a Fruit grow to fail.
  */
 @Component

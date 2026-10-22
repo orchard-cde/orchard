@@ -58,7 +58,7 @@ public class GroveEntity {
 
     /**
      * Creates a GroveEntity from a Grove domain model.
-     * Note: Fruits are now stored separately in the fruits table via FruitEntity.
+     * Fruits are persisted separately via FruitEntity.
      */
     public static GroveEntity fromModel(Grove grove) {
         GroveEntity entity = new GroveEntity();
@@ -90,7 +90,6 @@ public class GroveEntity {
         return entity;
     }
 
-    // Getters for query purposes
     public UUID getId() { return id; }
     public UUID getCultivatorId() { return cultivatorId; }
     public String getName() { return name; }

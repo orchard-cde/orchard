@@ -93,7 +93,6 @@ public class FruitEntity {
         );
     }
 
-    // Getters
     public UUID getId() { return id; }
     public UUID getGroveId() { return groveId; }
     public UUID getPlotId() { return plotId; }
@@ -105,7 +104,6 @@ public class FruitEntity {
     public Instant getBuddedAt() { return buddedAt; }
     public Instant getRipenedAt() { return ripenedAt; }
 
-    // Setters for state updates
     public void setState(String state) { this.state = state; }
     public void setContainerId(String containerId) { this.containerId = containerId; }
     public void setRipenedAt(Instant ripenedAt) { this.ripenedAt = ripenedAt; }

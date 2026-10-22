@@ -17,7 +17,7 @@ import java.util.Base64;
 /**
  * Mints and caches the OAuth2 client_credentials service token the gateway
  * presents to trellis's /api/gateway/** endpoints. The client (orchard-gateway)
- * is registered in fence with CLIENT_SECRET_BASIC (Phase 2).
+ * is registered in fence with CLIENT_SECRET_BASIC.
  * Wired as a bean in {@code HttpClientConfig} (not component-scanned to avoid a duplicate/circular bean).
  */
 public class FenceTokenClient {

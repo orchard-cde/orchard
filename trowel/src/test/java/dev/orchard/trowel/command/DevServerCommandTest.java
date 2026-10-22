@@ -540,7 +540,6 @@ class DevServerCommandTest {
         }
     }
 
-    // --- Gateway (Grove SSH Gateway) ---
 
     @Test
     void gatewayBinary_resolvesUnderOrchardBin() {
@@ -695,8 +694,7 @@ class DevServerCommandTest {
         Path core = bin.resolve("orchard-server");
         Files.writeString(core, "#!/bin/sh\necho fake\n");
         core.toFile().setExecutable(true, false);
-        Files.writeString(bin.resolve("fence.jar"), ""); // fence jar present
-        // no gateway.jar present
+        Files.writeString(bin.resolve("fence.jar"), "");
 
         int exitCode = execute("dev-server", "start");
 

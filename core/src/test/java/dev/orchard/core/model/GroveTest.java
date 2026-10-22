@@ -197,7 +197,7 @@ class GroveTest {
     @Test
     void isReady_falseWhenSeedlingNotReady() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = Seedling.germinate(grove.id(), Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(grove.id(), VmSpec.small());
 
         grove = grove.withState(GroveState.FLOURISHING)
                 .withSeedling(seedling)
@@ -256,7 +256,7 @@ class GroveTest {
     @Test
     void getSshConnectionString_returnsNullWhenIpNull() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = Seedling.germinate(grove.id(), Seedling.SeedlingSpec.small());
+        Seedling seedling = Seedling.germinate(grove.id(), VmSpec.small());
         grove = grove.withSeedling(seedling);
 
         assertThat(grove.getSshConnectionString()).isNull();
@@ -264,7 +264,7 @@ class GroveTest {
 
     private Seedling createReadySeedling(UUID groveId) {
         return new Seedling(UUID.randomUUID(), groveId, "inst-1", "192.168.1.1", 2222,
-                SeedlingState.SAPLING, Seedling.SeedlingSpec.small(), Instant.now(), Instant.now());
+                SeedlingState.SAPLING, VmSpec.small(), Instant.now(), Instant.now());
     }
 
     private Fruit createRipeFruit(UUID groveId, UUID seedlingId) {

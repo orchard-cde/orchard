@@ -310,7 +310,6 @@ public class GroveCommand implements Callable<Integer> {
                 System.out.println("Command: " + grove.sshConnectionString());
                 System.out.println();
 
-                // Execute SSH
                 String[] sshParts = grove.sshConnectionString().split(" ");
                 ProcessBuilder pb = new ProcessBuilder(sshParts);
                 pb.inheritIO();
@@ -324,7 +323,6 @@ public class GroveCommand implements Callable<Integer> {
         }
     }
 
-    // Helper methods
     private static void printGrove(GroveResponse grove) {
         System.out.println();
         System.out.println("Grove: " + grove.name());
@@ -340,7 +338,7 @@ public class GroveCommand implements Callable<Integer> {
 
         if (grove.seedling() != null) {
             System.out.println();
-            System.out.println("  Seedling (VM):");
+            System.out.println("  Plot (VM):");
             System.out.println("    State:     " + grove.seedling().state());
             System.out.println("    IP:        " + grove.seedling().ipAddress());
             System.out.println("    SSH Port:  " + grove.seedling().sshPort());

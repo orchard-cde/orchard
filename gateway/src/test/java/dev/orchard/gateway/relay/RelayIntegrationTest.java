@@ -186,7 +186,6 @@ class RelayIntegrationTest {
         }
     }
 
-    // ---------------------------------------------------------------- helpers
 
     private ClientSession authenticatedSession() throws Exception {
         ClientSession session = client.connect(groveId.toString(), "127.0.0.1", gateway.getPort())
@@ -274,7 +273,7 @@ class RelayIntegrationTest {
     }
 
     private org.apache.sshd.common.keyprovider.KeyPairProvider testHostKeyProvider() {
-        // Same fix as HostKeyProvider (Task 7): SimpleGeneratorHostKeyProvider.setAlgorithm
+        // Same fix as HostKeyProvider: SimpleGeneratorHostKeyProvider.setAlgorithm
         // takes a JCA KeyPairGenerator algorithm name ("EdDSA" / SecurityUtils.EDDSA), not
         // the SSH wire key-type identifier (KeyPairProvider.SSH_ED25519) - the latter throws
         // NoSuchAlgorithmException.

@@ -168,15 +168,16 @@ We use orchard/gardening terminology throughout the codebase:
 
 | Term | Meaning |
 |------|---------|
-| **Grove** | A development workspace (VM + container) |
+| **Grove** | A development workspace: a plot plus the fruit growing on it |
 | **Cultivator** | A user who tends groves |
-| **Seedling** | A VM being provisioned |
-| **Sapling** | A running, ready VM |
+| **Plot** | The substrate a grove is planted in (a VM today); holds one or more fruit |
+| **Seedling** | What is planted into a plot |
+| **Sapling** | A plot that is ready to grow fruit |
 | **Fruit** | A running devcontainer |
 | **Seed** | A devcontainer.json specification |
 | **Trowel** | The CLI tool for planting |
 | **Canopy** | The web UI - see the forest through the trees |
-| **Nursery** | VM provider management |
+| **Nursery** | Substrate provider management: acquires plots |
 | **Harvest** | Building container images |
 | **Trellis** | The Spring Boot application server |
 | **Greenhouse** | Prebuild service for image caching (TBD) |

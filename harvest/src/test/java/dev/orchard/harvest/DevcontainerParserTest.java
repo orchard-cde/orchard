@@ -322,9 +322,7 @@ class DevcontainerParserTest {
         assertThat(parser.discover(tempDir)).isEmpty();
     }
 
-    // =========================================================================================
     // Issue #31 — build.* fields
-    // =========================================================================================
 
     @Test
     void parseJson_buildContextTargetCacheFromOptions() {
@@ -366,9 +364,7 @@ class DevcontainerParserTest {
         assertThat(result.get().buildCacheFrom()).containsExactly("ghcr.io/org/cache:latest");
     }
 
-    // =========================================================================================
     // Issue #32 — dockerComposeFiles + runServices
-    // =========================================================================================
 
     @Test
     void parseJson_dockerComposeFileArray_storesAll() {
@@ -408,9 +404,7 @@ class DevcontainerParserTest {
         assertThat(result.get().runServices()).containsExactly("db", "redis");
     }
 
-    // =========================================================================================
     // Issue #29 — container runtime fields
-    // =========================================================================================
 
     @Test
     void parseJson_remoteEnv() {
@@ -534,9 +528,7 @@ class DevcontainerParserTest {
         assertThat(result.get().shutdownAction()).isEqualTo("stopContainer");
     }
 
-    // =========================================================================================
     // Issue #101 — portsAttributes / otherPortsAttributes
-    // =========================================================================================
 
     @Test
     void parseJson_portsAttributes() {
@@ -576,9 +568,7 @@ class DevcontainerParserTest {
         assertThat(seed.otherPortsAttributes().onAutoForward()).isEqualTo("ignore");
     }
 
-    // =========================================================================================
     // Issue #102 — userEnvProbe
-    // =========================================================================================
 
     @Test
     void parseJson_userEnvProbe_allValues() {
@@ -607,9 +597,7 @@ class DevcontainerParserTest {
         assertThat(result.get().userEnvProbe()).isNull();
     }
 
-    // =========================================================================================
     // Issue #103 — hostRequirements
-    // =========================================================================================
 
     @Test
     void parseJson_hostRequirements_simple() {
@@ -648,9 +636,7 @@ class DevcontainerParserTest {
         assertThat(result.get().hostRequirements().gpu()).isEqualTo("optional");
     }
 
-    // =========================================================================================
     // Issue #104 — secrets
-    // =========================================================================================
 
     @Test
     void parseJson_secrets() {
@@ -676,9 +662,7 @@ class DevcontainerParserTest {
         assertThat(seed.secrets().get("NPM_TOKEN").description()).isNull();
     }
 
-    // =========================================================================================
     // Issue #105 — overrideFeatureInstallOrder
-    // =========================================================================================
 
     @Test
     void parseJson_overrideFeatureInstallOrder() {
