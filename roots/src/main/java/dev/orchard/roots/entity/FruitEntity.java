@@ -25,7 +25,7 @@ public class FruitEntity {
     @Column(nullable = false)
     private UUID groveId;
 
-    private UUID seedlingId;
+    private UUID plotId;
 
     private String containerId;
 
@@ -49,7 +49,7 @@ public class FruitEntity {
         FruitEntity entity = new FruitEntity();
         entity.id = fruit.id();
         entity.groveId = fruit.groveId();
-        entity.seedlingId = fruit.seedlingId();
+        entity.plotId = fruit.plotId();
         entity.containerId = fruit.containerId();
         entity.containerName = fruit.containerName();
         entity.serviceName = fruit.serviceName();
@@ -81,7 +81,7 @@ public class FruitEntity {
         return new Fruit(
             id,
             groveId,
-            seedlingId,
+            plotId,
             containerId,
             containerName,
             serviceName,
@@ -93,10 +93,9 @@ public class FruitEntity {
         );
     }
 
-    // Getters
     public UUID getId() { return id; }
     public UUID getGroveId() { return groveId; }
-    public UUID getSeedlingId() { return seedlingId; }
+    public UUID getPlotId() { return plotId; }
     public String getContainerId() { return containerId; }
     public String getContainerName() { return containerName; }
     public String getServiceName() { return serviceName; }
@@ -105,7 +104,6 @@ public class FruitEntity {
     public Instant getBuddedAt() { return buddedAt; }
     public Instant getRipenedAt() { return ripenedAt; }
 
-    // Setters for state updates
     public void setState(String state) { this.state = state; }
     public void setContainerId(String containerId) { this.containerId = containerId; }
     public void setRipenedAt(Instant ripenedAt) { this.ripenedAt = ripenedAt; }

@@ -5,13 +5,17 @@ import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
-import dev.orchard.vine.SshExecutor;
+import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.trellis.OrchardApplication;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -73,7 +77,7 @@ class FruitGrowerIT {
     private DevcontainerCliConfig devcontainerCliConfig;
 
     private GroveProvider provider;
-    private Seedling seedling;
+    private VmPlot plot;
     private Fruit grown;
 
     @BeforeAll
@@ -83,22 +87,40 @@ class FruitGrowerIT {
             .as("Default provider must be qemu-local for this IT")
             .isEqualTo("qemu-local");
 
-        UUID groveId = UUID.randomUUID();
-        Seedling germinated = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
-
-        seedling = provider.plantSubstrate(germinated).join();
-
-        assertThat(seedling.state())
-            .as("Seedling must reach SAPLING — plant() returned %s", seedling.state())
-            .isEqualTo(SeedlingState.SAPLING);
-        assertThat(seedling.ipAddress()).isNotBlank();
-        assertThat(seedling.sshPort()).isPositive();
+        Plot reserved = provider.reserve(UUID.randomUUID(), SeedlingSpec.from(VmSpec.small()));
+        Plot planted = provider.plantSubstrate(reserved).join();
+        assertThat(planted).isInstanceOf(VmPlot.class);
+        plot = (VmPlot) planted;
+        assertThat(plot.state())
+            .as("Plot must reach SAPLING — plantSubstrate() returned %s", plot.state())
+            .isEqualTo(PlotState.SAPLING);
+        assertThat(plot.host()).isNotBlank();
+        assertThat(plot.sshPort()).isPositive();
 
         waitForCloudInit();
     }
 
+    /**
+     * Resolves the command channel the same way production does — through the provider's
+     * {@link dev.orchard.vine.Vine}, not by constructing an SSH client. Deliberately fresh per
+     * call: {@code vine()} rebuilds from the plot's current endpoint (#86), and a
+     * container-backed provider returns a non-SSH runner here without this test changing.
+     */
+    private CommandRunner commands() {
+        return provider.vine(plot).commands();
+    }
+
+    /**
+     * The same command channel as {@link #commands()}, packaged the way production code hands it
+     * to {@link FruitGrower}: bundled with the workspace path and the seedling's id for
+     * correlation.
+     */
+    private ExecTarget execTarget() {
+        return new ExecTarget(commands(), "/workspace", plot.id());
+    }
+
     private void waitForCloudInit() {
-        SshExecutor ssh = new SshExecutor(seedling);
+        CommandRunner ssh = commands();
         int maxAttempts = 60;
         for (int i = 0; i < maxAttempts; i++) {
             try {
@@ -124,7 +146,7 @@ class FruitGrowerIT {
     @Test
     @Order(1)
     void devcontainerCliIsInstalledAtExpectedVersion() throws Exception {
-        String version = new SshExecutor(seedling).execute("devcontainer --version").trim();
+        String version = commands().execute("devcontainer --version").trim();
         assertThat(version)
             .as("cloud-init must install the pinned @devcontainers/cli version")
             .isEqualTo(devcontainerCliConfig.version());
@@ -135,7 +157,7 @@ class FruitGrowerIT {
     void growsFruitViaCliAndPreservesContainerName() throws Exception {
         // Stage devcontainer.json with a real, public feature on the seedling's workspace.
         // The CLI reads /workspace/.devcontainer/devcontainer.json by default.
-        SshExecutor ssh = new SshExecutor(seedling);
+        CommandRunner ssh = commands();
         ssh.execute("mkdir -p /workspace/.devcontainer");
         String devcontainerJson = """
             {
@@ -151,8 +173,7 @@ class FruitGrowerIT {
         ssh.execute("echo " + b64 + " | base64 -d > /workspace/.devcontainer/devcontainer.json");
 
         // Build the Seed/Fruit mirroring how SeedParser would shape them. We only need image +
-        // features here — the CLI path reads the on-disk devcontainer.json for everything else
-        // (Locked decision #1).
+        // features here — the CLI path reads the on-disk devcontainer.json for everything else.
         Map<String, Map<String, Object>> features = new LinkedHashMap<>();
         features.put(FEATURE_ID, Map.of("username", FEATURE_USERNAME));
 
@@ -162,11 +183,11 @@ class FruitGrowerIT {
             .features(features)
             .build();
 
-        Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
+        Fruit budding = Fruit.bud(plot.groveId(), plot.id(), seed);
         String originallyAssignedName = budding.containerName();
         assertThat(originallyAssignedName).isNotBlank();
 
-        grown = fruitGrower.grow(seedling, budding).join();
+        grown = fruitGrower.grow(execTarget(), budding).join();
 
         assertThat(grown.state())
             .as("Fruit must reach RIPE — grow() returned %s", grown.state())
@@ -200,7 +221,7 @@ class FruitGrowerIT {
         // common-utils with username=orchard creates a real local user inside the container.
         // `id orchard` proves the feature actually ran — the legacy docker path would silently
         // skip features and this assertion would fail with "no such user".
-        String idOutput = new SshExecutor(seedling)
+        String idOutput = commands()
             .execute("docker exec " + grown.containerId() + " id " + FEATURE_USERNAME)
             .trim();
 
@@ -216,14 +237,15 @@ class FruitGrowerIT {
     void picksAndCompostsCleanly() throws Exception {
         assertThat(grown).as("grown must be set by the previous test").isNotNull();
 
-        Fruit picked = fruitGrower.pick(seedling, grown).join();
+        CommandRunner ssh = commands();
+
+        Fruit picked = fruitGrower.pick(execTarget(), grown).join();
         assertThat(picked.state()).isEqualTo(FruitState.PICKED);
 
-        fruitGrower.compost(seedling, grown).join();
+        fruitGrower.compost(execTarget(), grown).join();
 
         // After compost, docker inspect should fail (non-zero exit) because the container is gone.
-        // SshExecutor.execute() raises IOException on non-zero exit — that's the success signal here.
-        SshExecutor ssh = new SshExecutor(seedling);
+        // CommandRunner.execute() raises IOException on non-zero exit — that's the success signal here.
         boolean inspectFailed;
         try {
             ssh.execute("docker inspect " + grown.containerId() + " > /dev/null 2>&1");
@@ -248,27 +270,27 @@ class FruitGrowerIT {
                     List.of("echo post-start-ran > /tmp/poststart-marker")))
                 .build();
 
-        Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
+        Fruit budding = Fruit.bud(plot.groveId(), plot.id(), seed);
 
-        Fruit devfileGrown = fruitGrower.grow(seedling, budding).join();
+        CommandRunner ssh = commands();
+        Fruit devfileGrown = fruitGrower.grow(execTarget(), budding).join();
 
         try {
             assertThat(devfileGrown.state()).isEqualTo(FruitState.RIPE);
             assertThat(devfileGrown.containerId()).isNotBlank();
 
             // preStartCommand ran on the seedling host before the container started.
-            String preStartMarker =
-                new SshExecutor(seedling).execute("cat /tmp/prestart-marker").trim();
+            String preStartMarker = ssh.execute("cat /tmp/prestart-marker").trim();
             assertThat(preStartMarker).isEqualTo("pre-start-ran");
 
             // postStartCommand ran inside the container after it started.
-            String postStartMarker = new SshExecutor(seedling)
+            String postStartMarker = ssh
                 .execute("docker exec " + devfileGrown.containerId() + " cat /tmp/poststart-marker")
                 .trim();
             assertThat(postStartMarker).isEqualTo("post-start-ran");
         } finally {
-            fruitGrower.compost(seedling, devfileGrown).join();
-            new SshExecutor(seedling).execute("rm -f /tmp/prestart-marker");
+            fruitGrower.compost(execTarget(), devfileGrown).join();
+            ssh.execute("rm -f /tmp/prestart-marker");
         }
     }
 
@@ -277,16 +299,16 @@ class FruitGrowerIT {
         // Layer 1: best-effort container teardown if a test failed mid-way and grown is still set.
         if (grown != null && grown.containerId() != null) {
             try {
-                fruitGrower.compost(seedling, grown).join();
+                fruitGrower.compost(execTarget(), grown).join();
             } catch (Exception ignored) {
                 // Fall through to VM teardown.
             }
         }
 
         // Layer 2: uproot the VM via the provider so QEMU process + disk image are cleaned up.
-        if (seedling != null && provider != null) {
+        if (plot != null && provider != null) {
             try {
-                provider.uproot(seedling).join();
+                provider.uproot(plot).join();
             } catch (Exception ignored) {
                 // Fall through to process cleanup.
             }

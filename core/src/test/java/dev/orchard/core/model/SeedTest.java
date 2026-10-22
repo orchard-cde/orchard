@@ -34,7 +34,6 @@ class SeedTest {
 
     @Test
     void seedBuilder_returnsDevcontainerSeed() {
-        // Seed.devcontainer() is a convenience alias for DevcontainerSeed.devcontainer()
         DevcontainerSeed seed = Seed.devcontainer().name("test").image("ubuntu").build();
 
         assertThat(seed).isInstanceOf(DevcontainerSeed.class);

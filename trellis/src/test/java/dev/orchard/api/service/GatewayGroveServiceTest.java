@@ -7,6 +7,7 @@ import dev.orchard.core.model.SeedSpec;
 import dev.orchard.core.model.Seedling;
 import dev.orchard.core.model.SeedlingState;
 import dev.orchard.core.model.SshPublicKey;
+import dev.orchard.core.model.VmSpec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,7 +42,7 @@ class GatewayGroveServiceTest {
     private static Grove routableGrove(UUID groveId, UUID cultivatorId) {
         Seedling seedling = new Seedling(
             UUID.randomUUID(), groveId, "inst-1", "127.0.0.1", 22,
-            SeedlingState.SAPLING, Seedling.SeedlingSpec.small(), Instant.now(), Instant.now()
+            SeedlingState.SAPLING, VmSpec.small(), Instant.now(), Instant.now()
         );
         // Grove.plant() always mints its own random id, which would leave this grove's id
         // different from groveId (what the test queries getGrove(groveId) with) — construct
@@ -94,7 +95,7 @@ class GatewayGroveServiceTest {
     void resolveRoute_emptyWhenSeedlingNotSapLing() {
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
-        Seedling germinating = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
+        Seedling germinating = Seedling.germinate(groveId, VmSpec.small());
         Grove grove = Grove.plant(cultivatorId, "demo", "https://github.com/org/demo", "main")
             .withSeedling(germinating)
             .withState(GroveState.GROWING);

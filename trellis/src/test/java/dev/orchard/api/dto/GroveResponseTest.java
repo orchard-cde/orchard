@@ -1,7 +1,7 @@
 package dev.orchard.api.dto;
 
 import dev.orchard.core.model.*;
-import dev.orchard.core.model.Seedling.SeedlingSpec;
+import dev.orchard.core.model.VmSpec;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -20,7 +20,7 @@ class GroveResponseTest {
 
         Seedling seedling = new Seedling(
             seedlingId, groveId, "inst-1", "192.168.1.1", 2222,
-            SeedlingState.SAPLING, SeedlingSpec.small(), Instant.now(), Instant.now()
+            SeedlingState.SAPLING, VmSpec.small(), Instant.now(), Instant.now()
         );
 
         Seed seed = Seed.devcontainer().name("test").image("ubuntu").build();

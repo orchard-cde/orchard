@@ -11,15 +11,16 @@ Everything in this project uses orchard/gardening terminology:
 | Term | Technical Meaning | Notes |
 |------|-------------------|-------|
 | **Orchard** | The entire platform | Root project name |
-| **Grove** | A workspace | VM + container combo |
+| **Grove** | A workspace | A plot plus the fruit growing on it |
 | **Cultivator** | A user/developer | Who tends the groves |
-| **Seedling** | A VM being provisioned | Transitions to "Sapling" when ready |
-| **Sapling** | A running VM | Ready state for seedlings |
-| **Fruit** | A devcontainer | Running development environment |
+| **Plot** | The substrate a grove is planted in: a VM, or later a container host | `Plot` — sealed: `VmPlot`, `ContainerPlot`; holds one or more fruit |
+| **Seedling** | What is planted into a plot | Described by `SeedlingSpec` (plot configuration plus metadata). The legacy `Seedling` record is the VM plot, pending its move onto `Plot` |
+| **Sapling** | Ready state of a plot | `PlotState.SAPLING` — the provider has an operational substrate |
+| **Fruit** | A devcontainer instance | Running development environment, grown on a plot |
 | **Seed** | A devcontainer.json spec | Blueprint for growing fruit |
 | **Trowel** | The CLI tool | Hand tool for planting |
 | **Canopy** | The web UI (separate repo: `orchard-cde/orchard-ui`) | Next.js / React / MUI app |
-| **Nursery** | Substrate provider management | Where seedlings are grown |
+| **Nursery** | Substrate provider management | Where plots are acquired and seedlings planted |
 | **Grove Provider** | The one substrate abstraction | `GroveProvider` — acquire a substrate, grow/compost fruit on it, reach into it; one impl per substrate |
 | **Harvest** | Container/image building | Preparing fruit |
 | **Roots** | Persistence layer | Database/storage |
@@ -43,7 +44,7 @@ orchard/
 ├── apiary/     # AI assistant integration - BeeKeeper extension point
 ├── fence/      # Authentication subsystem - OAuth2/OIDC device flow + token issuance
 ├── trellis/    # Spring Boot app entry point (port 8080) + REST controllers, services, DTOs
-├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to seedlings
+├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to VM plots
 └── trowel/     # Picocli CLI application
 ```
 
@@ -66,13 +67,13 @@ path looks like two modules but is one. `integration-tests/` also exists, holdin
 ### Domain Models (core/)
 All domain objects are Java records with factory methods:
 - `Grove.plant(cultivatorId, name, repoUrl, branch)`
-- `Seedling.germinate(groveId, spec)`
-- `Fruit.bud(groveId, seedlingId, seed)`
+- `VmPlot.germinate(groveId, providerId, seedlingSpec)` (providers call it via `GroveProvider.reserve`)
+- `Fruit.bud(groveId, plotId, seed)`
 
 ### State Machines
 Each entity has a state enum with gardening-themed states:
 - `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED)
-- `SeedlingState`: GERMINATING → SPROUTING → SAPLING → WILTING → WITHERED (or BLIGHTED on provisioning failure). VM-specific: once a container substrate exists, container-backed groves populate no `SeedlingState` at all (see `GroveProvider`, issue #86).
+- `PlotState`: GERMINATING → SPROUTING → SAPLING → WILTING → WITHERED (or BLIGHTED on provisioning failure). The legacy `SeedlingState` has the same constants and is replaced by `PlotState` once `Grove` holds a `Plot` (issue #86).
 - `FruitState`: BUDDING → RIPENING → RIPE (or ROTTED)
 
 ### Async Provisioning

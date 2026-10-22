@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Exercises the real {@link SecurityConfig} secured filter chain against
- * /api/gateway/** (finding I1 hardening): only tokens carrying the dedicated
+ * /api/gateway/**: only tokens carrying the dedicated
  * "gateway" scope may call this internal API, not any authenticated user.
  */
 @WebMvcTest(GatewayGroveController.class)

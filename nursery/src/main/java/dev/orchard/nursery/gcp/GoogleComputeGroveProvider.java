@@ -1,11 +1,12 @@
 package dev.orchard.nursery.gcp;
 
-import dev.orchard.core.model.Fruit;
-import dev.orchard.core.model.Seedling;
-import dev.orchard.nursery.AbstractGroveProvider;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.ProviderType;
+import dev.orchard.core.model.VmEndpoint;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.nursery.AbstractVmGroveProvider;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
-import dev.orchard.nursery.PlantedSeedling;
 import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,15 +18,14 @@ import java.util.concurrent.Executors;
  * GCP Compute Engine implementation of {@link GroveProvider}.
  * Provisions GCE instances as Seedlings using startup scripts for initial setup.
  *
- * <p>Extends {@link AbstractGroveProvider} so the class hierarchy is already correct once this
+ * <p>Extends {@link AbstractVmGroveProvider} so the class hierarchy is already correct once this
  * provider is implemented — only the template methods below need filling in.
  *
  * <p>TODO: Implement using Google Cloud Compute v1 client (com.google.cloud:google-cloud-compute).
  */
-public class GoogleComputeGroveProvider extends AbstractGroveProvider<Void> {
+public class GoogleComputeGroveProvider extends AbstractVmGroveProvider<Void> {
 
     private static final Logger log = LoggerFactory.getLogger(GoogleComputeGroveProvider.class);
-    private static final String PROVIDER_ID = "gcp-compute";
 
     /** Unread until this provider is implemented — kept so the wiring is already correct then. */
     private final GoogleComputeConfig config;
@@ -36,65 +36,47 @@ public class GoogleComputeGroveProvider extends AbstractGroveProvider<Void> {
     }
 
     @Override
-    public String getProviderId() {
-        return PROVIDER_ID;
+    public ProviderType type() {
+        return ProviderType.GCP_COMPUTE;
     }
 
     @Override
-    protected Void launch(Seedling seedling) {
+    protected Void launch(VmPlot plot) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
-    protected PlantedSeedling resolveEndpoint(Seedling seedling, Void launched) {
+    protected VmEndpoint resolveEndpoint(VmPlot plot, Void launched) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
-    protected void awaitReachable(Seedling seedling, PlantedSeedling planted) {
+    protected void awaitReachable(VmPlot plot, VmEndpoint endpoint) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Seedling> water(Seedling seedling) {
+    public CompletableFuture<Plot> water(Plot plot) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Seedling> dormant(Seedling seedling) {
+    public CompletableFuture<Plot> dormant(Plot plot) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Void> uproot(Seedling seedling) {
+    public CompletableFuture<Void> uproot(Plot plot) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Seedling> inspect(Seedling seedling) {
-        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
-    }
-
-    // The overrides below exist only to keep an unimplemented provider from doing real work via
-    // AbstractGroveProvider's working implementations. Delete them once this provider is implemented.
-
-    @Override
-    public CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit) {
+    public CompletableFuture<Plot> inspect(Plot plot) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 
     @Override
-    public CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit) {
-        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
-    }
-
-    @Override
-    public Vine vine(Seedling seedling) {
-        throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
-    }
-
-    @Override
-    public void verifyDevcontainerCli(Seedling seedling, String expectedVersion) {
+    protected Vine vineFor(VmPlot plot) {
         throw new UnsupportedOperationException("GCP Compute provider not yet implemented");
     }
 

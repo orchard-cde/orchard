@@ -48,11 +48,8 @@ public class ImageBuilder {
         if (seed.dockerfilePath() != null) {
             buildFromDockerfile(repoDir, seed, imageRef);
         } else if (seed.image() != null) {
-            // For image-based seeds, we create a Dockerfile that extends the base image
-            // and applies any customizations
             buildFromBaseImage(repoDir, seed, imageRef);
         } else {
-            // Fall back to a default dev image
             buildFromBaseImage(repoDir, DevcontainerSeed.devcontainer()
                 .image("mcr.microsoft.com/devcontainers/base:ubuntu")
                 .build(), imageRef);
@@ -62,13 +59,9 @@ public class ImageBuilder {
         return imageRef;
     }
 
-    /**
-     * Pushes a built image to the configured registry.
-     */
     public void pushImage(String imageRef) throws IOException, InterruptedException {
         log.info("Pushing image {} to registry", imageRef);
 
-        // Login to registry if credentials are configured
         loginToRegistry();
 
         List<String> command = List.of("docker", "push", imageRef);
@@ -81,9 +74,6 @@ public class ImageBuilder {
         log.info("Successfully pushed image {}", imageRef);
     }
 
-    /**
-     * Clones a git repository to the specified directory.
-     */
     public Path cloneRepository(String repositoryUrl, String branch, Path workDir) throws IOException, InterruptedException {
         Path repoDir = workDir.resolve("repo");
         Files.createDirectories(repoDir);
@@ -102,9 +92,6 @@ public class ImageBuilder {
         return repoDir;
     }
 
-    /**
-     * Gets the current commit SHA of a cloned repository.
-     */
     public String getCommitSha(Path repoDir) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "HEAD");
         pb.directory(repoDir.toFile());
@@ -127,7 +114,6 @@ public class ImageBuilder {
         command.add("-t");
         command.add(imageRef);
 
-        // Add build args
         if (seed.buildArgs() != null) {
             seed.buildArgs().forEach((key, value) -> {
                 command.add("--build-arg");
@@ -135,7 +121,6 @@ public class ImageBuilder {
             });
         }
 
-        // Resolve Dockerfile path relative to repo
         String dockerfilePath = seed.dockerfilePath();
         Path dockerfileAbsolute = repoDir.resolve(".devcontainer").resolve(dockerfilePath);
         if (Files.exists(dockerfileAbsolute)) {
@@ -152,19 +137,16 @@ public class ImageBuilder {
     }
 
     private void buildFromBaseImage(Path repoDir, DevcontainerSeed seed, String imageRef) throws IOException, InterruptedException {
-        // Generate a Dockerfile from the seed's image specification
         Path dockerfilePath = repoDir.resolve(".orchard-prebuild.Dockerfile");
 
         StringBuilder dockerfile = new StringBuilder();
         dockerfile.append("FROM ").append(seed.image()).append("\n");
 
-        // Add container environment variables
         if (seed.containerEnv() != null) {
             seed.containerEnv().forEach((key, value) ->
                 dockerfile.append("ENV ").append(key).append("=").append(value).append("\n"));
         }
 
-        // Run post-create command during build
         if (seed.postCreateCommand() != null) {
             switch (seed.postCreateCommand()) {
                 case LifecycleCommand.Sequential s ->
@@ -186,7 +168,6 @@ public class ImageBuilder {
             throw new IOException("Docker build from base image failed with exit code: " + exitCode);
         }
 
-        // Clean up generated Dockerfile
         Files.deleteIfExists(dockerfilePath);
     }
 
@@ -214,7 +195,6 @@ public class ImageBuilder {
     }
 
     private String generateImageName(String repositoryUrl, String branch) {
-        // Extract repo name from URL
         String name = repositoryUrl;
         if (name.endsWith(".git")) {
             name = name.substring(0, name.length() - 4);
@@ -224,7 +204,6 @@ public class ImageBuilder {
             name = name.substring(lastSlash + 1);
         }
 
-        // Sanitize for use as Docker tag
         String sanitizedBranch = branch.replaceAll("[^a-zA-Z0-9._-]", "-");
         return "orchard-prebuild/" + name.toLowerCase() + ":" + sanitizedBranch;
     }
