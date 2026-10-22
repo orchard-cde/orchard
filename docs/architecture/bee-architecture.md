@@ -77,7 +77,7 @@ public interface BeeKeeper {
 }
 ```
 
-All operations return `CompletableFuture` for non-blocking async execution, following the `GroveProvider` pattern. The caller (`BeeService`) resolves the `CommandRunner` once per Grove via `GroveProvider.vine(seedling).commands()` and passes it into each call — `BeeKeeper` implementations never touch `Seedling` or `SshExecutor` directly.
+All operations return `CompletableFuture` for non-blocking async execution, following the `GroveProvider` pattern. The caller (`BeeService`) resolves the `CommandRunner` for the Bee's grove via `GroveProvider.vine(plot).commands()` on each operation and passes it into the call — `BeeKeeper` implementations never touch a `Plot` or `SshExecutor` directly.
 
 | Method | Purpose | State Transition |
 |--------|---------|-----------------|
@@ -141,7 +141,7 @@ sequenceDiagram
     BS->>BKR: get(beeType)
     BKR-->>BS: BeeKeeper
 
-    Note over BS,CR: BeeService resolves CommandRunner via GroveProvider.vine(seedling).commands()
+    Note over BS,CR: BeeService resolves CommandRunner via GroveProvider.vine(plot).commands()
     BS->>BK: install(bee, spec, runner)
     BK->>CR: Check prerequisites
     BK->>CR: Install agent CLI
@@ -372,7 +372,7 @@ The swarm-status endpoint provides a consolidated view of all Bees in a Grove.
 ```mermaid
 graph LR
     subgraph Grove
-        subgraph VM[Seedling VM]
+        subgraph VM[VM plot]
             direction TB
             WS["/workspace (shared)"]
             B1[Bee: Claude Code<br/>BUZZING]
@@ -391,7 +391,11 @@ graph LR
 
 ## 9. Grove Lifecycle Integration
 
-When a Grove transitions to CLEARING, all Bees must be stopped before the Seedling is uprooted:
+When a Grove transitions to CLEARING, all Bees must be stopped before the plot is uprooted:
+
+> **Not yet implemented.** `BeeService` has no `GroveStateChangedEvent` listener, so clearing a grove
+> uproots its plot without smoking its Bees. Today a Bee is stopped only by an explicit
+> `BeeService.smoke(beeId)`. The diagram below is the intended flow.
 
 ```mermaid
 sequenceDiagram
@@ -404,15 +408,18 @@ sequenceDiagram
     GS->>EP: GroveStateChangedEvent(CLEARING)
     EP->>BS: onGroveClearing(event)
 
+    BS->>SP: vine(plot).commands()
+    SP-->>BS: runner (CommandRunner — the command channel into the plot)
+
     loop For each active Bee
-        BS->>BK: smoke(bee, seedling)
+        BS->>BK: smoke(bee, runner)
         BK-->>BS: Bee (SMOKED)
         BS->>EP: BeeStateChangedEvent(SMOKED)
     end
 
     BS-->>GS: All Bees stopped
 
-    GS->>SP: uproot(seedling)
+    GS->>SP: uproot(plot)
     SP-->>GS: VM destroyed
 ```
 

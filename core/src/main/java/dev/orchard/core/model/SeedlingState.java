@@ -1,7 +1,8 @@
 package dev.orchard.core.model;
 
 /**
- * The lifecycle state of a Seedling (VM).
+ * The lifecycle state of the VM record {@link Seedling}. {@link PlotState} has the same constants and
+ * replaces it once {@code Grove} holds a {@link Plot}.
  */
 public enum SeedlingState {
     /**

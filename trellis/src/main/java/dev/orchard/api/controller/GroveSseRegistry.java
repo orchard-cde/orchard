@@ -18,7 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class GroveSseRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(GroveSseRegistry.class);
-    private static final long SSE_TIMEOUT = 30 * 60 * 1000L; // 30 minutes
+    private static final long SSE_TIMEOUT = 30 * 60 * 1000L;
 
     private final ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>> emitters;
 

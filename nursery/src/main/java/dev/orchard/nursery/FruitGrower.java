@@ -34,13 +34,11 @@ import java.util.concurrent.Executors;
  *       inside the substrate. This is the only path that honours {@code seed.features()},
  *       i.e. the actual fix for issue #74.</li>
  *   <li><b>Legacy docker path</b> — raw {@code docker pull}/{@code docker build}/{@code docker run}
- *       over the runner. Retained for one release cycle behind the feature flag per spec Locked
- *       decision #12. {@code seed.features()} is silently ignored on this path.</li>
+ *       over the runner. Retained for one release cycle behind the feature flag. {@code seed.features()} is silently ignored on this path.</li>
  * </ul>
  *
  * <p>{@link #pick} and {@link #compost} both run raw {@code docker stop}/{@code docker rm -f}
- * over the runner on either path — the CLI doesn't ship a {@code down} subcommand (spec Locked
- * decision #4).
+ * over the runner on either path — the CLI doesn't ship a {@code down} subcommand.
  */
 public class FruitGrower {
 
@@ -109,7 +107,6 @@ public class FruitGrower {
         }, executor);
     }
 
-    // --- CLI path -----------------------------------------------------------------------------
 
     /**
      * Grows the fruit by shelling out to {@code @devcontainers/cli} via the runner. This is the
@@ -120,8 +117,8 @@ public class FruitGrower {
         String workspacePath = target.workspacePath();
         DevcontainerSeed seed = devcontainerSeed(fruit);
         try {
-            // initializeCommand runs on the host before the container starts — the CLI does
-            // not own this hook (spec Locked decision #2).
+            // initializeCommand runs on the host before the container starts; the CLI does
+            // not own this hook.
             if (seed.initializeCommand() != null) {
                 runLifecycleCommand(seed.initializeCommand(),
                     cmd -> executeSsh(runner, cmd));
@@ -132,7 +129,7 @@ public class FruitGrower {
             DevcontainerCliResult result = devcontainerCli.up(
                 runner, workspacePath, fruit.id(), fruit.containerName(), phaseFilter::onLine);
 
-            // Locked decision #18 — the actual container name on the host may differ from
+            // The actual container name on the host may differ from
             // Fruit.containerName (e.g. CLI appends a suffix on regrow). Inspect and update so
             // downstream consumers (trowel grove status, GroveResponse) see reality.
             String realName;
@@ -182,9 +179,8 @@ public class FruitGrower {
     }
 
     /**
-     * Reconstructs a Fruit replacing only its containerName. {@link Fruit} doesn't expose a
-     * {@code withContainerName} helper today; rather than touch the core model from Lane C,
-     * we copy the record by hand.
+     * Reconstructs a Fruit replacing only its containerName. Fruit has no
+     * {@code withContainerName} helper, so the record is copied by hand.
      */
     private static Fruit rebuildWithRealName(Fruit fruit, String newName) {
         if (newName == null || newName.equals(fruit.containerName())) {
@@ -198,7 +194,7 @@ public class FruitGrower {
 
     /**
      * Filters the raw CLI JSON line stream into a small set of phase-transition events. Only
-     * publishes when the detected phase changes (spec Locked decision #19), keeping STOMP
+     * publishes when the detected phase changes, keeping STOMP
      * traffic ~10-15 events per grow rather than 50-200 per CLI log line.
      */
     static final class PhaseTransitionFilter {
@@ -242,7 +238,6 @@ public class FruitGrower {
         }
     }
 
-    // --- Legacy docker path -------------------------------------------------------------------
 
     /**
      * Legacy grow path. Identical behaviour to the pre-#74 {@code grow()} so existing tests and
@@ -304,7 +299,6 @@ public class FruitGrower {
         }
     }
 
-    // --- Devfile docker path -----------------------------------------------------------------
 
     /**
      * Grows a fruit from a {@link DevfileSeed} by running the container image directly via
@@ -391,7 +385,7 @@ public class FruitGrower {
 
     /**
      * Grows multiple fruits via Docker Compose against the given workspace. Legacy path; the CLI
-     * path subsumes compose in a future lane (spec Locked decision #3 / #11).
+     * path is expected to subsume compose.
      */
     @Deprecated(forRemoval = true, since = "next-release")
     public CompletableFuture<List<Fruit>> growCompose(ExecTarget target, List<Fruit> fruits, String composeFile) {
@@ -491,7 +485,7 @@ public class FruitGrower {
 
     /**
      * Picks a fruit (stops the container). Same SSH semantics on both paths — the CLI has no
-     * {@code down} subcommand per spec Locked decision #4.
+     * {@code down} subcommand.
      */
     public CompletableFuture<Fruit> pick(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
@@ -562,7 +556,6 @@ public class FruitGrower {
         executor.shutdown();
     }
 
-    // --- Legacy docker helpers (deprecated, kept for one release) -----------------------------
 
     private static DevcontainerSeed devcontainerSeed(Fruit fruit) {
         if (fruit.seed() instanceof DevcontainerSeed s) return s;
@@ -588,7 +581,7 @@ public class FruitGrower {
         StringBuilder cmd = new StringBuilder("docker run -d");
         cmd.append(" --name ").append(shellQuote(fruit.containerName()));
 
-        // Runtime flags from spec (issue #29)
+        // Runtime flags (issue #29)
         if (Boolean.TRUE.equals(seed.privileged())) {
             cmd.append(" --privileged");
         }
@@ -602,12 +595,10 @@ public class FruitGrower {
             cmd.append(" --security-opt ").append(shellQuote(opt));
         }
 
-        // containerEnv
         for (var entry : seed.containerEnv().entrySet()) {
             cmd.append(" -e ").append(shellQuote(entry.getKey() + "=" + entry.getValue()));
         }
 
-        // forwardPorts
         for (String port : seed.forwardPorts()) {
             cmd.append(" -p ").append(port).append(":").append(port);
         }
@@ -646,7 +637,6 @@ public class FruitGrower {
         StringBuilder buildCmd = new StringBuilder("docker build");
         buildCmd.append(" -t ").append(shellQuote(imageTag));
 
-        // build.args
         for (var entry : seed.buildArgs().entrySet()) {
             buildCmd.append(" --build-arg ")
                 .append(shellQuote(entry.getKey() + "=" + entry.getValue()));

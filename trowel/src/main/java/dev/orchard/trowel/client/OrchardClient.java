@@ -267,7 +267,6 @@ public class OrchardClient {
         }
     }
 
-    // Request/Response records
     public record PlantGroveRequest(String repositoryUrl, String branch, String name, String machineSize, String spec) {}
 
     public record GroveResponse(

@@ -30,7 +30,7 @@ class DevCultivatorAuthFilterTest {
 
         assertThat(request.getAttribute("cultivatorId")).isEqualTo(DEFAULT_ID);
         verify(service).ensureCultivator(DEFAULT_ID);
-        assertThat(chain.getRequest()).isSameAs(request); // chain continued
+        assertThat(chain.getRequest()).isSameAs(request);
     }
 
     @Test

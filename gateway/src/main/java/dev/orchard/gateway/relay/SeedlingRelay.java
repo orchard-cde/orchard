@@ -23,7 +23,7 @@ import java.security.KeyPair;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Jumphost relay (design spec §Relay Flow). Holds the gateway→seedling SSH
+ * Jumphost relay. Holds the gateway→seedling SSH
  * client (username {@code cultivator}, internal key) and produces the server
  * shell/exec/subsystem factories that pump each channel through it.
  */

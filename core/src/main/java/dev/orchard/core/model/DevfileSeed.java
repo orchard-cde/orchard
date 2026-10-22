@@ -18,9 +18,9 @@ import java.util.Map;
  * {@link #postStartCommand()}. Multiple command IDs bound to one event are composed into a
  * single shell line joined with {@code &&}.
  *
- * <p>Out of scope for the current slice: {@code kubernetes} / {@code openshift}
+ * <p>Not yet supported: {@code kubernetes} / {@code openshift}
  * components, {@code apply}/{@code composite} commands, and the {@code preStop}/{@code postStop}
- * events. Those are tracked in separate issues.
+ * events. Tracked in separate issues.
  */
 public final class DevfileSeed extends Seed {
 

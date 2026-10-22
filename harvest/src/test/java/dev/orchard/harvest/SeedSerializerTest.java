@@ -25,7 +25,6 @@ class SeedSerializerTest {
         assertThat(json).contains("\"@type\"");
         assertThat(json).contains("devcontainer");
 
-        // Verify the JSON structure first to aid debugging
         assertThat(json).contains("\"name\"");
 
         Seed deserialized = serializer.deserialize(json);
@@ -36,7 +35,7 @@ class SeedSerializerTest {
 
     @Test
     void deserialize_legacyRowWithoutAtType_fallsBackToDevcontainerSeed() {
-        // Old rows written before the refactor have no @type field
+        // Rows persisted before the @type discriminator was added have no @type field
         String legacyJson = """
                 {
                   "name": "old-workspace",

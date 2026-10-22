@@ -7,7 +7,8 @@ import java.util.UUID;
 
 /**
  * A Grove is a complete development workspace in the Orchard.
- * It contains a Seedling (VM) with Fruit (devcontainers) growing on it.
+ * It is planted in a plot, with Fruit (devcontainers) growing on it; the plot is currently held as
+ * the legacy VM {@link Seedling} record.
  * Each Grove belongs to a Cultivator and is rooted in a git repository.
  */
 public record Grove(
