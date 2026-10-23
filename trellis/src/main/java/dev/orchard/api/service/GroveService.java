@@ -599,13 +599,13 @@ public class GroveService {
                 entity.setState(successState);
                 groveRepository.save(entity);
             }
-            witherPlotIfUnchanged(groveId, grove.plot());
             // Only the generation captured when teardown began: re-querying at completion would
             // delete rows a subsequent startGrove created, since this runs asynchronously.
             List<UUID> capturedFruitIds = grove.fruits() == null ? List.of()
                 : grove.fruits().stream().map(Fruit::id).toList();
             fruitRepository.deleteAllById(capturedFruitIds);
             log.info("Grove {} reached {}", groveId, successState);
+            witherPlotIfUnchanged(groveId, grove.plot());
         } catch (Exception e) {
             log.error("Grove {} substrate was released but bookkeeping failed; state or fruit rows "
                 + "may be stale. The substrate is NOT leaked.", groveId, e);

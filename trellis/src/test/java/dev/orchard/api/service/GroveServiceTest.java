@@ -978,23 +978,44 @@ class GroveServiceTest {
     }
 
     @Test
+    void tearDown_witherReadFails_stillDeletesFruitAndDoesNotOrphan() {
+        Grove grove = ownerGroveWithContainerFruits("c1");
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        when(ownerProvider.inspect(any())).thenReturn(
+            CompletableFuture.completedFuture(sapling(grove.plot())));
+        when(ownerProvider.compostFruit(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(groveRepository.findById(grove.id())).thenThrow(new RuntimeException("db blip"));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        verify(fruitRepository).deleteAllById(any());
+        assertThat(entity.getState()).isEqualTo(GroveState.CLEARED);
+    }
+
+    @Test
     void tearDown_afterRestart_leavesNewPlotAlone() {
         Grove grove = ownerGroveWithContainerFruits();
-        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveEntity entity = entityFor(grove, GroveState.DORMANT);
         Plot newPlot = VmPlot.germinate(grove.id(), "owner", SeedlingSpec.from(VmSpec.small()));
         GroveEntity fresh = entityFor(grove.withPlot(newPlot), GroveState.PLANTING);
         when(groveRepository.findById(grove.id())).thenReturn(Optional.of(fresh));
         when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+        List<UUID> plotIdsAtSave = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<PlotState> plotStatesAtSave = new java.util.concurrent.CopyOnWriteArrayList<>();
-        when(groveRepository.save(any())).thenAnswer(inv -> {
-            plotStatesAtSave.add(((GroveEntity) inv.getArgument(0)).plot().state());
-            return inv.getArgument(0);
+        lenient().when(groveRepository.save(any())).thenAnswer(inv -> {
+            GroveEntity e = inv.getArgument(0);
+            plotIdsAtSave.add(e.plot().id());
+            plotStatesAtSave.add(e.plot().state());
+            return e;
         });
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.DORMANT);
 
+        assertThat(newPlot.id()).isNotEqualTo(grove.plot().id());
+        assertThat(plotIdsAtSave).doesNotContain(grove.plot().id());
         assertThat(plotStatesAtSave).doesNotContain(PlotState.WITHERED);
-        assertThat(fresh.plot()).isEqualTo(newPlot);
+        assertThat(fresh.plot().id()).isEqualTo(newPlot.id());
         assertThat(fresh.plot().state()).isEqualTo(PlotState.GERMINATING);
         assertThat(fresh.getState()).isEqualTo(GroveState.PLANTING);
     }
