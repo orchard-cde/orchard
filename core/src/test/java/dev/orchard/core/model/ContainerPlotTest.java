@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ContainerPlotTest {
 
@@ -27,5 +28,13 @@ class ContainerPlotTest {
 
         assertThat(original.withState(PlotState.WITHERED))
             .usingRecursiveComparison().ignoringFields("state").isEqualTo(original);
+    }
+
+    @Test
+    void constructor_nullProviderId_throws() {
+        assertThatThrownBy(() -> new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), null, null,
+            PlotState.GERMINATING, Instant.now(), null, Path.of("/tmp/ws"),
+            ContainerRuntime.PODMAN, new ContainerSpec(2, 2048)))
+            .isInstanceOf(NullPointerException.class).hasMessageContaining("providerId");
     }
 }

@@ -62,6 +62,7 @@ class BeeServiceTest {
     /** Stubs the registry -> default provider -> vine -> commands chain that {@code commandRunnerFor} walks. */
     private void stubCommandRunner() {
         GroveProvider provider = mock(GroveProvider.class);
+        lenient().when(provider.getProviderId()).thenReturn("p");
         Vine vine = mock(Vine.class);
         when(providerRegistry.getDefault()).thenReturn(provider);
         when(provider.vine(any())).thenReturn(vine);
@@ -124,6 +125,7 @@ class BeeServiceTest {
         when(groveEntity.getSeedlingSshPort()).thenReturn(null);
         setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         GroveProvider provider = mock(GroveProvider.class);
+        lenient().when(provider.getProviderId()).thenReturn("p");
         Vine vine = mock(Vine.class);
         when(providerRegistry.getDefault()).thenReturn(provider);
         when(provider.vine(any())).thenReturn(vine);

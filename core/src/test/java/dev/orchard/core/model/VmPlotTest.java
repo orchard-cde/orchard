@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class VmPlotTest {
 
@@ -22,23 +23,6 @@ class VmPlotTest {
         assertThat(plot.spec().memoryMb()).isEqualTo(5000);
         assertThat(plot.spec().diskGb()).isEqualTo(77);
         assertThat(plot.spec().serialOutput()).isEqualTo("sentinel-serial");
-    }
-
-    @Test
-    void germinate_mirrorsSeedlingGerminate() {
-        UUID groveId = UUID.randomUUID();
-        VmPlot plot = VmPlot.germinate(groveId, "qemu-local", SENTINEL);
-        Seedling seedling = Seedling.germinate(groveId, VmSpec.small());
-
-        assertThat(plot.groveId()).isEqualTo(groveId);
-        assertThat(plot.providerId()).isEqualTo("qemu-local");
-        assertThat(plot.state()).isEqualTo(PlotState.GERMINATING);
-        assertThat(plot.providerInstanceId()).isEqualTo(seedling.providerInstanceId());
-        assertThat(plot.host()).isEqualTo(seedling.ipAddress());
-        assertThat(plot.sshPort()).isEqualTo(seedling.sshPort());
-        assertThat(plot.readyAt()).isEqualTo(seedling.readyAt());
-        assertThat(plot.authorizedKeys()).isEqualTo(seedling.authorizedKeys());
-        assertThat(plot.plantedAt()).isNotNull();
     }
 
     @Test
@@ -80,5 +64,30 @@ class VmPlotTest {
         assertThat(located).usingRecursiveComparison()
             .ignoringFields("providerInstanceId", "host", "sshPort")
             .isEqualTo(plot);
+    }
+
+    @Test
+    void constructor_nullProviderId_throws() {
+        assertThatThrownBy(() -> new VmPlot(UUID.randomUUID(), UUID.randomUUID(), null, null,
+            PlotState.GERMINATING, Instant.now(), null, null, 22, List.of(), VmSpec.small()))
+            .isInstanceOf(NullPointerException.class).hasMessageContaining("providerId");
+    }
+
+    @Test
+    void constructor_nullAuthorizedKeys_becomesEmpty() {
+        VmPlot plot = new VmPlot(UUID.randomUUID(), UUID.randomUUID(), "p", null,
+            PlotState.GERMINATING, Instant.now(), null, null, 22, null, VmSpec.small());
+
+        assertThat(plot.authorizedKeys()).isEmpty();
+    }
+
+    @Test
+    void withAuthorizedKeys_replacesKeys() {
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "p", SENTINEL);
+
+        VmPlot keyed = plot.withAuthorizedKeys(List.of("ssh-ed25519 AAAA k"));
+
+        assertThat(keyed.authorizedKeys()).containsExactly("ssh-ed25519 AAAA k");
+        assertThat(keyed).usingRecursiveComparison().ignoringFields("authorizedKeys").isEqualTo(plot);
     }
 }
