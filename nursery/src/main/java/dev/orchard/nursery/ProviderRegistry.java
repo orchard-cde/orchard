@@ -56,6 +56,19 @@ public class ProviderRegistry {
     }
 
     /**
+     * Returns a provider by its ID.
+     *
+     * @throws IllegalStateException if no provider with the given ID is registered
+     */
+    public GroveProvider require(String providerId) {
+        GroveProvider provider = providers.get(providerId);
+        if (provider == null) {
+            throw new IllegalStateException("Provider '" + providerId + "' is not registered");
+        }
+        return provider;
+    }
+
+    /**
      * Returns all registered provider IDs.
      */
     public Collection<String> getProviderIds() {

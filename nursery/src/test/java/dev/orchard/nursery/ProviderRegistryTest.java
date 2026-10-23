@@ -43,6 +43,23 @@ class ProviderRegistryTest {
     }
 
     @Test
+    void require_registered_returnsProvider() {
+        StubProvider provider = new StubProvider("qemu");
+        registry.register(provider);
+
+        assertThat(registry.require("qemu")).isSameAs(provider);
+    }
+
+    @Test
+    void require_unregistered_throwsIllegalStateNotNoSuchElement() {
+        registry.register(new StubProvider("qemu"));
+
+        assertThatThrownBy(() -> registry.require("aws"))
+            .isExactlyInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("aws");
+    }
+
+    @Test
     void setDefault_changesDefaultProvider() {
         registry.register(new StubProvider("qemu"));
         registry.register(new StubProvider("aws"));
