@@ -324,13 +324,16 @@ public class GroveCommand implements Callable<Integer> {
         }
     }
 
-    private static void printPlot(OrchardClient.PlotInfo plot) {
+    static void printPlot(OrchardClient.PlotInfo plot) {
         System.out.println();
         boolean vm = "VM".equals(plot.kind());
         System.out.println(vm ? "  Plot (VM):" : "  Plot (container):");
         System.out.println("    State:     " + plot.state());
         if (vm) {
-            System.out.println("    Host:      " + plot.host() + ":" + plot.sshPort());
+            if (plot.host() != null) {
+                System.out.println("    Host:      " + plot.host()
+                    + (plot.sshPort() != null ? ":" + plot.sshPort() : ""));
+            }
         } else if (plot.runtime() != null) {
             System.out.println("    Runtime:   " + plot.runtime());
         }

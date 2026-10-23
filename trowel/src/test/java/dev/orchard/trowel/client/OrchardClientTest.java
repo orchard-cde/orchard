@@ -118,6 +118,39 @@ class OrchardClientTest {
     }
 
     @Test
+    void deserializesVmPlotWithNullHostAndPort() throws Exception {
+        server.createContext("/api/groves", exchange -> respond(exchange, 201, """
+            {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "name": "g",
+              "repositoryUrl": "https://github.com/test/repo",
+              "branch": "main",
+              "state": "PLANTING",
+              "plot": {
+                "kind": "VM",
+                "id": "22222222-2222-2222-2222-222222222222",
+                "state": "GERMINATING",
+                "providerId": "qemu",
+                "host": null,
+                "sshPort": null,
+                "cpuCores": 2,
+                "memoryMb": 4096,
+                "diskGb": 50,
+                "runtime": null
+              },
+              "fruits": []
+            }
+            """));
+
+        GroveResponse grove = client.plantGrove("https://github.com/test/repo", "main", "g", "small", "auto");
+
+        assertThat(grove.plot().kind()).isEqualTo("VM");
+        assertThat(grove.plot().host()).isNull();
+        assertThat(grove.plot().sshPort()).isNull();
+        assertThat(grove.plot().cpuCores()).isEqualTo(2);
+    }
+
+    @Test
     void plantGrove_deserializesPlotAndFruits() throws Exception {
         server.createContext("/api/groves", exchange -> respond(exchange, 201, GROVE_JSON));
 
