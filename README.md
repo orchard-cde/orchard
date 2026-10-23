@@ -158,7 +158,7 @@ sha256sum --check checksums-sha256.txt --ignore-missing
 │               JPA Entities, Spring Data Repos               │
 ├─────────────────────────────────────────────────────────────┤
 │                     Core (Domain Models)                    │
-│        Grove, Seedling, Fruit, Seed, Bee, Cultivator        │
+│        Grove, Plot, Fruit, Seed, Bee, Cultivator           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -197,7 +197,7 @@ orchard/
 ├── greenhouse/ # Prebuild service (image caching)
 ├── apiary/     # AI assistant integration (BeeKeeper extension point)
 ├── fence/      # Authentication subsystem (OAuth2/OIDC device flow)
-├── gateway/    # SSH gateway (MINA SSHD jumphost relaying to seedlings)
+├── gateway/    # SSH gateway (MINA SSHD jumphost relaying to VM plots)
 ├── trellis/    # Spring Boot application (REST API + services)
 └── trowel/     # Command-line interface
 ```

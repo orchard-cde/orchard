@@ -151,7 +151,7 @@ sequenceDiagram
     API-->>UI: event: grove-state-changed {state: FLOURISHING}
 
     UI->>API: GET /api/groves/{id} (fetch full details)
-    API-->>UI: 200 OK {grove with seedling + fruits}
+    API-->>UI: 200 OK {grove with plot + fruits}
 ```
 
 ### 1.3 Authentication Architecture
@@ -216,7 +216,17 @@ path is `/workspace`.
 `nursery/src/main/java/dev/orchard/nursery/ProviderRegistry.java`:
 - Stores providers in a `ConcurrentHashMap<String, GroveProvider>` keyed by provider ID
 - Configurable default provider via `orchard.nursery.provider` property
+- `require(id)` returns the provider or throws `IllegalStateException("Provider '<id>' is not registered")`; `get(id)` returns an `Optional`; `getDefault()` returns the configured default
 - Short name mapping (e.g., `"qemu"` → `"qemu-local"`, `"aws"` → `"aws-ec2"`) handled in `NurseryConfig.resolveProviderId()`
+
+### 2.2.1 Plot persistence and provenance
+
+`groves.plot_json` (V10, `TEXT NOT NULL`) holds the whole `Plot` as JSON and is the only record of the plot: `GroveEntity.plot()` deserializes it and `setPlot` serializes it, via `PlotSerializer`. The `@type` tag is `vm` or `container`. `authorizedKeys` is never written and reloads as `List.of()`. V10 dropped the nine `seedling_*` columns.
+
+- **Dispatch by provenance.** Every operation on an existing grove (teardown, stop/start, bee command runner, reconciler liveness) resolves its provider with `ProviderRegistry.require(plot.providerId())`. A grove therefore keeps using the provider that created its plot even if `orchard.nursery.provider` changes. `getDefault()` is used only where no plot exists yet: `plantGrove` (to size and `reserve` the first plot) and `HealthController`.
+- **Unregistered provider.** Reachable only if config changes between restarts. `require` throws `IllegalStateException`; async teardown catches it and ends the grove `ORPHANED`, the reconciler marks the grove `BLIGHTED`, and request paths surface the existing 409. No dedicated exception type exists and `GlobalExceptionHandler` is unchanged; a bare `Optional.orElseThrow()` would map to 404 and is not used.
+- **Stale-route guards.** QEMU reuses ports from a fixed range, so a stopped or cleared grove's `host:sshPort` can belong to another cultivator's VM. Two independent guards: (1) after a successful `uproot`, teardown Phase 2 writes the plot back as `WITHERED`, compare-and-set on the persisted plot id so a concurrent `startGrove` that installed a new plot is not overwritten; (2) `GatewayGroveService.isRoutable` requires grove `FLOURISHING`, a `VmPlot` with non-null `host`, and plot state `SAPLING`. Container plots are never routable. The gateway route carries `host` and `sshPort`.
+- **Pre-V10 rows.** A row with null or blank `plot_json` (dev-server H2 in `update` mode, which adds the column without a default) fails `plot()` with a message telling the user to delete `~/.orchard/data/`. The reconciler marks such `FLOURISHING` rows `BLIGHTED` at startup.
 
 ### 2.3 Available Providers
 
@@ -269,7 +279,7 @@ sequenceDiagram
 **Phase 1 — Synchronous (within transaction)**:
 1. Ensure cultivator exists
 2. Create `Grove` record (state: `PLANTING`)
-3. Reserve a plot via `GroveProvider.reserve` (state: `GERMINATING`), sized from the `SeedlingSpec` for the requested tier (small/medium/large); the grove still holds it as the legacy `Seedling` record
+3. Reserve a plot via `GroveProvider.reserve` (state: `GERMINATING`), sized from the `SeedlingSpec` for the requested tier (small/medium/large) and persisted on the grove as `plot_json`
 4. Persist to database
 5. Register async callback via `TransactionSynchronization.afterCommit()`
 
@@ -287,7 +297,7 @@ sequenceDiagram
     participant DB as GroveRepository
     participant EP as EventPublisher
 
-    GS->>PR: getDefault()
+    GS->>PR: require(plot.providerId())
     PR-->>GS: GroveProvider
     GS->>SP: plantSubstrate(plot)
     SP-->>GS: Plot (SAPLING)
@@ -373,14 +383,14 @@ stateDiagram-v2
 
 ### 3.3 Grove Teardown
 
-`GroveService.clearGrove()`:
+`GroveService.clearGrove()` (and `stopGrove`, with `DORMANT` as the success state) end in `tearDownAndRecord`:
 
 1. Set grove state to `CLEARING`, persist, register async callback
-2. **After commit**: Check VM reachability via TCP socket probe (3s timeout)
-3. If reachable: stop and remove all containers via `FruitGrower.compost()`
-4. Delete fruit entities from database
-5. Terminate VM via `GroveProvider.uproot()`
-6. Set grove state to `CLEARED`
+2. **After commit, Phase 1 (substrate):** resolve the provider with `require(plot.providerId())`
+3. Best-effort composting, only if some fruit has a `containerId`: `provider.inspect(plot)` must return `SAPLING`, otherwise (or if `inspect` throws) composting is skipped. Each `compostFruit` failure is logged at WARN and skipped
+4. `provider.uproot(plot)`. An unregistered provider or an `uproot` failure keeps every record and sets `ORPHANED`
+5. **Phase 2 (bookkeeping):** save the success state (`CLEARED`, or `DORMANT` on stop) unless the entity already holds it, then delete the fruit rows captured when teardown began
+6. Re-read the grove and, only if the persisted plot id still equals the torn-down plot's id, save the plot as `WITHERED`. Failures in this phase are logged, not escalated to `ORPHANED`, since the substrate is already gone
 
 ---
 
@@ -423,10 +433,12 @@ Runs on application startup via `ApplicationRunner`:
 
 | Previous State | Action | New State |
 |---------------|--------|-----------|
-| `FLOURISHING` + VM reachable | Leave as-is | `FLOURISHING` |
-| `FLOURISHING` + VM unreachable | Mark failed | `BLIGHTED` |
+| `FLOURISHING` + `inspect` returns `SAPLING` | Leave as-is | `FLOURISHING` |
+| `FLOURISHING` + `inspect` returns another state or throws | Mark failed | `BLIGHTED` |
 | `PREPARING`, `PLANTING`, `GROWING` | Stuck from previous run | `BLIGHTED` |
-| `CLEARING` | Interrupted teardown | `CLEARED` |
+| `CLEARING` | Interrupted teardown, not re-attempted | `ORPHANED` |
+
+Liveness is `registry.require(plot.providerId()).inspect(plot)`, never a socket probe. Any exception (unregistered provider, failed `inspect`, unreadable or missing `plot_json`) counts as unreachable and is logged at ERROR.
 
 ---
 
