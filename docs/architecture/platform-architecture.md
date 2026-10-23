@@ -385,7 +385,7 @@ stateDiagram-v2
 
 `GroveService.clearGrove()` (and `stopGrove`, with `DORMANT` as the success state) end in `tearDownAndRecord`:
 
-1. Set grove state to `CLEARING`, persist, register async callback
+1. The grove is already persisted in its transitional state: `CLEARING` for `clearGrove`, `DORMANT` for `stopGrove`. Register the async callback
 2. **After commit, Phase 1 (substrate):** resolve the provider with `require(plot.providerId())`
 3. Best-effort composting, only if some fruit has a `containerId`: `provider.inspect(plot)` must return `SAPLING`, otherwise (or if `inspect` throws) composting is skipped. Each `compostFruit` failure is logged at WARN and skipped
 4. `provider.uproot(plot)`. An unregistered provider or an `uproot` failure keeps every record and sets `ORPHANED`

@@ -656,9 +656,7 @@ class GroveServiceTest {
         }
     }
 
-    /**
-     * The plot has NO host on purpose, so these tests do no network I/O.
-     */
+    /** A freshly germinated VM plot: not yet SAPLING and without a host. */
     private Grove groveWithPlot() {
         Grove grove = Grove.plant(
             UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -102,6 +103,20 @@ class GroveReconcilerTest {
         when(registry.require("gone")).thenThrow(new IllegalStateException("no provider gone"));
 
         reconcile(entity);
+
+        assertThat(entity.getState()).isEqualTo(GroveState.BLIGHTED);
+    }
+
+    @Test
+    void flourishing_inspectNeverCompletes_blightedAfterTimeout() {
+        GroveEntity entity = flourishing(closedPortPlot("owner"));
+        when(registry.require("owner")).thenReturn(provider);
+        when(provider.inspect(any())).thenReturn(new CompletableFuture<>());
+        when(groveRepository.findActiveGroves()).thenReturn(List.of(entity));
+        when(groveRepository.findByState(GroveState.PREPARING)).thenReturn(List.of());
+        when(groveRepository.findByState(GroveState.CLEARING)).thenReturn(List.of());
+
+        new GroveReconciler(groveRepository, registry, Duration.ofMillis(20)).run(null);
 
         assertThat(entity.getState()).isEqualTo(GroveState.BLIGHTED);
     }

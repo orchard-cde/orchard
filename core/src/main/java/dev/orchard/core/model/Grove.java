@@ -99,7 +99,7 @@ public record Grove(
     }
 
     public String getSshConnectionString() {
-        if (!(plot instanceof VmPlot vm) || vm.host() == null) {
+        if (!(plot instanceof VmPlot vm) || vm.host() == null || vm.state() != PlotState.SAPLING) {
             return null;
         }
         String keyPath = resolveSshKeyPath();

@@ -66,7 +66,7 @@ class V10MigrationTest {
 
         assertThatThrownBy(() -> flyway(null).load().migrate())
             .isInstanceOf(FlywayException.class)
-            .hasMessageContaining("V10");
+            .hasMessageContaining("groves remain");
 
         assertThat(query("SELECT column_name FROM information_schema.columns"
             + " WHERE table_name = 'groves' AND column_name = 'seedling_id'")).containsExactly("seedling_id");

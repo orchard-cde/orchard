@@ -264,6 +264,20 @@ class GroveTest {
     }
 
     @Test
+    void getSshConnectionString_nullUnlessPlotIsSapling() {
+        Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
+        VmPlot sapling = createReadyPlot(grove.id());
+
+        assertThat(grove.withPlot(sapling).getSshConnectionString()).isNotNull();
+        for (PlotState other : PlotState.values()) {
+            if (other != PlotState.SAPLING) {
+                assertThat(grove.withPlot(sapling.withState(other)).getSshConnectionString())
+                    .as(other.name()).isNull();
+            }
+        }
+    }
+
+    @Test
     void isReady_trueOnlyForSaplingPlot() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
         VmPlot sapling = createReadyPlot(grove.id());

@@ -72,6 +72,17 @@ class GroveControllerTest {
     }
 
     @Test
+    void sshConfig_witheredVmPlotWithHost_returns503() throws Exception {
+        Grove grove = grove();
+        when(groveService.getGrove(grove.id())).thenReturn(Optional.of(
+            grove.withPlot(vmPlot(grove.id(), "10.0.0.5").withState(PlotState.WITHERED))));
+
+        mockMvc.perform(get("/api/groves/{groveId}/ssh-config", grove.id()))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("10.0.0.5"))));
+    }
+
+    @Test
     void sshConfig_nullPlot_returns503() throws Exception {
         Grove grove = grove();
         when(groveService.getGrove(grove.id())).thenReturn(Optional.of(grove));

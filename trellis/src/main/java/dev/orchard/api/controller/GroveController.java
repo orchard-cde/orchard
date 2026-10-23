@@ -5,6 +5,7 @@ import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.api.service.GroveService;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.Grove;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmPlot;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -79,7 +80,7 @@ public class GroveController {
                 if (grove.plot() instanceof ContainerPlot) {
                     throw new IllegalStateException("grove is not SSH-reachable");
                 }
-                if (!(grove.plot() instanceof VmPlot vm) || vm.host() == null) {
+                if (!(grove.plot() instanceof VmPlot vm) || vm.host() == null || vm.state() != PlotState.SAPLING) {
                     return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                         .body("Grove plot is not ready yet");
                 }

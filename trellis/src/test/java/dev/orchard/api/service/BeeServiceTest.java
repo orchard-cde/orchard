@@ -232,6 +232,7 @@ class BeeServiceTest {
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         GroveEntity groveEntity = mock(GroveEntity.class);
         lenient().when(groveEntity.plot()).thenReturn(plotOwnedBy("p"));
+        when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(keeper.release(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
         stubCommandRunner();
@@ -289,6 +290,7 @@ class BeeServiceTest {
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         GroveEntity groveEntity = mock(GroveEntity.class);
         lenient().when(groveEntity.plot()).thenReturn(plotOwnedBy("p"));
+        when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(keeper.smoke(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
         stubCommandRunner();
@@ -306,6 +308,62 @@ class BeeServiceTest {
 
             verify(keeper, timeout(500)).smoke(eq(bee), any(CommandRunner.class));
         }
+    }
+
+    private void dormantGroveWithWitheredPlot() {
+        GroveEntity groveEntity = mock(GroveEntity.class);
+        lenient().when(groveEntity.getState()).thenReturn(GroveState.DORMANT);
+        lenient().when(groveEntity.plot()).thenReturn(new VmPlot(UUID.randomUUID(), groveId, "p", "vm-1",
+            PlotState.WITHERED, Instant.now(), Instant.now(), "10.0.0.5", 22, List.of(), VmSpec.small()));
+        when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
+    }
+
+    @Test
+    void wake_onDormantGroveWithWitheredPlot_neverReachesTheStaleHost() {
+        BeeEntity entity = mock(BeeEntity.class);
+        UUID beeId = UUID.randomUUID();
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE)).withState(BeeState.HIBERNATING);
+        when(beeRepository.findById(beeId)).thenReturn(Optional.of(entity));
+        when(entity.toModel()).thenReturn(bee);
+        BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        dormantGroveWithWitheredPlot();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            beeService.wake(beeId);
+
+            tsm.verify(() -> TransactionSynchronizationManager.registerSynchronization(any()), never());
+        }
+
+        verifyNoInteractions(providerRegistry);
+        verify(keeper, never()).release(any(), any());
+    }
+
+    @Test
+    void smoke_onDormantGroveWithWitheredPlot_neverReachesTheStaleHost() {
+        BeeEntity entity = mock(BeeEntity.class);
+        UUID beeId = UUID.randomUUID();
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE)).withState(BeeState.BUZZING);
+        when(beeRepository.findById(beeId)).thenReturn(Optional.of(entity));
+        when(entity.toModel()).thenReturn(bee);
+        BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        dormantGroveWithWitheredPlot();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+                .thenAnswer(invocation -> {
+                    ((TransactionSynchronization) invocation.getArgument(0)).afterCommit();
+                    return null;
+                });
+
+            Optional<Bee> result = beeService.smoke(beeId);
+
+            assertThat(result.orElseThrow().state()).isEqualTo(BeeState.SMOKED);
+        }
+
+        verifyNoInteractions(providerRegistry);
+        verify(keeper, never()).smoke(any(), any());
     }
 
     @Test
@@ -484,6 +542,7 @@ class BeeServiceTest {
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         GroveEntity groveEntity = mock(GroveEntity.class);
         lenient().when(groveEntity.plot()).thenReturn(plotOwnedBy("p"));
+        when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(keeper.release(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
         stubCommandRunner();

@@ -119,7 +119,11 @@ public class BeeService {
                 log.warn("Grove {} not found for bee {}, cannot wake", bee.groveId(), beeId);
                 return bee;
             }
-            CommandRunner runner = commandRunnerFor(groveEntity);
+            CommandRunner runner = reachableRunnerFor(groveEntity);
+            if (runner == null) {
+                log.warn("Grove {} is not reachable for bee {}, cannot wake", bee.groveId(), beeId);
+                return bee;
+            }
 
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -145,7 +149,7 @@ public class BeeService {
 
             BeeKeeper keeper = beeKeeperRegistry.get(bee.type()).orElse(null);
             GroveEntity groveEntity = keeper != null ? groveRepository.findById(bee.groveId()).orElse(null) : null;
-            CommandRunner runner = groveEntity != null ? commandRunnerFor(groveEntity) : null;
+            CommandRunner runner = groveEntity != null ? reachableRunnerFor(groveEntity) : null;
 
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -292,6 +296,14 @@ public class BeeService {
         } catch (RuntimeException e) {
             log.error("Failed to publish bee event {}", event, e);
         }
+    }
+
+    private CommandRunner reachableRunnerFor(GroveEntity groveEntity) {
+        if (groveEntity.getState() != GroveState.FLOURISHING
+                || groveEntity.plot().state() != PlotState.SAPLING) {
+            return null;
+        }
+        return commandRunnerFor(groveEntity);
     }
 
     private CommandRunner commandRunnerFor(GroveEntity groveEntity) {

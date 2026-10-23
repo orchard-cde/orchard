@@ -8,12 +8,15 @@ import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.GroveRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class GroveReconciler implements ApplicationRunner {
@@ -22,10 +25,17 @@ public class GroveReconciler implements ApplicationRunner {
 
     private final GroveRepository groveRepository;
     private final ProviderRegistry registry;
+    private final Duration inspectTimeout;
 
+    @Autowired
     public GroveReconciler(GroveRepository groveRepository, ProviderRegistry registry) {
+        this(groveRepository, registry, Duration.ofSeconds(10));
+    }
+
+    GroveReconciler(GroveRepository groveRepository, ProviderRegistry registry, Duration inspectTimeout) {
         this.groveRepository = groveRepository;
         this.registry = registry;
+        this.inspectTimeout = inspectTimeout;
     }
 
     @Override
@@ -93,7 +103,8 @@ public class GroveReconciler implements ApplicationRunner {
         try {
             Plot plot = grove.plot();
             providerId = plot.providerId();
-            return registry.require(providerId).inspect(plot).join().state() == PlotState.SAPLING;
+            return registry.require(providerId).inspect(plot)
+                .orTimeout(inspectTimeout.toMillis(), TimeUnit.MILLISECONDS).join().state() == PlotState.SAPLING;
         } catch (Exception e) {
             log.error("Grove '{}' [{}] liveness inspection failed (provider '{}') — treating as unreachable",
                     grove.getName(), grove.getId(), providerId, e);
