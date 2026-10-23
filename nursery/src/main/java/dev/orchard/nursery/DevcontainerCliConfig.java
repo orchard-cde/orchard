@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Configuration for {@link DevcontainerCli} invocations.
  *
- * <p>Pinning the CLI version prevents drift between Seedlings — cloud-init installs this
+ * <p>Pinning the CLI version prevents drift between VM plots — cloud-init installs this
  * exact npm version on every VM, so {@code devcontainer up} behaviour is reproducible
  * across the fleet. The pinned version is sourced from {@code application.yml}
  * ({@code orchard.nursery.devcontainer-cli.version}); there is no in-code fallback to
@@ -16,7 +16,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties("orchard.nursery.devcontainer-cli")
 public record DevcontainerCliConfig(
-    /** Pinned @devcontainers/cli version installed on every Seedling. */
+    /** Pinned @devcontainers/cli version installed on every VM plot. */
     String version,
     /** Default timeout for {@code devcontainer up} invocations. */
     long upTimeoutSeconds,

@@ -1,6 +1,7 @@
 package dev.orchard.trellis;
 
 import dev.orchard.core.model.GroveState;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.GroveRepository;
 import org.slf4j.Logger;
@@ -88,15 +89,13 @@ public class GroveReconciler implements ApplicationRunner {
     }
 
     private boolean isReachable(GroveEntity grove) {
-        String ip = grove.getSeedlingIpAddress();
-        Integer port = grove.getSeedlingSshPort();
-        if (ip == null || port == null) {
-            log.warn("Grove '{}' [{}] has no seedling address — treating as unreachable",
+        if (!(grove.plot() instanceof VmPlot vm) || vm.host() == null) {
+            log.warn("Grove '{}' [{}] has no VM plot address — treating as unreachable",
                     grove.getName(), grove.getId());
             return false;
         }
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ip, port), LIVENESS_TIMEOUT_MS);
+            socket.connect(new InetSocketAddress(vm.host(), vm.sshPort()), LIVENESS_TIMEOUT_MS);
             return true;
         } catch (IOException e) {
             return false;

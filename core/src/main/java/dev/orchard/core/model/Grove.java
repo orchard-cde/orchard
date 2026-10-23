@@ -7,8 +7,7 @@ import java.util.UUID;
 
 /**
  * A Grove is a complete development workspace in the Orchard.
- * It is planted in a plot, with Fruit (devcontainers) growing on it; the plot is currently held as
- * the legacy VM {@link Seedling} record.
+ * It is planted in a {@link Plot}, with Fruit (devcontainers) growing on it.
  * Each Grove belongs to a Cultivator and is rooted in a git repository.
  */
 public record Grove(
@@ -20,7 +19,7 @@ public record Grove(
     String commitSha,
     GroveState state,
     SeedSpec seedSpec,
-    Seedling seedling,
+    Plot plot,
     List<Fruit> fruits,
     Instant plantedAt,
     Instant lastAccessedAt
@@ -51,22 +50,22 @@ public record Grove(
 
     public Grove withState(GroveState newState) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            newState, seedSpec, seedling, fruits, plantedAt, Instant.now());
+            newState, seedSpec, plot, fruits, plantedAt, Instant.now());
     }
 
-    public Grove withSeedling(Seedling seedling) {
+    public Grove withPlot(Plot plot) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedSpec, seedling, fruits, plantedAt, Instant.now());
+            state, seedSpec, plot, fruits, plantedAt, Instant.now());
     }
 
     public Grove withSeedSpec(SeedSpec seedSpec) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedSpec, seedling, fruits, plantedAt, Instant.now());
+            state, seedSpec, plot, fruits, plantedAt, Instant.now());
     }
 
     public Grove withFruits(List<Fruit> fruits) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedSpec, seedling, fruits, plantedAt, Instant.now());
+            state, seedSpec, plot, fruits, plantedAt, Instant.now());
     }
 
     public Grove withFruit(Fruit fruit) {
@@ -84,28 +83,28 @@ public record Grove(
             updated.add(fruit);
         }
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, commitSha,
-            state, seedSpec, seedling, List.copyOf(updated), plantedAt, Instant.now());
+            state, seedSpec, plot, List.copyOf(updated), plantedAt, Instant.now());
     }
 
     public Grove withCommit(String sha) {
         return new Grove(id, cultivatorId, name, repositoryUrl, branch, sha,
-            state, seedSpec, seedling, fruits, plantedAt, Instant.now());
+            state, seedSpec, plot, fruits, plantedAt, Instant.now());
     }
 
     public boolean isReady() {
         return state == GroveState.FLOURISHING
-            && seedling != null && seedling.isReady()
+            && plot != null && plot.state() == PlotState.SAPLING
             && fruits != null && !fruits.isEmpty()
             && fruits.stream().allMatch(Fruit::isReady);
     }
 
     public String getSshConnectionString() {
-        if (seedling == null || seedling.ipAddress() == null) {
+        if (!(plot instanceof VmPlot vm) || vm.host() == null) {
             return null;
         }
         String keyPath = resolveSshKeyPath();
         return "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s -p %d cultivator@%s".formatted(
-            keyPath, seedling.sshPort(), seedling.ipAddress());
+            keyPath, vm.sshPort(), vm.host());
     }
 
     private static String resolveSshKeyPath() {

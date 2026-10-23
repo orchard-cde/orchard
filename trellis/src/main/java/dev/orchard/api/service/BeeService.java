@@ -296,25 +296,7 @@ public class BeeService {
 
     private CommandRunner commandRunnerFor(GroveEntity groveEntity) {
         GroveProvider provider = providerRegistry.getDefault();
-        VmPlot plot = new VmPlot(
-            groveEntity.getSeedlingId(),
-            groveEntity.getId(),
-            provider.getProviderId(),
-            groveEntity.getSeedlingProviderInstanceId(),
-            groveEntity.getSeedlingState() != null
-                ? PlotState.valueOf(groveEntity.getSeedlingState().name()) : null,
-            groveEntity.getPlantedAt(),
-            null,
-            groveEntity.getSeedlingIpAddress(),
-            groveEntity.getSeedlingSshPort() != null ? groveEntity.getSeedlingSshPort() : 22,
-            List.of(),
-            new VmSpec(
-                groveEntity.getSeedlingCpuCores() != null ? groveEntity.getSeedlingCpuCores() : 0,
-                groveEntity.getSeedlingMemoryMb() != null ? groveEntity.getSeedlingMemoryMb() : 0,
-                groveEntity.getSeedlingDiskGb() != null ? groveEntity.getSeedlingDiskGb() : 0,
-                null,
-                null)
-        );
+        Plot plot = groveEntity.plot();
         return provider.vine(plot).commands();
     }
 }

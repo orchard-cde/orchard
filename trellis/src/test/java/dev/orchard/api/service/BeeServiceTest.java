@@ -25,6 +25,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -118,11 +119,13 @@ class BeeServiceTest {
     }
 
     @Test
-    void commandRunnerFor_nullPortAndState_buildsVmPlotOnPort22() {
+    void commandRunnerFor_passesThePersistedPlotToTheVine() {
         GroveEntity groveEntity = mock(GroveEntity.class);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
-        when(groveEntity.getSeedlingSshPort()).thenReturn(null);
+        VmPlot persisted = new VmPlot(UUID.randomUUID(), groveId, "qemu", "vm-1", PlotState.SAPLING,
+            Instant.now(), Instant.now(), "10.0.0.5", 2222, List.of(), VmSpec.small());
+        when(groveEntity.plot()).thenReturn(persisted);
         setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
@@ -139,9 +142,8 @@ class BeeServiceTest {
 
         ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
         verify(provider).vine(plotCaptor.capture());
-        VmPlot plot = (VmPlot) plotCaptor.getValue();
-        assertThat(plot.sshPort()).isEqualTo(22);
-        assertThat(plot.state()).isNull();
+        assertThat(plotCaptor.getValue()).isEqualTo(persisted);
+        assertThat(((VmPlot) plotCaptor.getValue()).sshPort()).isEqualTo(2222);
     }
 
     @Test

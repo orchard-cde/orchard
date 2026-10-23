@@ -3,7 +3,6 @@ package dev.orchard.api.service;
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
-import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
@@ -108,8 +107,8 @@ class GroveServiceTest {
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
-            assertThat(result.seedling()).isNotNull();
-            assertThat(result.seedling().spec()).isEqualTo(VmSpec.small());
+            assertThat(result.plot()).isNotNull();
+            assertThat(((VmPlot) result.plot()).spec()).isEqualTo(VmSpec.small());
         }
     }
 
@@ -121,7 +120,7 @@ class GroveServiceTest {
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
-            assertThat(result.seedling().spec()).isEqualTo(VmSpec.medium());
+            assertThat(((VmPlot) result.plot()).spec()).isEqualTo(VmSpec.medium());
         }
     }
 
@@ -133,7 +132,7 @@ class GroveServiceTest {
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
-            assertThat(result.seedling().spec()).isEqualTo(VmSpec.large());
+            assertThat(((VmPlot) result.plot()).spec()).isEqualTo(VmSpec.large());
         }
     }
 
@@ -170,22 +169,6 @@ class GroveServiceTest {
     }
 
     @Test
-    void getGrove_legacyRowWithNullResources_fallsBackToTheSmallTier() {
-        UUID groveId = UUID.randomUUID();
-        GroveEntity entity = mock(GroveEntity.class);
-        when(entity.getId()).thenReturn(groveId);
-        when(entity.getSeedlingId()).thenReturn(UUID.randomUUID());
-        when(entity.getSeedlingCpuCores()).thenReturn(null);
-        when(entity.getSeedlingMemoryMb()).thenReturn(null);
-        when(entity.getSeedlingDiskGb()).thenReturn(null);
-        when(groveRepository.findById(groveId)).thenReturn(Optional.of(entity));
-
-        Grove grove = groveService.getGrove(groveId).orElseThrow();
-
-        assertThat(grove.seedling().spec()).isEqualTo(new VmSpec(2, 4096, 20, "small", null));
-    }
-
-    @Test
     void plantGrove_callsEnsureCultivator() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
@@ -213,16 +196,16 @@ class GroveServiceTest {
     }
 
     @Test
-    void plantGrove_createsSeedlingInGerminatingState() {
+    void plantGrove_createsPlotInGerminatingState() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             UUID cultivatorId = UUID.randomUUID();
             var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null, null);
 
             Grove result = groveService.plantGrove(cultivatorId, request);
 
-            assertThat(result.seedling()).isNotNull();
-            assertThat(result.seedling().state()).isEqualTo(SeedlingState.GERMINATING);
-            assertThat(result.seedling().groveId()).isEqualTo(result.id());
+            assertThat(result.plot()).isNotNull();
+            assertThat(result.plot().state()).isEqualTo(PlotState.GERMINATING);
+            assertThat(result.plot().groveId()).isEqualTo(result.id());
         }
     }
 
@@ -231,7 +214,7 @@ class GroveServiceTest {
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
         GroveEntity entity = GroveEntity.fromModel(
-            Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+            withGerminatingPlot(Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main"))
                 .withState(GroveState.PLANTING)
         );
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(entity));
@@ -253,7 +236,7 @@ class GroveServiceTest {
     void getGrovesForCultivator_excludesClearedByDefault() {
         UUID cultivatorId = UUID.randomUUID();
         GroveEntity entity = GroveEntity.fromModel(
-            Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+            withGerminatingPlot(Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main"))
         );
         when(groveRepository.findByCultivatorIdAndStateNotIn(cultivatorId, List.of(GroveState.CLEARED)))
             .thenReturn(List.of(entity));
@@ -270,10 +253,10 @@ class GroveServiceTest {
     void getGrovesForCultivator_includesClearedWhenRequested() {
         UUID cultivatorId = UUID.randomUUID();
         GroveEntity activeEntity = GroveEntity.fromModel(
-            Grove.plant(cultivatorId, "active", "https://github.com/user/repo", "main")
+            withGerminatingPlot(Grove.plant(cultivatorId, "active", "https://github.com/user/repo", "main"))
         );
         GroveEntity clearedEntity = GroveEntity.fromModel(
-            Grove.plant(cultivatorId, "cleared", "https://github.com/user/repo", "main")
+            withGerminatingPlot(Grove.plant(cultivatorId, "cleared", "https://github.com/user/repo", "main"))
                 .withState(GroveState.CLEARED)
         );
         when(groveRepository.findByCultivatorId(cultivatorId))
@@ -382,13 +365,13 @@ class GroveServiceTest {
             .isEqualTo(GroveService.CloudInitStatus.IN_PROGRESS);
     }
 
-    // provisionGrove: registered SSH keys baked into the seedling
+    // provisionGrove: registered SSH keys baked into the VM plot
 
     @Test
-    void provisionGrove_attachesRegisteredKeysToSeedlingBeforePlanting() {
+    void provisionGrove_attachesRegisteredKeysToPlotBeforePlanting() {
         UUID cultivatorId = UUID.randomUUID();
         Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-            .withSeedling(Seedling.germinate(UUID.randomUUID(), VmSpec.small()));
+            .withPlot(VmPlot.germinate(UUID.randomUUID(), "p", SeedlingSpec.from(VmSpec.small())));
 
         SshPublicKey registered = SshPublicKey.register(cultivatorId, "laptop",
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINu3uCEBEcYqqjErEWRewbGZw8qrfWt/0inp+HfZR7MR test@orchard.dev");
@@ -398,10 +381,9 @@ class GroveServiceTest {
         lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.getDefault()).thenReturn(provider);
         ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
-        when(provider.getProviderId()).thenReturn("p");
         when(provider.plantSubstrate(plotCaptor.capture()))
             .thenReturn(CompletableFuture.completedFuture(
-                PlotBridge.toPlot(grove.seedling().withState(SeedlingState.BLIGHTED), "p")));
+                grove.plot().withState(PlotState.BLIGHTED)));
 
         groveService.provisionGrove(grove, SeedSpec.AUTO);
 
@@ -410,10 +392,10 @@ class GroveServiceTest {
     }
 
     @Test
-    void provisionGrove_withNoRegisteredKeys_plantsSeedlingWithoutKeys() {
+    void provisionGrove_withNoRegisteredKeys_plantsPlotWithoutKeys() {
         UUID cultivatorId = UUID.randomUUID();
         Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-            .withSeedling(Seedling.germinate(UUID.randomUUID(), VmSpec.small()));
+            .withPlot(VmPlot.germinate(UUID.randomUUID(), "p", SeedlingSpec.from(VmSpec.small())));
 
         when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of());
 
@@ -421,10 +403,9 @@ class GroveServiceTest {
         lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.getDefault()).thenReturn(provider);
         ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
-        when(provider.getProviderId()).thenReturn("p");
         when(provider.plantSubstrate(plotCaptor.capture()))
             .thenReturn(CompletableFuture.completedFuture(
-                PlotBridge.toPlot(grove.seedling().withState(SeedlingState.BLIGHTED), "p")));
+                grove.plot().withState(PlotState.BLIGHTED)));
 
         groveService.provisionGrove(grove, SeedSpec.AUTO);
 
@@ -450,8 +431,8 @@ class GroveServiceTest {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.DORMANT)
-                .withSeedling(new Seedling(UUID.randomUUID(), null, null, null, 22,
-                    SeedlingState.WITHERED, VmSpec.small(), null, null));
+                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.WITHERED,
+                    null, null, null, 22, List.of(), VmSpec.small()));
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(GroveEntity.fromModel(grove)));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
             when(providerRegistry.getDefault())
@@ -471,8 +452,8 @@ class GroveServiceTest {
             UUID cultivatorId = UUID.randomUUID();
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.GROWING)
-                .withSeedling(new Seedling(UUID.randomUUID(), null, null, "127.0.0.1", 22,
-                    SeedlingState.SAPLING, VmSpec.small(), null, null));
+                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.SAPLING,
+                    null, null, "127.0.0.1", 22, List.of(), VmSpec.small()));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -493,8 +474,8 @@ class GroveServiceTest {
             UUID cultivatorId = UUID.randomUUID();
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.FLOURISHING)
-                .withSeedling(new Seedling(UUID.randomUUID(), null, null, "127.0.0.1", 22,
-                    SeedlingState.SAPLING, VmSpec.small(), null, null));
+                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.SAPLING,
+                    null, null, "127.0.0.1", 22, List.of(), VmSpec.small()));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -509,7 +490,7 @@ class GroveServiceTest {
     @Test
     void stopGrove_plantingGrove_returnsUnchanged() {
         UUID cultivatorId = UUID.randomUUID();
-        Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+        Grove grove = withGerminatingPlot(Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main"))
             .withState(GroveState.PLANTING);
         GroveEntity entity = GroveEntity.fromModel(grove);
         when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
@@ -535,8 +516,8 @@ class GroveServiceTest {
             UUID cultivatorId = UUID.randomUUID();
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.DORMANT)
-                .withSeedling(new Seedling(UUID.randomUUID(), null, null, null, 22,
-                    SeedlingState.WITHERED, VmSpec.small(), null, null));
+                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.WITHERED,
+                    null, null, null, 22, List.of(), VmSpec.small()));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
@@ -545,15 +526,15 @@ class GroveServiceTest {
 
             assertThat(result).isPresent();
             assertThat(result.get().state()).isEqualTo(GroveState.PLANTING);
-            assertThat(result.get().seedling()).isNotNull();
-            assertThat(result.get().seedling().state()).isEqualTo(SeedlingState.GERMINATING);
+            assertThat(result.get().plot()).isNotNull();
+            assertThat(result.get().plot().state()).isEqualTo(PlotState.GERMINATING);
         }
     }
 
     @Test
     void startGrove_growingGrove_returnsUnchanged() {
         UUID cultivatorId = UUID.randomUUID();
-        Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
+        Grove grove = withGerminatingPlot(Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main"))
             .withState(GroveState.GROWING);
         GroveEntity entity = GroveEntity.fromModel(grove);
         when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
@@ -576,7 +557,7 @@ class GroveServiceTest {
 
     @Test
     void clearGrove_clearingGrove_rejectedWithoutTeardown() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
 
@@ -588,7 +569,7 @@ class GroveServiceTest {
 
     @Test
     void clearGrove_clearedGrove_isNoOp() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARED);
         when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
 
@@ -601,7 +582,7 @@ class GroveServiceTest {
     @Test
     void clearGrove_orphanedGrove_acceptedAndProceeds() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
-            Grove grove = groveWithSeedling();
+            Grove grove = groveWithPlot();
             GroveEntity entity = entityFor(grove, GroveState.ORPHANED);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
 
@@ -615,15 +596,18 @@ class GroveServiceTest {
     }
 
     /**
-     * Seedling has NO ip address on purpose: the socket probe in compostFruitsIfReachable is
+     * The plot has NO host on purpose: the socket probe in compostFruitsIfReachable is
      * skipped, so these tests do no network I/O.
      */
-    private Grove groveWithSeedling() {
+    private Grove groveWithPlot() {
         Grove grove = Grove.plant(
             UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");
-        Seedling seedling = Seedling
-            .germinate(grove.id(), new VmSpec(2, 4096, 20, "small", null));
-        return grove.withSeedling(seedling);
+        return grove.withPlot(VmPlot.germinate(grove.id(), "test-default",
+            SeedlingSpec.from(new VmSpec(2, 4096, 20, "small", null))));
+    }
+
+    private static Grove withGerminatingPlot(Grove grove) {
+        return grove.withPlot(VmPlot.germinate(grove.id(), "test-default", SeedlingSpec.from(VmSpec.small())));
     }
 
     private GroveEntity entityFor(Grove grove, GroveState state) {
@@ -632,7 +616,7 @@ class GroveServiceTest {
 
     @Test
     void tearDownAndRecord_marksOrphanedWhenUprootFails() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
@@ -656,7 +640,7 @@ class GroveServiceTest {
      */
     @Test
     void tearDownAndRecord_neverMarksClearedOnFailure() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
@@ -685,7 +669,7 @@ class GroveServiceTest {
      */
     @Test
     void tearDownAndRecord_retainsFruitRowsWhenTeardownFails() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
@@ -701,7 +685,7 @@ class GroveServiceTest {
 
     @Test
     void tearDownAndRecord_marksSuccessStateAndDeletesFruitWhenTeardownSucceeds() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
@@ -724,8 +708,8 @@ class GroveServiceTest {
     @Test
     void tearDownAndRecord_deletesOnlyCapturedFruitGeneration() {
         Seed seed = Seed.devcontainer().name("test").image("ubuntu").build();
-        Grove grove = groveWithSeedling();
-        Fruit fruit = Fruit.bud(grove.id(), grove.seedling().id(), seed);
+        Grove grove = groveWithPlot();
+        Fruit fruit = Fruit.bud(grove.id(), grove.plot().id(), seed);
         grove = grove.withFruit(fruit);
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
@@ -748,7 +732,7 @@ class GroveServiceTest {
      */
     @Test
     void tearDownAndRecord_doesNotReportOrphanedWhenOnlyBookkeepingFails() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
@@ -768,7 +752,7 @@ class GroveServiceTest {
      */
     @Test
     void tearDownAndRecord_uprootsBeforeDeletingFruitRows() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
@@ -784,7 +768,7 @@ class GroveServiceTest {
 
     @Test
     void tearDownAndRecord_marksOrphanedRatherThanDormantWhenStopTeardownFails() {
-        Grove grove = groveWithSeedling();
+        Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.DORMANT);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
@@ -808,7 +792,7 @@ class GroveServiceTest {
      */
     @Test
     void stopGrove_marksOrphanedAndRetainsFruitWhenTeardownFails() {
-        Grove grove = groveWithSeedling().withState(GroveState.FLOURISHING);
+        Grove grove = groveWithPlot().withState(GroveState.FLOURISHING);
         GroveEntity entity = entityFor(grove, GroveState.FLOURISHING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");

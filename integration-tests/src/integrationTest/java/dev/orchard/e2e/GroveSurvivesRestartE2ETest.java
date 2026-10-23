@@ -99,10 +99,10 @@ class GroveSurvivesRestartE2ETest {
 
         latestResponse = getGrove(groveId);
         assertThat(latestResponse).isNotNull();
-        assertThat(latestResponse.seedling()).isNotNull();
-        assertThat(latestResponse.seedling().sshPort()).isBetween(49200, 49299);
+        assertThat(latestResponse.plot()).isNotNull();
+        assertThat(latestResponse.plot().sshPort()).isBetween(49200, 49299);
 
-        verifySshConnection(latestResponse.seedling().sshPort());
+        verifySshConnection(latestResponse.plot().sshPort());
     }
 
     @Test
@@ -144,7 +144,7 @@ class GroveSurvivesRestartE2ETest {
 
         latestResponse = getGrove(groveId);
         assertThat(latestResponse).isNotNull();
-        verifySshConnection(latestResponse.seedling().sshPort());
+        verifySshConnection(latestResponse.plot().sshPort());
     }
 
     @Test
@@ -179,14 +179,14 @@ class GroveSurvivesRestartE2ETest {
             .as("Teardown reached a terminal state but it was ORPHANED, not CLEARED")
             .isEqualTo(GroveState.CLEARED);
 
-        UUID seedlingId = latestResponse.seedling().id();
-        Process pgrep = new ProcessBuilder("pgrep", "-f", "orchard-" + seedlingId.toString().substring(0, 8))
+        UUID plotId = latestResponse.plot().id();
+        Process pgrep = new ProcessBuilder("pgrep", "-f", "orchard-" + plotId.toString().substring(0, 8))
             .redirectErrorStream(true)
             .start();
         boolean finished = pgrep.waitFor(10, TimeUnit.SECONDS);
         assertThat(finished).as("pgrep should complete within 10 seconds").isTrue();
         assertThat(pgrep.exitValue())
-            .as("No orphaned QEMU process should remain for seedling %s", seedlingId)
+            .as("No orphaned QEMU process should remain for plot %s", plotId)
             .isNotZero();
     }
 

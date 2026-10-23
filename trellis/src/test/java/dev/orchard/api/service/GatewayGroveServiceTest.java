@@ -4,9 +4,10 @@ import dev.orchard.core.model.Cultivator;
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.GroveState;
 import dev.orchard.core.model.SeedSpec;
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.SshPublicKey;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,16 +41,16 @@ class GatewayGroveServiceTest {
     }
 
     private static Grove routableGrove(UUID groveId, UUID cultivatorId) {
-        Seedling seedling = new Seedling(
-            UUID.randomUUID(), groveId, "inst-1", "127.0.0.1", 22,
-            SeedlingState.SAPLING, VmSpec.small(), Instant.now(), Instant.now()
+        VmPlot plot = new VmPlot(
+            UUID.randomUUID(), groveId, "qemu", "inst-1", PlotState.SAPLING, Instant.now(), Instant.now(),
+            "127.0.0.1", 22, List.of(), VmSpec.small()
         );
         // Grove.plant() always mints its own random id, which would leave this grove's id
         // different from groveId (what the test queries getGrove(groveId) with) — construct
         // the record directly so route.get().groveId() actually equals groveId.
         return new Grove(
             groveId, cultivatorId, "demo", "https://github.com/org/demo", "main", null,
-            GroveState.FLOURISHING, SeedSpec.AUTO, seedling, List.of(), Instant.now(), Instant.now()
+            GroveState.FLOURISHING, SeedSpec.AUTO, plot, List.of(), Instant.now(), Instant.now()
         );
     }
 
@@ -82,7 +83,7 @@ class GatewayGroveServiceTest {
     }
 
     @Test
-    void resolveRoute_emptyWhenSeedlingMissing() {
+    void resolveRoute_emptyWhenPlotMissing() {
         UUID cultivatorId = UUID.randomUUID();
         Grove grove = Grove.plant(cultivatorId, "demo", "https://github.com/org/demo", "main")
             .withState(GroveState.PLANTING);
@@ -92,12 +93,12 @@ class GatewayGroveServiceTest {
     }
 
     @Test
-    void resolveRoute_emptyWhenSeedlingNotSapLing() {
+    void resolveRoute_emptyWhenPlotNotSapling() {
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
-        Seedling germinating = Seedling.germinate(groveId, VmSpec.small());
+        VmPlot germinating = VmPlot.germinate(groveId, "qemu", SeedlingSpec.from(VmSpec.small()));
         Grove grove = Grove.plant(cultivatorId, "demo", "https://github.com/org/demo", "main")
-            .withSeedling(germinating)
+            .withPlot(germinating)
             .withState(GroveState.GROWING);
         when(groveService.getGrove(groveId)).thenReturn(Optional.of(grove));
 

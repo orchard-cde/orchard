@@ -4,7 +4,8 @@ import dev.orchard.api.dto.GatewayGroveResponse;
 import dev.orchard.api.dto.GatewayKeyResponse;
 import dev.orchard.core.model.Cultivator;
 import dev.orchard.core.model.Grove;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmPlot;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -65,18 +66,18 @@ public class GatewayGroveService {
     }
 
     private boolean isRoutable(Grove grove) {
-        return grove.seedling() != null
-            && grove.seedling().ipAddress() != null
-            && grove.seedling().state() == SeedlingState.SAPLING;
+        return grove.plot() instanceof VmPlot vm
+            && vm.host() != null
+            && vm.state() == PlotState.SAPLING;
     }
 
     private GatewayGroveResponse toResponse(Grove grove) {
-        var seedling = grove.seedling();
+        var vm = (VmPlot) grove.plot();
         return new GatewayGroveResponse(
             grove.id(),
             grove.cultivatorId(),
-            seedling.ipAddress(),
-            seedling.sshPort(),
+            vm.host(),
+            vm.sshPort(),
             grove.state().name()
         );
     }
