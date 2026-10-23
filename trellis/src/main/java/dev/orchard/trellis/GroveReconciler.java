@@ -1,7 +1,9 @@
 package dev.orchard.trellis;
 
 import dev.orchard.core.model.GroveState;
-import dev.orchard.core.model.VmPlot;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.GroveRepository;
 import org.slf4j.Logger;
@@ -10,9 +12,6 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,12 +19,13 @@ import java.util.List;
 public class GroveReconciler implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(GroveReconciler.class);
-    private static final int LIVENESS_TIMEOUT_MS = 3000;
 
     private final GroveRepository groveRepository;
+    private final ProviderRegistry registry;
 
-    public GroveReconciler(GroveRepository groveRepository) {
+    public GroveReconciler(GroveRepository groveRepository, ProviderRegistry registry) {
         this.groveRepository = groveRepository;
+        this.registry = registry;
     }
 
     @Override
@@ -89,15 +89,14 @@ public class GroveReconciler implements ApplicationRunner {
     }
 
     private boolean isReachable(GroveEntity grove) {
-        if (!(grove.plot() instanceof VmPlot vm) || vm.host() == null) {
-            log.warn("Grove '{}' [{}] has no VM plot address — treating as unreachable",
-                    grove.getName(), grove.getId());
-            return false;
-        }
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(vm.host(), vm.sshPort()), LIVENESS_TIMEOUT_MS);
-            return true;
-        } catch (IOException e) {
+        String providerId = null;
+        try {
+            Plot plot = grove.plot();
+            providerId = plot.providerId();
+            return registry.require(providerId).inspect(plot).join().state() == PlotState.SAPLING;
+        } catch (Exception e) {
+            log.error("Grove '{}' [{}] liveness inspection failed (provider '{}') — treating as unreachable",
+                    grove.getName(), grove.getId(), providerId, e);
             return false;
         }
     }
