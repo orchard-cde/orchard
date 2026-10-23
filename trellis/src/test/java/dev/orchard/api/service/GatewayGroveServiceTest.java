@@ -1,9 +1,13 @@
 package dev.orchard.api.service;
 
+import dev.orchard.core.model.ContainerPlot;
+import dev.orchard.core.model.ContainerRuntime;
+import dev.orchard.core.model.ContainerSpec;
 import dev.orchard.core.model.Cultivator;
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.GroveState;
 import dev.orchard.core.model.SeedSpec;
+import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.SshPublicKey;
@@ -69,9 +73,64 @@ class GatewayGroveServiceTest {
         assertThat(route).isPresent();
         assertThat(route.get().groveId()).isEqualTo(groveId);
         assertThat(route.get().cultivatorId()).isEqualTo(cultivatorId);
-        assertThat(route.get().seedlingIp()).isEqualTo("127.0.0.1");
-        assertThat(route.get().seedlingPort()).isEqualTo(22);
+        assertThat(route.get().host()).isEqualTo("127.0.0.1");
+        assertThat(route.get().sshPort()).isEqualTo(22);
         assertThat(route.get().state()).isEqualTo("FLOURISHING");
+    }
+
+    @Test
+    void resolveRoute_mapsHostAndSshPort() {
+        UUID groveId = UUID.randomUUID();
+        when(groveService.getGrove(groveId)).thenReturn(Optional.of(routableGrove(groveId, UUID.randomUUID())));
+
+        var route = service.resolveRoute(groveId).orElseThrow();
+
+        assertThat(route.host()).isEqualTo("127.0.0.1");
+        assertThat(route.sshPort()).isEqualTo(22);
+    }
+
+    private static Grove groveWith(GroveState state, Plot plot) {
+        UUID groveId = UUID.randomUUID();
+        return new Grove(
+            groveId, UUID.randomUUID(), "demo", "https://github.com/org/demo", "main", null,
+            state, SeedSpec.AUTO, plot, List.of(), Instant.now(), Instant.now()
+        );
+    }
+
+    private static VmPlot vmPlot(PlotState state, String host) {
+        return new VmPlot(
+            UUID.randomUUID(), UUID.randomUUID(), "qemu", "inst-1", state, Instant.now(), Instant.now(),
+            host, 22, List.of(), VmSpec.small()
+        );
+    }
+
+    @Test
+    void isRoutable_containerPlot_false() {
+        ContainerPlot container = new ContainerPlot(
+            UUID.randomUUID(), UUID.randomUUID(), "docker", "c-1", PlotState.SAPLING, Instant.now(), Instant.now(),
+            null, ContainerRuntime.DOCKER, new ContainerSpec(2, 2048)
+        );
+        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, container))).isFalse();
+    }
+
+    @Test
+    void isRoutable_dormantGroveWithSaplingVmPlot_false() {
+        assertThat(service.isRoutable(groveWith(GroveState.DORMANT, vmPlot(PlotState.SAPLING, "127.0.0.1")))).isFalse();
+    }
+
+    @Test
+    void isRoutable_flourishingSaplingVmPlotWithHost_true() {
+        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, vmPlot(PlotState.SAPLING, "127.0.0.1")))).isTrue();
+    }
+
+    @Test
+    void isRoutable_flourishingWitheredVmPlot_false() {
+        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, vmPlot(PlotState.WITHERED, "127.0.0.1")))).isFalse();
+    }
+
+    @Test
+    void isRoutable_flourishingNullHost_false() {
+        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, vmPlot(PlotState.SAPLING, null)))).isFalse();
     }
 
     @Test

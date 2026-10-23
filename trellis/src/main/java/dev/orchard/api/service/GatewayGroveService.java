@@ -4,6 +4,7 @@ import dev.orchard.api.dto.GatewayGroveResponse;
 import dev.orchard.api.dto.GatewayKeyResponse;
 import dev.orchard.core.model.Cultivator;
 import dev.orchard.core.model.Grove;
+import dev.orchard.core.model.GroveState;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmPlot;
 import org.springframework.stereotype.Service;
@@ -14,7 +15,7 @@ import java.util.UUID;
 
 /**
  * Internal API consumed by the SSH gateway (dev.orchard.gateway). A grove is
- * routable only when its seedling is running (SAPLING) with an IP/port.
+ * routable only when it is FLOURISHING and its VM plot is running (SAPLING) with a host.
  */
 @Service
 public class GatewayGroveService {
@@ -30,7 +31,7 @@ public class GatewayGroveService {
         this.cultivatorService = cultivatorService;
     }
 
-    /** Returns the route for a grove whose seedling is running (routable), if any. */
+    /** Returns the route for a grove that is routable, if any. */
     public Optional<GatewayGroveResponse> resolveRoute(UUID groveId) {
         return groveService.getGrove(groveId)
             .filter(this::isRoutable)
@@ -65,14 +66,17 @@ public class GatewayGroveService {
         return route;
     }
 
-    private boolean isRoutable(Grove grove) {
-        return grove.plot() instanceof VmPlot vm
+    boolean isRoutable(Grove grove) {
+        return grove.state() == GroveState.FLOURISHING
+            && grove.plot() instanceof VmPlot vm
             && vm.host() != null
             && vm.state() == PlotState.SAPLING;
     }
 
     private GatewayGroveResponse toResponse(Grove grove) {
-        var vm = (VmPlot) grove.plot();
+        if (!(grove.plot() instanceof VmPlot vm)) {
+            throw new IllegalStateException("Grove " + grove.id() + " has no VM plot to route to");
+        }
         return new GatewayGroveResponse(
             grove.id(),
             grove.cultivatorId(),

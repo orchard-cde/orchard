@@ -361,7 +361,7 @@ class RelayIntegrationTest {
      * probe {@link KeyAuthenticator} more than once per auth attempt.
      */
     private static HttpServer startTrellisStub(
-            UUID groveId, UUID cultivatorId, int seedlingPort, String clientWireLine, String clientFingerprint) throws Exception {
+            UUID groveId, UUID cultivatorId, int sshPort, String clientWireLine, String clientFingerprint) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 
         server.createContext("/oauth2/token", exchange -> {
@@ -370,9 +370,9 @@ class RelayIntegrationTest {
             sendJson(exchange, 200, body);
         });
 
-        String groveJson = ("{\"groveId\":\"%s\",\"cultivatorId\":\"%s\",\"seedlingIp\":\"127.0.0.1\","
-                + "\"seedlingPort\":%d,\"state\":\"FLOURISHING\"}")
-                .formatted(groveId, cultivatorId, seedlingPort);
+        String groveJson = ("{\"groveId\":\"%s\",\"cultivatorId\":\"%s\",\"host\":\"127.0.0.1\","
+                + "\"sshPort\":%d,\"state\":\"FLOURISHING\"}")
+                .formatted(groveId, cultivatorId, sshPort);
         server.createContext("/api/gateway/groves/" + groveId, exchange -> {
             exchange.getRequestBody().readAllBytes();
             sendJson(exchange, 200, groveJson);
