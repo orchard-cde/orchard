@@ -277,7 +277,7 @@ public class OrchardClient {
         String commitSha,
         String state,
         String sshConnectionString,
-        SeedlingInfo seedling,
+        PlotInfo plot,
         List<FruitInfo> fruits,
         String plantedAt,
         String lastAccessedAt
@@ -288,7 +288,18 @@ public class OrchardClient {
         }
     }
 
-    public record SeedlingInfo(UUID id, String state, String ipAddress, int sshPort, int cpuCores, int memoryMb, int diskGb) {}
+    public record PlotInfo(
+        String kind,
+        UUID id,
+        String state,
+        String providerId,
+        String host,
+        Integer sshPort,
+        Integer cpuCores,
+        Integer memoryMb,
+        Integer diskGb,
+        String runtime
+    ) {}
     public record FruitInfo(UUID id, String state, String containerId, String containerName, String serviceName) {}
     public record HealthResponse(String status, String name, String version) {}
     public record CultivatorResponse(String id, String email, String displayName) {}

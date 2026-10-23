@@ -10,6 +10,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -323,6 +324,25 @@ public class GroveCommand implements Callable<Integer> {
         }
     }
 
+    private static void printPlot(OrchardClient.PlotInfo plot) {
+        System.out.println();
+        boolean vm = "VM".equals(plot.kind());
+        System.out.println(vm ? "  Plot (VM):" : "  Plot (container):");
+        System.out.println("    State:     " + plot.state());
+        if (vm) {
+            System.out.println("    Host:      " + plot.host() + ":" + plot.sshPort());
+        } else if (plot.runtime() != null) {
+            System.out.println("    Runtime:   " + plot.runtime());
+        }
+        var resources = new ArrayList<String>();
+        if (plot.cpuCores() != null) resources.add(plot.cpuCores() + " CPU");
+        if (plot.memoryMb() != null) resources.add(plot.memoryMb() + " MB RAM");
+        if (plot.diskGb() != null) resources.add(plot.diskGb() + " GB disk");
+        if (!resources.isEmpty()) {
+            System.out.println("    Resources: " + String.join(", ", resources));
+        }
+    }
+
     private static void printGrove(GroveResponse grove) {
         System.out.println();
         System.out.println("Grove: " + grove.name());
@@ -336,14 +356,8 @@ public class GroveCommand implements Callable<Integer> {
         }
         System.out.println("  Planted:     " + grove.plantedAt());
 
-        if (grove.seedling() != null) {
-            System.out.println();
-            System.out.println("  Plot (VM):");
-            System.out.println("    State:     " + grove.seedling().state());
-            System.out.println("    IP:        " + grove.seedling().ipAddress());
-            System.out.println("    SSH Port:  " + grove.seedling().sshPort());
-            System.out.println("    Resources: " + grove.seedling().cpuCores() + " CPU, " +
-                grove.seedling().memoryMb() + " MB RAM, " + grove.seedling().diskGb() + " GB disk");
+        if (grove.plot() != null) {
+            printPlot(grove.plot());
         }
 
         if (grove.fruits() != null && !grove.fruits().isEmpty()) {

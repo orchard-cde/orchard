@@ -82,16 +82,53 @@ class OrchardClientTest {
     }
 
     @Test
-    void plantGrove_deserializesSeedlingAndFruits() throws Exception {
+    void deserializesContainerPlotWithNullInts() throws Exception {
+        server.createContext("/api/groves", exchange -> respond(exchange, 201, """
+            {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "name": "c-grove",
+              "repositoryUrl": "https://github.com/test/repo",
+              "branch": "main",
+              "state": "FLOURISHING",
+              "plot": {
+                "kind": "CONTAINER",
+                "id": "22222222-2222-2222-2222-222222222222",
+                "state": "FLOURISHING",
+                "providerId": "docker",
+                "host": null,
+                "sshPort": null,
+                "cpuCores": null,
+                "memoryMb": 512,
+                "diskGb": null,
+                "runtime": "docker"
+              },
+              "fruits": []
+            }
+            """));
+
+        GroveResponse grove = client.plantGrove("https://github.com/test/repo", "main", "c-grove", "small", "auto");
+
+        assertThat(grove.plot().kind()).isEqualTo("CONTAINER");
+        assertThat(grove.plot().runtime()).isEqualTo("docker");
+        assertThat(grove.plot().host()).isNull();
+        assertThat(grove.plot().sshPort()).isNull();
+        assertThat(grove.plot().cpuCores()).isNull();
+        assertThat(grove.plot().diskGb()).isNull();
+        assertThat(grove.plot().memoryMb()).isEqualTo(512);
+    }
+
+    @Test
+    void plantGrove_deserializesPlotAndFruits() throws Exception {
         server.createContext("/api/groves", exchange -> respond(exchange, 201, GROVE_JSON));
 
         GroveResponse grove = client.plantGrove("https://github.com/test/repo", "main", "my-grove", "small", "auto");
 
-        assertThat(grove.seedling()).isNotNull();
-        assertThat(grove.seedling().ipAddress()).isEqualTo("192.168.1.100");
-        assertThat(grove.seedling().sshPort()).isEqualTo(22);
-        assertThat(grove.seedling().cpuCores()).isEqualTo(2);
-        assertThat(grove.seedling().memoryMb()).isEqualTo(4096);
+        assertThat(grove.plot()).isNotNull();
+        assertThat(grove.plot().kind()).isEqualTo("VM");
+        assertThat(grove.plot().host()).isEqualTo("192.168.1.100");
+        assertThat(grove.plot().sshPort()).isEqualTo(22);
+        assertThat(grove.plot().cpuCores()).isEqualTo(2);
+        assertThat(grove.plot().memoryMb()).isEqualTo(4096);
 
         assertThat(grove.fruits()).hasSize(1);
         assertThat(grove.fruits().getFirst().containerName()).isEqualTo("devcontainer");
@@ -572,14 +609,17 @@ class OrchardClientTest {
           "commitSha": "abc123",
           "state": "PLANTING",
           "sshConnectionString": "ssh user@192.168.1.100",
-          "seedling": {
+          "plot": {
+            "kind": "VM",
             "id": "22222222-2222-2222-2222-222222222222",
-            "state": "SPROUTING",
-            "ipAddress": "192.168.1.100",
+            "state": "FLOURISHING",
+            "providerId": "qemu",
+            "host": "192.168.1.100",
             "sshPort": 22,
             "cpuCores": 2,
             "memoryMb": 4096,
-            "diskGb": 50
+            "diskGb": 50,
+            "runtime": null
           },
           "fruits": [
             {
