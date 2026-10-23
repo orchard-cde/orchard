@@ -133,7 +133,7 @@ public class GroveService {
                 plotToPlant = vm.withAuthorizedKeys(registeredKeys);
             }
 
-            GroveProvider provider = providerRegistry.getDefault();
+            GroveProvider provider = providerRegistry.require(grove.plot().providerId());
             Plot plantedPlot = provider.plantSubstrate(plotToPlant).join();
             grove = grove.withPlot(plantedPlot);
             grove = grove.withState(GroveState.GROWING);
@@ -146,26 +146,26 @@ public class GroveService {
             }
 
             // Wait for cloud-init to finish (installs docker, git, node, devcontainer CLI, etc.)
-            waitForCloudInit(plantedPlot);
+            waitForCloudInit(provider, plantedPlot);
 
             // Verify devcontainer CLI was installed by cloud-init's runcmd block
             provider.verifyDevcontainerCli(plantedPlot, devcontainerCliConfig.version());
 
-            String commitSha = cloneRepository(plantedPlot, grove.repositoryUrl(), grove.branch());
+            String commitSha = cloneRepository(provider, plantedPlot, grove.repositoryUrl(), grove.branch());
             if (commitSha != null) {
                 grove = grove.withCommit(commitSha);
                 updateGroveState(grove);
             }
 
             // Discover seed from the cloned repo, honoring the requested --spec precedence.
-            Seed seed = discoverSeed(plantedPlot, seedSpec);
+            Seed seed = discoverSeed(provider, plantedPlot, seedSpec);
 
             // Ensure a devcontainer.json exists in the workspace when using the devcontainer
             // path — when the repo has none, we fall back to a default Seed but devcontainer
             // up still needs the file on disk. No-op for devfile-based seeds.
-            ensureWorkspaceConfig(plantedPlot, seed);
+            ensureWorkspaceConfig(provider, plantedPlot, seed);
 
-            grove = provisionPrimaryFruit(grove, plantedPlot, seed);
+            grove = provisionPrimaryFruit(provider, grove, plantedPlot, seed);
 
             log.info("Grove {} is now {}", grove.id(), grove.state());
 
@@ -186,7 +186,7 @@ public class GroveService {
      *       devfile {@code container} component. The devcontainer CLI is not involved.</li>
      * </ul>
      */
-    private Grove provisionPrimaryFruit(Grove grove, Plot plot, Seed seed) {
+    private Grove provisionPrimaryFruit(GroveProvider provider, Grove grove, Plot plot, Seed seed) {
         String serviceName = switch (seed) {
             case DevcontainerSeed dc -> dc.dockerComposeFile() != null ? dc.service() : null;
             case DevfileSeed ignored -> null;
@@ -198,7 +198,6 @@ public class GroveService {
         saveFruits(grove.fruits());
         updateGroveState(grove);
 
-        GroveProvider provider = providerRegistry.getDefault();
         Fruit grownFruit = provider.growFruit(plot, fruit).join();
         grove = grove.withFruit(grownFruit);
         saveFruits(grove.fruits());
@@ -248,9 +247,8 @@ public class GroveService {
         return CloudInitStatus.DONE;
     }
 
-    private void waitForCloudInit(Plot plot) {
+    private void waitForCloudInit(GroveProvider provider, Plot plot) {
         log.info("Waiting for cloud-init to complete on plot {}", plot.id());
-        GroveProvider provider = providerRegistry.getDefault();
         CommandRunner ssh = provider.vine(plot).commands();
         int maxAttempts = 60; // up to ~5 minutes
         for (int i = 0; i < maxAttempts; i++) {
@@ -299,10 +297,9 @@ public class GroveService {
         }
     }
 
-    private String cloneRepository(Plot plot, String repoUrl, String branch) {
+    private String cloneRepository(GroveProvider provider, Plot plot, String repoUrl, String branch) {
         log.info("Cloning {} branch {} to plot {}", repoUrl, branch, plot.id());
         try {
-            GroveProvider provider = providerRegistry.getDefault();
             CommandRunner ssh = provider.vine(plot).commands();
             ssh.execute("mkdir -p /workspace");
             ssh.execute("git clone --branch %s --depth 1 %s /workspace".formatted(branch, repoUrl));
@@ -335,8 +332,7 @@ public class GroveService {
     private static final String DEFAULT_SEED_IMAGE = "mcr.microsoft.com/devcontainers/base:ubuntu";
     private static final List<String> DEFAULT_SEED_PORTS = List.of("8080", "3000");
 
-    private Seed discoverSeed(Plot plot, SeedSpec spec) {
-        GroveProvider provider = providerRegistry.getDefault();
+    private Seed discoverSeed(GroveProvider provider, Plot plot, SeedSpec spec) {
         CommandRunner ssh = provider.vine(plot).commands();
         return resolveSeed(spec, ssh::readFile, devcontainerParser, devfileParser);
     }
@@ -428,9 +424,9 @@ public class GroveService {
      *       the cloned repo), and the docker-direct grow path doesn't need a config file.</li>
      * </ul>
      */
-    private void ensureWorkspaceConfig(Plot plot, Seed seed) {
+    private void ensureWorkspaceConfig(GroveProvider provider, Plot plot, Seed seed) {
         switch (seed) {
-            case DevcontainerSeed dc -> ensureDevcontainerConfig(plot, dc);
+            case DevcontainerSeed dc -> ensureDevcontainerConfig(provider, plot, dc);
             case DevfileSeed ignored -> log.debug(
                 "Devfile-based seed — skipping devcontainer.json write on plot {}", plot.id());
             default -> log.warn("Unknown seed type {} — skipping workspace config write", seed.getClass().getSimpleName());
@@ -444,8 +440,7 @@ public class GroveService {
      * devcontainer.json so that {@code devcontainer up --workspace-folder /workspace}
      * does not fail with "Config not found".
      */
-    private void ensureDevcontainerConfig(Plot plot, DevcontainerSeed seed) {
-        GroveProvider provider = providerRegistry.getDefault();
+    private void ensureDevcontainerConfig(GroveProvider provider, Plot plot, DevcontainerSeed seed) {
         CommandRunner ssh = provider.vine(plot).commands();
         try {
             if (ssh.execute("test -f /workspace/.devcontainer/devcontainer.json && echo yes || echo no")
@@ -693,7 +688,7 @@ public class GroveService {
 
             log.info("Starting grove {}", groveId);
             Grove grove = entityToModel(entity);
-            grove = grove.withPlot(providerRegistry.getDefault()
+            grove = grove.withPlot(providerRegistry.require(grove.plot().providerId())
                 .reserve(grove.id(), SeedlingSpec.from(grove.plot())));
             grove = grove.withState(GroveState.PLANTING);
             updateGroveState(grove);

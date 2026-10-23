@@ -6,6 +6,8 @@ import dev.orchard.core.model.*;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
+import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.Vine;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.FruitRepository;
@@ -43,6 +45,7 @@ class GroveServiceTest {
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private SshPublicKeyService sshPublicKeyService;
     @Mock private GroveProvider defaultProvider;
+    @Mock private GroveProvider ownerProvider;
 
     private GroveService groveService;
 
@@ -54,6 +57,8 @@ class GroveServiceTest {
             cultivatorService, eventPublisher, sshPublicKeyService
         );
         lenient().when(providerRegistry.getDefault()).thenReturn(defaultProvider);
+        lenient().when(providerRegistry.require("test-default")).thenReturn(defaultProvider);
+        lenient().when(providerRegistry.require("owner")).thenReturn(ownerProvider);
         lenient().when(defaultProvider.getProviderId()).thenReturn("test-default");
         lenient().when(defaultProvider.sizes()).thenReturn(PlotSizes.DEFAULT);
         lenient().when(defaultProvider.reserve(any(), any())).thenAnswer(inv ->
@@ -368,6 +373,44 @@ class GroveServiceTest {
     // provisionGrove: registered SSH keys baked into the VM plot
 
     @Test
+    void plantGrove_reservesOnDefaultProvider() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            var request = new CreateGroveRequest("https://github.com/user/repo", "main", null, null, null);
+
+            Grove result = groveService.plantGrove(UUID.randomUUID(), request);
+
+            verify(defaultProvider).reserve(any(), any());
+            assertThat(result.plot().providerId()).isEqualTo("test-default");
+            ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+            verify(groveRepository).save(saved.capture());
+            assertThat(saved.getValue().plot().providerId()).isEqualTo("test-default");
+        }
+    }
+
+    @Test
+    void provisionGrove_dispatchesToPlotOwner() throws Exception {
+        Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
+            .withPlot(VmPlot.germinate(UUID.randomUUID(), "owner", SeedlingSpec.from(VmSpec.small())));
+        when(sshPublicKeyService.listForCultivator(any())).thenReturn(List.of());
+        Vine vine = mock(Vine.class);
+        CommandRunner runner = mock(CommandRunner.class);
+        when(ownerProvider.vine(any())).thenReturn(vine);
+        when(vine.commands()).thenReturn(runner);
+        when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
+            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.SAPLING)));
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv ->
+            CompletableFuture.completedFuture(((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+        when(runner.execute(any())).thenReturn("status: done", "abc123", "yes");
+
+        groveService.provisionGrove(grove, SeedSpec.AUTO);
+
+        verify(ownerProvider).plantSubstrate(any());
+        verify(ownerProvider, atLeastOnce()).vine(any());
+        verify(ownerProvider).growFruit(any(), any());
+        verifyNoInteractions(defaultProvider);
+    }
+
+    @Test
     void provisionGrove_attachesRegisteredKeysToPlotBeforePlanting() {
         UUID cultivatorId = UUID.randomUUID();
         Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
@@ -379,7 +422,7 @@ class GroveServiceTest {
 
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("p")).thenReturn(provider);
         ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
         when(provider.plantSubstrate(plotCaptor.capture()))
             .thenReturn(CompletableFuture.completedFuture(
@@ -401,7 +444,7 @@ class GroveServiceTest {
 
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("p")).thenReturn(provider);
         ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
         when(provider.plantSubstrate(plotCaptor.capture()))
             .thenReturn(CompletableFuture.completedFuture(
@@ -427,24 +470,42 @@ class GroveServiceTest {
     }
 
     @Test
-    void startGrove_noDefaultProvider_throwsAndDoesNotUpdate() {
+    void startGrove_unregisteredOwner_throwsIllegalState() {
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.DORMANT)
-                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.WITHERED,
+                .withPlot(new VmPlot(UUID.randomUUID(), null, "gone", null, PlotState.WITHERED,
                     null, null, null, 22, List.of(), VmSpec.small()));
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(GroveEntity.fromModel(grove)));
             when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
-            when(providerRegistry.getDefault())
-                .thenThrow(new IllegalStateException("No default grove provider configured"));
+            when(providerRegistry.require("gone"))
+                .thenThrow(new IllegalStateException("Provider 'gone' is not registered"));
 
             assertThatThrownBy(() -> groveService.startGrove(grove.id()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("No default grove provider configured");
+                .hasMessage("Provider 'gone' is not registered");
             verify(groveRepository, never()).save(any());
         }
     }
 
+    @Test
+    void startGrove_witheredPlot_reservesSameSizeOnOwningProvider() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
+                .withState(GroveState.DORMANT)
+                .withPlot(new VmPlot(UUID.randomUUID(), null, "owner", null, PlotState.WITHERED,
+                    null, null, null, 22, List.of(), new VmSpec(4, 8192, 40, "medium", null)));
+            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(GroveEntity.fromModel(grove)));
+            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+            when(ownerProvider.reserve(any(), any())).thenAnswer(inv ->
+                VmPlot.germinate(inv.getArgument(0), "owner", inv.getArgument(1)));
+
+            groveService.startGrove(grove.id());
+
+            verify(ownerProvider).reserve(grove.id(), new SeedlingSpec("medium", 4, 8192, 40, null));
+            verifyNoInteractions(defaultProvider);
+        }
+    }
 
     @Test
     void stopGrove_growingGrove_transitionsToDormant() {

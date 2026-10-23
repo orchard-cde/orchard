@@ -295,8 +295,8 @@ public class BeeService {
     }
 
     private CommandRunner commandRunnerFor(GroveEntity groveEntity) {
-        GroveProvider provider = providerRegistry.getDefault();
         Plot plot = groveEntity.plot();
+        GroveProvider provider = providerRegistry.require(plot.providerId());
         return provider.vine(plot).commands();
     }
 }
