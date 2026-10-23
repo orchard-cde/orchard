@@ -69,7 +69,7 @@ public class GroveEntity {
         entity.plantedAt = grove.plantedAt();
         entity.lastAccessedAt = grove.lastAccessedAt();
 
-        entity.plotJson = grove.plot() == null ? null : plotSerializer.serialize(grove.plot());
+        entity.setPlot(grove.plot());
 
         return entity;
     }

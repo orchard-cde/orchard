@@ -5,7 +5,6 @@ import dev.orchard.api.dto.GatewayKeyResponse;
 import dev.orchard.core.model.Cultivator;
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.GroveState;
-import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmPlot;
 import org.springframework.stereotype.Service;
 
@@ -34,8 +33,8 @@ public class GatewayGroveService {
     /** Returns the route for a grove that is routable, if any. */
     public Optional<GatewayGroveResponse> resolveRoute(UUID groveId) {
         return groveService.getGrove(groveId)
-            .filter(this::isRoutable)
-            .map(this::toResponse);
+            .filter(grove -> grove.state() == GroveState.FLOURISHING)
+            .flatMap(grove -> grove.sshReachableVm().map(vm -> toResponse(grove, vm)));
     }
 
     /** True when a grove with the given id exists (regardless of readiness). */
@@ -67,16 +66,10 @@ public class GatewayGroveService {
     }
 
     boolean isRoutable(Grove grove) {
-        return grove.state() == GroveState.FLOURISHING
-            && grove.plot() instanceof VmPlot vm
-            && vm.host() != null
-            && vm.state() == PlotState.SAPLING;
+        return grove.state() == GroveState.FLOURISHING && grove.sshReachableVm().isPresent();
     }
 
-    private GatewayGroveResponse toResponse(Grove grove) {
-        if (!(grove.plot() instanceof VmPlot vm)) {
-            throw new IllegalStateException("Grove " + grove.id() + " has no VM plot to route to");
-        }
+    private GatewayGroveResponse toResponse(Grove grove, VmPlot vm) {
         return new GatewayGroveResponse(
             grove.id(),
             grove.cultivatorId(),

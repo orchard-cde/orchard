@@ -76,7 +76,7 @@ public class BeeService {
 
         final Bee beeToProvision = bee;
         final BeeKeeper keeper = beeKeeper;
-        final CommandRunner runner = commandRunnerFor(groveEntity);
+        final CommandRunner runner = commandRunnerFor(groveEntity.plot());
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
@@ -299,15 +299,17 @@ public class BeeService {
     }
 
     private CommandRunner reachableRunnerFor(GroveEntity groveEntity) {
-        if (groveEntity.getState() != GroveState.FLOURISHING
-                || groveEntity.plot().state() != PlotState.SAPLING) {
+        if (groveEntity.getState() != GroveState.FLOURISHING) {
             return null;
         }
-        return commandRunnerFor(groveEntity);
+        Plot plot = groveEntity.plot();
+        if (plot.state() != PlotState.SAPLING) {
+            return null;
+        }
+        return commandRunnerFor(plot);
     }
 
-    private CommandRunner commandRunnerFor(GroveEntity groveEntity) {
-        Plot plot = groveEntity.plot();
+    private CommandRunner commandRunnerFor(Plot plot) {
         GroveProvider provider = providerRegistry.require(plot.providerId());
         return provider.vine(plot).commands();
     }

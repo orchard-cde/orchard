@@ -3,6 +3,7 @@ package dev.orchard.core.model;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -98,8 +99,15 @@ public record Grove(
             && fruits.stream().allMatch(Fruit::isReady);
     }
 
+    public Optional<VmPlot> sshReachableVm() {
+        return plot instanceof VmPlot vm && vm.host() != null && vm.state() == PlotState.SAPLING
+            ? Optional.of(vm)
+            : Optional.empty();
+    }
+
     public String getSshConnectionString() {
-        if (!(plot instanceof VmPlot vm) || vm.host() == null || vm.state() != PlotState.SAPLING) {
+        VmPlot vm = sshReachableVm().orElse(null);
+        if (vm == null) {
             return null;
         }
         String keyPath = resolveSshKeyPath();

@@ -421,7 +421,6 @@ class GroveServiceTest {
         when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of(registered));
 
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("p")).thenReturn(provider);
         ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
         when(provider.plantSubstrate(plotCaptor.capture()))
@@ -443,7 +442,6 @@ class GroveServiceTest {
         when(sshPublicKeyService.listForCultivator(cultivatorId)).thenReturn(List.of());
 
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("p")).thenReturn(provider);
         ArgumentCaptor<Plot> plotCaptor = ArgumentCaptor.forClass(Plot.class);
         when(provider.plantSubstrate(plotCaptor.capture()))
@@ -677,7 +675,6 @@ class GroveServiceTest {
         Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
@@ -701,7 +698,6 @@ class GroveServiceTest {
         Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
@@ -730,7 +726,6 @@ class GroveServiceTest {
         Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
@@ -746,7 +741,6 @@ class GroveServiceTest {
         Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
@@ -771,7 +765,6 @@ class GroveServiceTest {
         grove = grove.withFruit(fruit);
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
@@ -793,7 +786,6 @@ class GroveServiceTest {
         Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
         when(groveRepository.save(any())).thenThrow(new RuntimeException("db down"));
@@ -813,7 +805,6 @@ class GroveServiceTest {
         Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
@@ -829,7 +820,6 @@ class GroveServiceTest {
         Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.DORMANT);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
@@ -853,7 +843,6 @@ class GroveServiceTest {
         Grove grove = groveWithPlot().withState(GroveState.FLOURISHING);
         GroveEntity entity = entityFor(grove, GroveState.FLOURISHING);
         GroveProvider provider = mock(GroveProvider.class);
-        lenient().when(provider.getProviderId()).thenReturn("p");
         when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(

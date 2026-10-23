@@ -133,7 +133,7 @@ public class GroveService {
                 plotToPlant = vm.withAuthorizedKeys(registeredKeys);
             }
 
-            GroveProvider provider = providerRegistry.require(grove.plot().providerId());
+            GroveProvider provider = providerRegistry.require(plotToPlant.providerId());
             Plot plantedPlot = provider.plantSubstrate(plotToPlant).join();
             grove = grove.withPlot(plantedPlot);
             grove = grove.withState(GroveState.GROWING);
