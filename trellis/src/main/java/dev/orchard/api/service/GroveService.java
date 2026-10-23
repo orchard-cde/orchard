@@ -573,11 +573,10 @@ public class GroveService {
         // Phase 1 — release the substrate. A failure here may have left a resource behind, so
         // every record is retained and the grove is marked ORPHANED.
         try {
-            compostFruitsIfReachable(groveId, grove);
-
             if (grove.plot() != null) {
+                GroveProvider provider = providerRegistry.require(grove.plot().providerId());
+                compostFruitsIfReachable(groveId, grove, provider);
                 log.info("Uprooting plot {} for grove {}", grove.plot().id(), groveId);
-                GroveProvider provider = providerRegistry.getDefault();
                 provider.uproot(grove.plot()).join();
             }
         } catch (Exception e) {
@@ -600,6 +599,7 @@ public class GroveService {
                 entity.setState(successState);
                 groveRepository.save(entity);
             }
+            witherPlotIfUnchanged(groveId, grove.plot());
             // Only the generation captured when teardown began: re-querying at completion would
             // delete rows a subsequent startGrove created, since this runs asynchronously.
             List<UUID> capturedFruitIds = grove.fruits() == null ? List.of()
@@ -612,30 +612,40 @@ public class GroveService {
         }
     }
 
-    /**
-     * Best-effort container cleanup, gated on a raw socket probe.
-     *
-     * <p>The probe is a known defect carried forward deliberately: a substrate-aware reachability
-     * check obtained through the provider would be correct, but needs provider-owned inspection
-     * (#228). Do not opportunistically replace it here. A probe miss no
-     * longer masks an {@code uproot} failure.
-     */
-    private void compostFruitsIfReachable(UUID groveId, Grove grove) {
-        boolean vmReachable = false;
-        if (grove.plot() instanceof VmPlot vm && vm.host() != null) {
-            try (var socket = new java.net.Socket()) {
-                socket.connect(new java.net.InetSocketAddress(vm.host(), vm.sshPort()), 3000);
-                vmReachable = true;
-            } catch (java.io.IOException e) {
-                log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
-            }
+    /** Compare-and-set on the plot id: a concurrent startGrove may have replaced the plot. */
+    private void witherPlotIfUnchanged(UUID groveId, Plot tornDown) {
+        if (tornDown == null) {
+            return;
         }
-        if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
-            GroveProvider provider = providerRegistry.getDefault();
-            for (Fruit fruit : grove.fruits()) {
-                if (fruit.containerId() != null) {
-                    log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
+        groveRepository.findById(groveId)
+            .filter(fresh -> fresh.plot().id().equals(tornDown.id()))
+            .ifPresent(fresh -> {
+                fresh.setPlot(tornDown.withState(PlotState.WITHERED));
+                groveRepository.save(fresh);
+            });
+    }
+
+    /** Best-effort container cleanup, gated on provider inspection. */
+    private void compostFruitsIfReachable(UUID groveId, Grove grove, GroveProvider provider) {
+        if (grove.fruits() == null || grove.fruits().stream().noneMatch(f -> f.containerId() != null)) {
+            return;
+        }
+        try {
+            if (provider.inspect(grove.plot()).join().state() != PlotState.SAPLING) {
+                log.info("Plot not running for grove {} — skipping container cleanup", groveId);
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("Inspecting plot for grove {} failed — skipping container cleanup", groveId, e);
+            return;
+        }
+        for (Fruit fruit : grove.fruits()) {
+            if (fruit.containerId() != null) {
+                log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
+                try {
                     provider.compostFruit(grove.plot(), fruit).join();
+                } catch (Exception e) {
+                    log.warn("Composting fruit {} for grove {} failed — continuing", fruit.id(), groveId, e);
                 }
             }
         }

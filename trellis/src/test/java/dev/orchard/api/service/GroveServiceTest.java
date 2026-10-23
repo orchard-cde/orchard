@@ -657,8 +657,7 @@ class GroveServiceTest {
     }
 
     /**
-     * The plot has NO host on purpose: the socket probe in compostFruitsIfReachable is
-     * skipped, so these tests do no network I/O.
+     * The plot has NO host on purpose, so these tests do no network I/O.
      */
     private Grove groveWithPlot() {
         Grove grove = Grove.plant(
@@ -681,7 +680,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
@@ -705,7 +704,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
@@ -734,7 +733,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
@@ -750,7 +749,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
         groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
@@ -775,7 +774,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
         groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
@@ -797,7 +796,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
         when(groveRepository.save(any())).thenThrow(new RuntimeException("db down"));
 
@@ -817,7 +816,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
         groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
@@ -833,7 +832,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.DORMANT);
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
@@ -858,7 +857,7 @@ class GroveServiceTest {
         GroveProvider provider = mock(GroveProvider.class);
         lenient().when(provider.getProviderId()).thenReturn("p");
         when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
-        when(providerRegistry.getDefault()).thenReturn(provider);
+        when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
@@ -890,5 +889,113 @@ class GroveServiceTest {
             assertThat(atSave).contains(GroveState.ORPHANED);
             verify(fruitRepository, never()).deleteAllById(any());
         }
+    }
+
+    private Grove ownerGroveWithContainerFruits(String... containerIds) {
+        Grove grove = Grove.plant(UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");
+        grove = grove.withPlot(VmPlot.germinate(grove.id(), "owner", SeedlingSpec.from(VmSpec.small())));
+        Seed seed = Seed.devcontainer().name("test").image("ubuntu").build();
+        for (String containerId : containerIds) {
+            grove = grove.withFruit(Fruit.bud(grove.id(), grove.plot().id(), seed)
+                .withContainerDetails(containerId, List.of()));
+        }
+        return grove;
+    }
+
+    private static Plot sapling(Plot plot) {
+        return plot.withState(PlotState.SAPLING);
+    }
+
+    @Test
+    void tearDown_compostFailure_stillUproots() {
+        Grove grove = ownerGroveWithContainerFruits("c1", "c2");
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        List<GroveState> atSave = new java.util.concurrent.CopyOnWriteArrayList<>();
+        when(groveRepository.save(any())).thenAnswer(inv -> {
+            atSave.add(((GroveEntity) inv.getArgument(0)).getState());
+            return inv.getArgument(0);
+        });
+        when(ownerProvider.inspect(any())).thenReturn(
+            CompletableFuture.completedFuture(sapling(grove.plot())));
+        when(ownerProvider.compostFruit(any(), any())).thenAnswer(inv ->
+            "c1".equals(((Fruit) inv.getArgument(1)).containerId())
+                ? CompletableFuture.failedFuture(new IllegalStateException("sshd down"))
+                : CompletableFuture.completedFuture(null));
+        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        InOrder order = inOrder(ownerProvider);
+        order.verify(ownerProvider).compostFruit(any(), org.mockito.ArgumentMatchers.argThat(f -> "c1".equals(f.containerId())));
+        order.verify(ownerProvider).compostFruit(any(), org.mockito.ArgumentMatchers.argThat(f -> "c2".equals(f.containerId())));
+        order.verify(ownerProvider).uproot(any());
+        assertThat(atSave).contains(GroveState.CLEARED).doesNotContain(GroveState.ORPHANED);
+    }
+
+    @Test
+    void tearDown_inspectThrows_skipsCompostAndUproots() {
+        Grove grove = ownerGroveWithContainerFruits("c1");
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        when(ownerProvider.inspect(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("gone")));
+        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        verify(ownerProvider, never()).compostFruit(any(), any());
+        verify(ownerProvider).uproot(any());
+        assertThat(entity.getState()).isEqualTo(GroveState.CLEARED);
+    }
+
+    @Test
+    void tearDown_unregisteredOwner_marksOrphanedAndKeepsRow() {
+        Grove grove = ownerGroveWithContainerFruits("c1");
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        when(providerRegistry.require("owner")).thenThrow(new IllegalStateException("no provider"));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        assertThat(entity.getState()).isEqualTo(GroveState.ORPHANED);
+        verify(groveRepository).save(entity);
+        verify(fruitRepository, never()).deleteAllById(any());
+    }
+
+    @Test
+    void tearDown_success_persistsWitheredPlot() {
+        Grove grove = ownerGroveWithContainerFruits();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        GroveEntity fresh = entityFor(grove, GroveState.CLEARING);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(fresh));
+        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues()).contains(fresh);
+        assertThat(fresh.plot().state()).isEqualTo(PlotState.WITHERED);
+        assertThat(fresh.plot().id()).isEqualTo(grove.plot().id());
+    }
+
+    @Test
+    void tearDown_afterRestart_leavesNewPlotAlone() {
+        Grove grove = ownerGroveWithContainerFruits();
+        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
+        Plot newPlot = VmPlot.germinate(grove.id(), "owner", SeedlingSpec.from(VmSpec.small()));
+        GroveEntity fresh = entityFor(grove.withPlot(newPlot), GroveState.PLANTING);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(fresh));
+        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
+        List<PlotState> plotStatesAtSave = new java.util.concurrent.CopyOnWriteArrayList<>();
+        when(groveRepository.save(any())).thenAnswer(inv -> {
+            plotStatesAtSave.add(((GroveEntity) inv.getArgument(0)).plot().state());
+            return inv.getArgument(0);
+        });
+
+        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+
+        assertThat(plotStatesAtSave).doesNotContain(PlotState.WITHERED);
+        assertThat(fresh.plot()).isEqualTo(newPlot);
+        assertThat(fresh.plot().state()).isEqualTo(PlotState.GERMINATING);
+        assertThat(fresh.getState()).isEqualTo(GroveState.PLANTING);
     }
 }
