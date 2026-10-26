@@ -35,7 +35,7 @@ public class DevServerCommand implements Callable<Integer> {
     static final String DEV_GATEWAY_CLIENT_SECRET = "orchard-dev-gateway-secret";
 
     // The gateway's admin/actuator port (server.port), separate from its SSH port.
-    static final int GATEWAY_ADMIN_PORT = 8081;
+    static final int GATEWAY_ADMIN_PORT = 18081;
 
     @ParentCommand
     Trowel parent;
@@ -128,11 +128,11 @@ public class DevServerCommand implements Callable<Integer> {
         @Option(names = {"--verbose", "-v"}, description = "Enable debug logging")
         boolean verbose;
 
-        @Option(names = {"--port", "-p"}, description = "UI (browser) port (default: 7777)", defaultValue = "7777")
-        int port = 7777;
+        @Option(names = {"--port", "-p"}, description = "UI (browser) port (default: 17777)", defaultValue = "17777")
+        int port = 17777;
 
-        @Option(names = {"--core-port"}, description = "Orchard core API port (default: 7778)", defaultValue = "7778")
-        int corePort = 7778;
+        @Option(names = {"--core-port"}, description = "Orchard core API port (default: 17778)", defaultValue = "17778")
+        int corePort = 17778;
 
         @Option(names = {"--no-ui"}, description = "Start orchard core only, without the UI")
         boolean noUi;
@@ -143,14 +143,14 @@ public class DevServerCommand implements Callable<Integer> {
         @Option(names = {"--open"}, description = "Open the UI in your browser once it is ready")
         boolean open;
 
-        @Option(names = {"--fence-port"}, description = "Fence auth server port (default: 7779)", defaultValue = "7779")
-        int fencePort = 7779;
+        @Option(names = {"--fence-port"}, description = "Fence auth server port (default: 17779)", defaultValue = "17779")
+        int fencePort = 17779;
 
         @Option(names = {"--no-auth"}, description = "Start without the fence auth server (disables OAuth2)")
         boolean noAuth;
 
-        @Option(names = {"--gateway-ssh-port"}, description = "SSH gateway port (default: 2222)", defaultValue = "2222")
-        int gatewaySshPort = 2222;
+        @Option(names = {"--gateway-ssh-port"}, description = "SSH gateway port (default: 12222)", defaultValue = "12222")
+        int gatewaySshPort = 12222;
 
         @Option(names = {"--no-gateway"}, description = "Start without the SSH gateway")
         boolean noGateway;
@@ -737,13 +737,13 @@ public class DevServerCommand implements Callable<Integer> {
         } catch (Exception e) { return null; }
     }
 
-    static ServerInfo readServerInfo() { return readInfo(pidFile(), 7778); }
+    static ServerInfo readServerInfo() { return readInfo(pidFile(), 17778); }
 
-    static ServerInfo readUiInfo()     { return readInfo(uiPidFile(), 7777); }
+    static ServerInfo readUiInfo()     { return readInfo(uiPidFile(), 17777); }
 
-    static ServerInfo readFenceInfo()  { return readInfo(fencePidFile(), 7779); }
+    static ServerInfo readFenceInfo()  { return readInfo(fencePidFile(), 17779); }
 
-    static ServerInfo readGatewayInfo() { return readInfo(gatewayPidFile(), 2222); }
+    static ServerInfo readGatewayInfo() { return readInfo(gatewayPidFile(), 12222); }
 
     private static boolean isServerRunning() {
         ServerInfo info = readServerInfo();

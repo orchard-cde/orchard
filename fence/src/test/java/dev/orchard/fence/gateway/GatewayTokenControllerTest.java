@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(properties = {
         "fence.signing-key.path=${java.io.tmpdir}/fence-gateway-token-test/signing-key.jwk",
-        "fence.issuer=http://localhost:7779",
+        "fence.issuer=http://localhost:17779",
         "fence.client.client-id=orchard-ui",
         "fence.client.client-secret=test-secret",
         "fence.gateway-client.client-id=orchard-gateway",
@@ -51,7 +51,7 @@ class GatewayTokenControllerTest {
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
                 .subject(subject)
                 .claim("email", email)
-                .issuer("http://localhost:7779")
+                .issuer("http://localhost:17779")
                 .audience("orchard-ui")
                 .issueTime(new Date(nowSeconds * 1000))
                 .expirationTime(new Date((nowSeconds + 3600) * 1000))

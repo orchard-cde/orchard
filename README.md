@@ -43,16 +43,16 @@ docker compose up -d postgres
 # Build the project
 ./gradlew build -x test
 
-# Start the dev server — runs orchard core (:7778) + the Canopy UI BFF (:7777)
-trowel dev-server start        # open http://localhost:7777
-trowel dev-server start --no-ui  # core only on :7778 (API only, no UI)
+# Start the dev server — runs orchard core (:17778) + the Canopy UI BFF (:17777)
+trowel dev-server start        # open http://localhost:17777
+trowel dev-server start --no-ui  # core only on :17778 (API only, no UI)
 ```
 
 `trowel dev-server start` launches **two processes**:
 
-- **orchard-server** (core, API only) on port **7778**
-- **orchard-ui-backend** (Canopy UI BFF) on port **7777** — serves the Canopy UI and
-  reverse-proxies `/api/**` to core. Open **http://localhost:7777** in your browser.
+- **orchard-server** (core, API only) on port **17778**
+- **orchard-ui-backend** (Canopy UI BFF) on port **17777** — serves the Canopy UI and
+  reverse-proxies `/api/**` to core. Open **http://localhost:17777** in your browser.
 
 In dev mode, the UI auto-authenticates as the cultivator configured in your trowel config
 (`~/.orchard/config.toml`), so no localStorage setup is needed.
@@ -74,7 +74,7 @@ Next.js dev server for hot-reload instead:
 
 ```bash
 # In the sibling orchard-ui/ repository
-npm run dev   # Next.js on :3000, talks to the core API at http://localhost:7778
+npm run dev   # Next.js on :3000, talks to the core API at http://localhost:17778
 ```
 
 ### Using the CLI (Trowel)
@@ -244,7 +244,7 @@ orchard:
 active = "local"
 
 [targets.local]
-server = "http://localhost:7778"
+server = "http://localhost:17778"
 cultivator = "<your-uuid>"
 ```
 

@@ -34,18 +34,18 @@ class TokenAuthProviderTest {
 
     @Test
     void authorizationHeader_returnsBearerToken() throws Exception {
-        writeConfig("http://localhost:7779", "access-123", "refresh-abc", futureExpiry());
+        writeConfig("http://localhost:17779", "access-123", "refresh-abc", futureExpiry());
 
-        var provider = new TokenAuthProvider("access-123", "refresh-abc", futureExpiry(), "http://localhost:7779", "test-client-id");
+        var provider = new TokenAuthProvider("access-123", "refresh-abc", futureExpiry(), "http://localhost:17779", "test-client-id");
         assertThat(provider.authorizationHeader()).isEqualTo("Bearer access-123");
     }
 
     @Test
     void authorizationHeader_refreshesWhenExpired() throws Exception {
-        writeConfig("http://localhost:7779", "old-access", "old-refresh", pastExpiry());
+        writeConfig("http://localhost:17779", "old-access", "old-refresh", pastExpiry());
 
         var refreshCount = new AtomicInteger(0);
-        FenceClient fenceClient = new FenceClient("http://localhost:7779", "test-client-id") {
+        FenceClient fenceClient = new FenceClient("http://localhost:17779", "test-client-id") {
             @Override
             public TokenResponse refreshToken(String refreshToken) throws FenceAuthException {
                 refreshCount.incrementAndGet();
@@ -53,7 +53,7 @@ class TokenAuthProviderTest {
             }
         };
 
-        var provider = new TokenAuthProvider("old-access", "old-refresh", pastExpiry(), "http://localhost:7779", "test-client-id") {
+        var provider = new TokenAuthProvider("old-access", "old-refresh", pastExpiry(), "http://localhost:17779", "test-client-id") {
             @Override
             FenceClient createFenceClient() {
                 return fenceClient;
@@ -67,16 +67,16 @@ class TokenAuthProviderTest {
 
     @Test
     void authorizationHeader_persistsRefreshedTokens() throws Exception {
-        writeConfig("http://localhost:7779", "old-access", "old-refresh", pastExpiry());
+        writeConfig("http://localhost:17779", "old-access", "old-refresh", pastExpiry());
 
-        FenceClient fenceClient = new FenceClient("http://localhost:7779", "test-client-id") {
+        FenceClient fenceClient = new FenceClient("http://localhost:17779", "test-client-id") {
             @Override
             public TokenResponse refreshToken(String refreshToken) throws FenceAuthException {
                 return new TokenResponse("refreshed-access", "refreshed-refresh", "Bearer", 3600);
             }
         };
 
-        var provider = new TokenAuthProvider("old-access", "old-refresh", pastExpiry(), "http://localhost:7779", "test-client-id") {
+        var provider = new TokenAuthProvider("old-access", "old-refresh", pastExpiry(), "http://localhost:17779", "test-client-id") {
             @Override
             FenceClient createFenceClient() {
                 return fenceClient;
@@ -93,10 +93,10 @@ class TokenAuthProviderTest {
 
     @Test
     void authorizationHeader_doesNotRefreshWhenTokenIsValid() throws Exception {
-        writeConfig("http://localhost:7779", "valid-access", "valid-refresh", futureExpiry());
+        writeConfig("http://localhost:17779", "valid-access", "valid-refresh", futureExpiry());
 
         var refreshCount = new AtomicInteger(0);
-        FenceClient fenceClient = new FenceClient("http://localhost:7779", "test-client-id") {
+        FenceClient fenceClient = new FenceClient("http://localhost:17779", "test-client-id") {
             @Override
             public TokenResponse refreshToken(String refreshToken) throws FenceAuthException {
                 refreshCount.incrementAndGet();
@@ -104,7 +104,7 @@ class TokenAuthProviderTest {
             }
         };
 
-        var provider = new TokenAuthProvider("valid-access", "valid-refresh", futureExpiry(), "http://localhost:7779", "test-client-id") {
+        var provider = new TokenAuthProvider("valid-access", "valid-refresh", futureExpiry(), "http://localhost:17779", "test-client-id") {
             @Override
             FenceClient createFenceClient() {
                 return fenceClient;
@@ -118,16 +118,16 @@ class TokenAuthProviderTest {
 
     @Test
     void authorizationHeader_throwsRefreshTokenInvalidException_whenRefreshFails() throws Exception {
-        writeConfig("http://localhost:7779", "expired-access", "bad-refresh", pastExpiry());
+        writeConfig("http://localhost:17779", "expired-access", "bad-refresh", pastExpiry());
 
-        FenceClient fenceClient = new FenceClient("http://localhost:7779", "test-client-id") {
+        FenceClient fenceClient = new FenceClient("http://localhost:17779", "test-client-id") {
             @Override
             public TokenResponse refreshToken(String refreshToken) throws FenceAuthException {
                 throw new RefreshTokenInvalidException();
             }
         };
 
-        var provider = new TokenAuthProvider("expired-access", "bad-refresh", pastExpiry(), "http://localhost:7779", "test-client-id") {
+        var provider = new TokenAuthProvider("expired-access", "bad-refresh", pastExpiry(), "http://localhost:17779", "test-client-id") {
             @Override
             FenceClient createFenceClient() {
                 return fenceClient;
@@ -141,10 +141,10 @@ class TokenAuthProviderTest {
     @Test
     void authorizationHeader_refreshesWhenNearExpiry() throws Exception {
         long nearExpiry = (System.currentTimeMillis() / 1000) + 10; // 10 seconds from now (within 30s skew)
-        writeConfig("http://localhost:7779", "near-expiry-access", "near-expiry-refresh", nearExpiry);
+        writeConfig("http://localhost:17779", "near-expiry-access", "near-expiry-refresh", nearExpiry);
 
         var refreshCount = new AtomicInteger(0);
-        FenceClient fenceClient = new FenceClient("http://localhost:7779", "test-client-id") {
+        FenceClient fenceClient = new FenceClient("http://localhost:17779", "test-client-id") {
             @Override
             public TokenResponse refreshToken(String refreshToken) throws FenceAuthException {
                 refreshCount.incrementAndGet();
@@ -152,7 +152,7 @@ class TokenAuthProviderTest {
             }
         };
 
-        var provider = new TokenAuthProvider("near-expiry-access", "near-expiry-refresh", nearExpiry, "http://localhost:7779", "test-client-id") {
+        var provider = new TokenAuthProvider("near-expiry-access", "near-expiry-refresh", nearExpiry, "http://localhost:17779", "test-client-id") {
             @Override
             FenceClient createFenceClient() {
                 return fenceClient;
@@ -167,7 +167,7 @@ class TokenAuthProviderTest {
     private void writeConfig(String fenceServer, String accessToken, String refreshToken, long expiresAt) throws IOException {
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
         targets.put("local", new OrchardConfig.Target(
-            "http://localhost:7778",
+            "http://localhost:17778",
             "test-uuid",
             fenceServer,
             accessToken,

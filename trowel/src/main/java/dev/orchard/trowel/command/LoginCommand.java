@@ -127,7 +127,7 @@ public class LoginCommand implements Callable<Integer> {
         }
 
         OrchardConfig.Target existing = targets.get(activeName);
-        String server = existing != null ? existing.server() : "http://localhost:7778";
+        String server = existing != null ? existing.server() : "http://localhost:17778";
 
         long expiresAt = (System.currentTimeMillis() / 1000) + tokenResponse.expiresIn();
 
@@ -157,6 +157,6 @@ public class LoginCommand implements Callable<Integer> {
             }
         }
 
-        return "http://localhost:7778";
+        return "http://localhost:17778";
     }
 }

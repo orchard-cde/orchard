@@ -39,7 +39,7 @@ class ConfigLoaderTest {
                 active = "local"
 
                 [targets.local]
-                server = "http://localhost:7778"
+                server = "http://localhost:17778"
                 cultivator = "test-uuid"
                 """;
         Files.createDirectories(ConfigLoader.configDir());
@@ -49,7 +49,7 @@ class ConfigLoaderTest {
 
         assertThat(config).isNotNull();
         assertThat(config.active()).isEqualTo("local");
-        assertThat(config.targets().get("local").server()).isEqualTo("http://localhost:7778");
+        assertThat(config.targets().get("local").server()).isEqualTo("http://localhost:17778");
         assertThat(config.targets().get("local").cultivator()).isEqualTo("test-uuid");
     }
 
@@ -57,13 +57,13 @@ class ConfigLoaderTest {
     void load_legacyPropertiesFile_returnsSynthesizedDefaultTarget() throws IOException {
         Files.createDirectories(ConfigLoader.configDir());
         Files.writeString(ConfigLoader.legacyFile(),
-                "server=http://legacy:7778\ncultivator=legacy-uuid\n");
+                "server=http://legacy:17778\ncultivator=legacy-uuid\n");
 
         OrchardConfig config = ConfigLoader.load();
 
         assertThat(config).isNotNull();
         assertThat(config.active()).isEqualTo("default");
-        assertThat(config.targets().get("default").server()).isEqualTo("http://legacy:7778");
+        assertThat(config.targets().get("default").server()).isEqualTo("http://legacy:17778");
         assertThat(config.targets().get("default").cultivator()).isEqualTo("legacy-uuid");
     }
 
@@ -73,22 +73,22 @@ class ConfigLoaderTest {
                 active = "local"
 
                 [targets.local]
-                server = "http://toml-server:7778"
+                server = "http://toml-server:17778"
                 cultivator = "toml-uuid"
                 """;
         Files.createDirectories(ConfigLoader.configDir());
         Files.writeString(ConfigLoader.tomlFile(), toml);
-        Files.writeString(ConfigLoader.legacyFile(), "server=http://props-server:7778\n");
+        Files.writeString(ConfigLoader.legacyFile(), "server=http://props-server:17778\n");
 
         OrchardConfig config = ConfigLoader.load();
 
-        assertThat(config.targets().get("local").server()).isEqualTo("http://toml-server:7778");
+        assertThat(config.targets().get("local").server()).isEqualTo("http://toml-server:17778");
     }
 
     @Test
     void save_writesReadableToml() throws IOException {
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
-        targets.put("local", new OrchardConfig.Target("http://localhost:7778", "my-uuid"));
+        targets.put("local", new OrchardConfig.Target("http://localhost:17778", "my-uuid"));
         var config = new OrchardConfig("local", targets);
 
         ConfigLoader.save(config);
@@ -97,7 +97,7 @@ class ConfigLoaderTest {
         OrchardConfig reloaded = ConfigLoader.load();
         assertThat(reloaded).isNotNull();
         assertThat(reloaded.active()).isEqualTo("local");
-        assertThat(reloaded.targets().get("local").server()).isEqualTo("http://localhost:7778");
+        assertThat(reloaded.targets().get("local").server()).isEqualTo("http://localhost:17778");
         assertThat(reloaded.targets().get("local").cultivator()).isEqualTo("my-uuid");
     }
 
@@ -108,12 +108,12 @@ class ConfigLoaderTest {
         // NON_NULL inclusion this serializes to cultivator = "" and reads back as
         // an empty string, silently corrupting the value. It must stay null.
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
-        targets.put("default", new OrchardConfig.Target("http://legacy:7778", null));
+        targets.put("default", new OrchardConfig.Target("http://legacy:17778", null));
         ConfigLoader.save(new OrchardConfig("default", targets));
 
         OrchardConfig reloaded = ConfigLoader.load();
         assertThat(reloaded).isNotNull();
-        assertThat(reloaded.targets().get("default").server()).isEqualTo("http://legacy:7778");
+        assertThat(reloaded.targets().get("default").server()).isEqualTo("http://legacy:17778");
         assertThat(reloaded.targets().get("default").cultivator()).isNull();
     }
 
@@ -123,7 +123,7 @@ class ConfigLoaderTest {
 
         assertThat(config.active()).isEqualTo("local");
         assertThat(config.targets()).containsKey("local");
-        assertThat(config.targets().get("local").server()).isEqualTo("http://localhost:7778");
+        assertThat(config.targets().get("local").server()).isEqualTo("http://localhost:17778");
         assertThat(config.targets().get("local").cultivator()).isNotBlank();
     }
 
@@ -145,7 +145,7 @@ class ConfigLoaderTest {
 
     @Test
     void target_twoArgConstructor_defaultsNewFieldsToNull() {
-        var target = new OrchardConfig.Target("http://localhost:7778", "some-uuid");
+        var target = new OrchardConfig.Target("http://localhost:17778", "some-uuid");
 
         assertThat(target.fenceServer()).isNull();
         assertThat(target.accessToken()).isNull();
@@ -157,9 +157,9 @@ class ConfigLoaderTest {
     void save_and_load_roundTripsTokenFields() throws IOException {
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
         targets.put("local", new OrchardConfig.Target(
-            "http://localhost:7778",
+            "http://localhost:17778",
             "3f2a1c4e-0000-0000-0000-0000000009b7",
-            "http://localhost:7779",
+            "http://localhost:17779",
             "access-token-abc",
             "refresh-token-xyz",
             1785036296L
@@ -170,7 +170,7 @@ class ConfigLoaderTest {
 
         assertThat(reloaded).isNotNull();
         OrchardConfig.Target target = reloaded.targets().get("local");
-        assertThat(target.fenceServer()).isEqualTo("http://localhost:7779");
+        assertThat(target.fenceServer()).isEqualTo("http://localhost:17779");
         assertThat(target.accessToken()).isEqualTo("access-token-abc");
         assertThat(target.refreshToken()).isEqualTo("refresh-token-xyz");
         assertThat(target.expiresAt()).isEqualTo(1785036296L);
@@ -179,7 +179,7 @@ class ConfigLoaderTest {
     @Test
     void save_targetWithNullTokenFields_omitsThemAndRoundTripsToNull() throws IOException {
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
-        targets.put("local", new OrchardConfig.Target("http://localhost:7778", "some-uuid"));
+        targets.put("local", new OrchardConfig.Target("http://localhost:17778", "some-uuid"));
         ConfigLoader.save(new OrchardConfig("local", targets));
 
         OrchardConfig reloaded = ConfigLoader.load();
@@ -195,9 +195,9 @@ class ConfigLoaderTest {
     void save_writesSnakeCaseKeysForTokenFields() throws Exception {
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
         targets.put("local", new OrchardConfig.Target(
-            "http://localhost:7778",
+            "http://localhost:17778",
             "3f2a1c4e-0000-0000-0000-0000000009b7",
-            "http://localhost:7779",
+            "http://localhost:17779",
             "access-token-abc",
             "refresh-token-xyz",
             1785036296L

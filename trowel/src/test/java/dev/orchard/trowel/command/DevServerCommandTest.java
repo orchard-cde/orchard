@@ -126,7 +126,7 @@ class DevServerCommandTest {
         try {
             Path runDir = tempDir.resolve(".orchard").resolve("run");
             Files.createDirectories(runDir);
-            Files.writeString(runDir.resolve("orchard-server.pid"), pid + "\n7778");
+            Files.writeString(runDir.resolve("orchard-server.pid"), pid + "\n17778");
 
             int exitCode = execute("dev-server", "start");
 
@@ -210,7 +210,7 @@ class DevServerCommandTest {
 
         assertThat(info).isNotNull();
         assertThat(info.pid()).isEqualTo(12345);
-        assertThat(info.port()).isEqualTo(7778);
+        assertThat(info.port()).isEqualTo(17778);
     }
 
     @Test
@@ -253,7 +253,7 @@ class DevServerCommandTest {
 
         java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
 
-        assertThat(cmd).contains("--server.port=7778");
+        assertThat(cmd).contains("--server.port=17778");
     }
 
     @Test
@@ -283,14 +283,14 @@ class DevServerCommandTest {
     void buildUiCommand_setsBffPort() {
         DevServerCommand.Start start = new DevServerCommand.Start();
         java.util.List<String> cmd = start.buildUiCommand(Path.of("/bin/orchard-ui-backend"));
-        assertThat(cmd).containsExactly("/bin/orchard-ui-backend", "--server.port=7777");
+        assertThat(cmd).containsExactly("/bin/orchard-ui-backend", "--server.port=17777");
     }
 
     @Test
     void uiEnv_pointsAtCorePort() {
         DevServerCommand.Start start = new DevServerCommand.Start();
-        start.setCorePortForTest(7778);
-        assertThat(start.uiEnv()).containsEntry("ORCHARD_CORE_BASE_URL", "http://localhost:7778");
+        start.setCorePortForTest(17778);
+        assertThat(start.uiEnv()).containsEntry("ORCHARD_CORE_BASE_URL", "http://localhost:17778");
     }
 
     @Test
@@ -300,13 +300,13 @@ class DevServerCommandTest {
         try {
             Path runDir = tempDir.resolve(".orchard").resolve("run");
             Files.createDirectories(runDir);
-            Files.writeString(runDir.resolve("orchard-server.pid"), pid + "\n7778");
+            Files.writeString(runDir.resolve("orchard-server.pid"), pid + "\n17778");
 
             int exitCode = execute("dev-server", "start");
 
             assertThat(exitCode).isZero();
             assertThat(outContent.toString()).contains("already running");
-            assertThat(outContent.toString()).contains("http://localhost:7777");
+            assertThat(outContent.toString()).contains("http://localhost:17777");
         } finally {
             sleepProcess.destroyForcibly();
         }
@@ -353,8 +353,8 @@ class DevServerCommandTest {
         Process ui = new ProcessBuilder("sleep", "60").start();
         Path runDir = tempDir.resolve(".orchard").resolve("run");
         Files.createDirectories(runDir);
-        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
-        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
+        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n17778");
+        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n17777");
 
         int exitCode = execute("dev-server", "stop");
 
@@ -370,7 +370,7 @@ class DevServerCommandTest {
         Process core = new ProcessBuilder("sleep", "60").start();
         Path runDir = tempDir.resolve(".orchard").resolve("run");
         Files.createDirectories(runDir);
-        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
+        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n17778");
 
         int exitCode = execute("dev-server", "stop");
 
@@ -386,8 +386,8 @@ class DevServerCommandTest {
         try {
             Path runDir = tempDir.resolve(".orchard").resolve("run");
             Files.createDirectories(runDir);
-            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
-            Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
+            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n17778");
+            Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n17777");
 
             int exitCode = execute("dev-server", "status");
 
@@ -395,7 +395,7 @@ class DevServerCommandTest {
             String out = outContent.toString();
             assertThat(out).contains("running");
             assertThat(out).contains(String.valueOf(ui.pid()));
-            assertThat(out).contains("http://localhost:7777");
+            assertThat(out).contains("http://localhost:17777");
         } finally {
             core.destroyForcibly();
             ui.destroyForcibly();
@@ -424,7 +424,7 @@ class DevServerCommandTest {
 
         assertThat(info).isNotNull();
         assertThat(info.pid()).isEqualTo(12345);
-        assertThat(info.port()).isEqualTo(7779);
+        assertThat(info.port()).isEqualTo(17779);
     }
 
     @Test
@@ -460,7 +460,7 @@ class DevServerCommandTest {
     void start_noAuth_omitsFenceAndDisablesOAuth() {
         DevServerCommand.Start start = new DevServerCommand.Start();
         start.setCultivatorIdForTest(null);
-        start.setCorePortForTest(7778);
+        start.setCorePortForTest(17778);
         start.noAuth = true;
 
         java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
@@ -473,18 +473,18 @@ class DevServerCommandTest {
     void start_auth_includesIssuerUri() {
         DevServerCommand.Start start = new DevServerCommand.Start();
         start.setCultivatorIdForTest(null);
-        start.setCorePortForTest(7778);
+        start.setCorePortForTest(17778);
 
         java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
 
-        assertThat(cmd).contains("--spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:7779");
+        assertThat(cmd).contains("--spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:17779");
     }
 
     @Test
     void start_auth_fencePortOverridesIssuerUri() {
         DevServerCommand.Start start = new DevServerCommand.Start();
         start.setCultivatorIdForTest(null);
-        start.setCorePortForTest(7778);
+        start.setCorePortForTest(17778);
         start.setFencePortForTest(8888);
 
         java.util.List<String> cmd = start.buildCommand(Path.of("/bin/orchard-server"));
@@ -499,9 +499,9 @@ class DevServerCommandTest {
         Process ui = new ProcessBuilder("sleep", "60").start();
         Path runDir = tempDir.resolve(".orchard").resolve("run");
         Files.createDirectories(runDir);
-        Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n7779");
-        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
-        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
+        Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n17779");
+        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n17778");
+        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n17777");
 
         int exitCode = execute("dev-server", "stop");
 
@@ -522,9 +522,9 @@ class DevServerCommandTest {
         try {
             Path runDir = tempDir.resolve(".orchard").resolve("run");
             Files.createDirectories(runDir);
-            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
-            Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
-            Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n7779");
+            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n17778");
+            Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n17777");
+            Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n17779");
 
             int exitCode = execute("dev-server", "status");
 
@@ -532,7 +532,7 @@ class DevServerCommandTest {
             String out = outContent.toString();
             assertThat(out).contains("running");
             assertThat(out).contains(String.valueOf(fence.pid()));
-            assertThat(out).contains("http://localhost:7779");
+            assertThat(out).contains("http://localhost:17779");
         } finally {
             core.destroyForcibly();
             ui.destroyForcibly();
@@ -577,7 +577,7 @@ class DevServerCommandTest {
 
         assertThat(info).isNotNull();
         assertThat(info.pid()).isEqualTo(12345);
-        assertThat(info.port()).isEqualTo(2222);
+        assertThat(info.port()).isEqualTo(12222);
     }
 
     @Test
@@ -616,8 +616,8 @@ class DevServerCommandTest {
     @Test
     void buildGatewayCommand_includesRequiredArgsWithDefaults() {
         DevServerCommand.Start start = new DevServerCommand.Start();
-        start.setCorePortForTest(7778);
-        start.setFencePortForTest(7779);
+        start.setCorePortForTest(17778);
+        start.setFencePortForTest(17779);
 
         java.util.List<String> cmd = start.buildGatewayCommand(Path.of("/bin/gateway.jar"));
 
@@ -626,10 +626,10 @@ class DevServerCommandTest {
             "-jar",
             "/bin/gateway.jar",
             "--server.port=" + DevServerCommand.GATEWAY_ADMIN_PORT,
-            "--orchard.gateway.ssh-port=2222",
+            "--orchard.gateway.ssh-port=12222",
             "--orchard.gateway.internal-ssh-key-path=" + DevServerCommand.internalSshKeyPath(),
-            "--orchard.gateway.fence.issuer-uri=http://localhost:7779",
-            "--orchard.gateway.trellis.base-url=http://localhost:7778",
+            "--orchard.gateway.fence.issuer-uri=http://localhost:17779",
+            "--orchard.gateway.trellis.base-url=http://localhost:17778",
             "--orchard.gateway.oauth2.client-secret=" + DevServerCommand.DEV_GATEWAY_CLIENT_SECRET
         );
     }
@@ -640,8 +640,8 @@ class DevServerCommandTest {
 
         java.util.List<String> cmd = start.buildGatewayCommand(Path.of("/bin/gateway.jar"));
 
-        assertThat(cmd).contains("--server.port=8081");
-        assertThat(DevServerCommand.GATEWAY_ADMIN_PORT).isEqualTo(8081);
+        assertThat(cmd).contains("--server.port=18081");
+        assertThat(DevServerCommand.GATEWAY_ADMIN_PORT).isEqualTo(18081);
     }
 
     @Test
@@ -657,7 +657,7 @@ class DevServerCommandTest {
     @Test
     void buildFenceCommand_includesGatewayClientSecret() {
         DevServerCommand.Start start = new DevServerCommand.Start();
-        start.setFencePortForTest(7779);
+        start.setFencePortForTest(17779);
 
         java.util.List<String> cmd = start.buildFenceCommand(Path.of("/bin/fence.jar"));
 
@@ -754,7 +754,7 @@ class DevServerCommandTest {
         Process gateway = new ProcessBuilder("sleep", "60").start();
         Path runDir = tempDir.resolve(".orchard").resolve("run");
         Files.createDirectories(runDir);
-        Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n2222");
+        Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n12222");
 
         int exitCode = execute("dev-server", "stop");
 
@@ -771,10 +771,10 @@ class DevServerCommandTest {
         Process gateway = new ProcessBuilder("sleep", "60").start();
         Path runDir = tempDir.resolve(".orchard").resolve("run");
         Files.createDirectories(runDir);
-        Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n7779");
-        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
-        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n7777");
-        Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n2222");
+        Files.writeString(runDir.resolve("orchard-fence.pid"), fence.pid() + "\n17779");
+        Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n17778");
+        Files.writeString(runDir.resolve("orchard-ui.pid"), ui.pid() + "\n17777");
+        Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n12222");
 
         int exitCode = execute("dev-server", "stop");
 
@@ -796,8 +796,8 @@ class DevServerCommandTest {
         try {
             Path runDir = tempDir.resolve(".orchard").resolve("run");
             Files.createDirectories(runDir);
-            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n7778");
-            Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n2222");
+            Files.writeString(runDir.resolve("orchard-server.pid"), core.pid() + "\n17778");
+            Files.writeString(runDir.resolve("orchard-gateway.pid"), gateway.pid() + "\n12222");
 
             int exitCode = execute("dev-server", "status");
 
@@ -805,7 +805,7 @@ class DevServerCommandTest {
             String out = outContent.toString();
             assertThat(out).contains("running");
             assertThat(out).contains(String.valueOf(gateway.pid()));
-            assertThat(out).contains("Gateway SSH port: 2222");
+            assertThat(out).contains("Gateway SSH port: 12222");
         } finally {
             core.destroyForcibly();
             gateway.destroyForcibly();

@@ -1,7 +1,7 @@
 fence:
   standalone:
     enabled: false
-  issuer: http://localhost:7779
+  issuer: http://localhost:17779
   signing-key:
     path: ${java.io.tmpdir}/orchard-fence-test/signing-key.jwk
   client:
