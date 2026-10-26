@@ -66,12 +66,63 @@ class V10MigrationTest {
 
         assertThatThrownBy(() -> flyway(null).load().migrate())
             .isInstanceOf(FlywayException.class)
-            .hasMessageContaining("groves remain");
+            .hasMessageContaining("10");
 
         assertThat(query("SELECT column_name FROM information_schema.columns"
             + " WHERE table_name = 'groves' AND column_name = 'seedling_id'")).containsExactly("seedling_id");
         assertThat(query("SELECT state FROM groves ORDER BY state"))
             .containsExactly("CLEARED", "FLOURISHING");
+    }
+
+    @Test
+    void h2_emptyDatabase_migrates() throws SQLException {
+        String url = h2Url();
+        h2Flyway(url, null).load().migrate();
+
+        assertThat(h2Query(url, "SELECT column_name FROM information_schema.columns"
+            + " WHERE LOWER(table_name) = 'groves' AND LOWER(column_name) = 'plot_json'")).hasSize(1);
+        assertThat(h2Query(url, "SELECT column_name FROM information_schema.columns"
+            + " WHERE LOWER(table_name) = 'groves' AND LOWER(column_name) LIKE 'seedling\\_%'")).isEmpty();
+    }
+
+    @Test
+    void h2_liveGrove_refusesBeforeDroppingColumns() throws SQLException {
+        String url = h2Url();
+        h2Flyway(url, "9").load().migrate();
+        UUID cultivator = UUID.randomUUID();
+        try (Connection c = DriverManager.getConnection(url, "sa", "")) {
+            insertCultivator(c, cultivator);
+            insertGrove(c, cultivator, "FLOURISHING");
+        }
+
+        assertThatThrownBy(() -> h2Flyway(url, null).load().migrate())
+            .isInstanceOf(FlywayException.class);
+
+        assertThat(h2Query(url, "SELECT state FROM groves")).containsExactly("FLOURISHING");
+        assertThat(h2Query(url, "SELECT column_name FROM information_schema.columns"
+            + " WHERE LOWER(table_name) = 'groves' AND LOWER(column_name) = 'seedling_id'")).hasSize(1);
+    }
+
+    private static String h2Url() {
+        return "jdbc:h2:mem:" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1";
+    }
+
+    private static org.flywaydb.core.api.configuration.FluentConfiguration h2Flyway(String url, String target) {
+        var config = Flyway.configure()
+            .dataSource(url, "sa", "")
+            .locations("classpath:db/migration");
+        return target == null ? config : config.target(target);
+    }
+
+    private static List<String> h2Query(String url, String sql) throws SQLException {
+        try (Connection c = DriverManager.getConnection(url, "sa", ""); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery(sql)) {
+            List<String> rows = new ArrayList<>();
+            while (rs.next()) {
+                rows.add(rs.getString(1));
+            }
+            return rows;
+        }
     }
 
     private static org.flywaydb.core.api.configuration.FluentConfiguration flyway(String target) {
@@ -97,7 +148,14 @@ class V10MigrationTest {
 
     private static UUID insertCultivator() throws SQLException {
         UUID id = UUID.randomUUID();
-        try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(
+        try (Connection c = connect()) {
+            insertCultivator(c, id);
+        }
+        return id;
+    }
+
+    private static void insertCultivator(Connection c, UUID id) throws SQLException {
+        try (PreparedStatement ps = c.prepareStatement(
                 "INSERT INTO cultivators (id, username, email, created_at, last_active_at) VALUES (?, ?, ?, ?, ?)")) {
             ps.setObject(1, id);
             ps.setString(2, "u-" + id);
@@ -106,12 +164,17 @@ class V10MigrationTest {
             ps.setTimestamp(5, Timestamp.from(Instant.now()));
             ps.executeUpdate();
         }
-        return id;
     }
 
     private static UUID insertGrove(UUID cultivator, String state) throws SQLException {
+        try (Connection c = connect()) {
+            return insertGrove(c, cultivator, state);
+        }
+    }
+
+    private static UUID insertGrove(Connection c, UUID cultivator, String state) throws SQLException {
         UUID id = UUID.randomUUID();
-        try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(
+        try (PreparedStatement ps = c.prepareStatement(
                 "INSERT INTO groves (id, cultivator_id, name, repository_url, branch, state, planted_at,"
                     + " last_accessed_at, seedling_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             ps.setObject(1, id);

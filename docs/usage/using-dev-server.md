@@ -123,7 +123,7 @@ The key path can also be set via the `ORCHARD_SSH_PUBLIC_KEY` environment variab
 
 ## Upgrading to V10
 
-V10 replaces the `seedling_*` columns on `groves` with `plot_json`. Flyway (Postgres) refuses to run while any grove is not `CLEARED`: clear them first, and confirm no `ORPHANED` substrate is left behind. `trowel dev-server` uses H2 without Flyway, so old rows survive with no plot; at startup the reconciler marks `FLOURISHING`, `PREPARING`, `PLANTING` and `GROWING` rows `BLIGHTED` and `CLEARING` rows `ORPHANED`, leaving other states untouched. Any read of an old row (API list or show, `startGrove` returning 409) fails with a message to delete `~/.orchard/data/`. Delete that directory once and restart.
+V10 replaces the `seedling_*` columns on `groves` with `plot_json`. On PostgreSQL and on the native dev-server's H2 (the native `orchard-server` always runs Flyway, whatever `spring.flyway.enabled` says), V10 deletes `CLEARED` groves and their bees, then fails on the `plot_json NOT NULL` add if any other grove remains. The error is the raw database NOT NULL violation, not a custom message. Clear or delete those groves first, and confirm no `ORPHANED` substrate is left behind. On H2, DDL cannot roll back: a refused V10 leaves the `CLEARED` rows deleted but every column intact. Dev-server users can instead delete `~/.orchard/data/` once and restart.
 
 ## Troubleshooting
 

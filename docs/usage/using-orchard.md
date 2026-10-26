@@ -104,7 +104,7 @@ This stops containers, destroys the VM, and transitions the grove to CLEARED.
 
 ## Upgrading to V10
 
-V10 refuses to run while any grove is not `CLEARED`: run `trowel grove clear` on each (and confirm no `ORPHANED` substrate remains) before upgrading Postgres. `trowel dev-server` users (H2, no Flyway) delete `~/.orchard/data/` once.
+V10 deletes `CLEARED` groves and their bees, then fails (raw `NOT NULL` error on `plot_json`) if any other grove remains. This applies to PostgreSQL and to the native `trowel dev-server`'s H2. Run `trowel grove clear` on each grove (and confirm no `ORPHANED` substrate remains) before upgrading. On H2 a refused V10 leaves `CLEARED` rows deleted but columns intact; dev-server users can instead delete `~/.orchard/data/` once.
 
 ## Web UI (Canopy)
 
