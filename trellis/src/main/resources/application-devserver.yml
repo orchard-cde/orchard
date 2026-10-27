@@ -15,12 +15,6 @@ spring:
   flyway:
     enabled: false
 
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: http://localhost:17779
-
 orchard:
   security:
     oauth2:

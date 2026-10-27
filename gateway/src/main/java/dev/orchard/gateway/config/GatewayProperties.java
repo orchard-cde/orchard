@@ -7,7 +7,7 @@ import java.nio.file.Path;
 @ConfigurationProperties("orchard.gateway")
 public class GatewayProperties {
 
-    private int sshPort = 12222;
+    private int sshPort = 2222;
     private String hostKeyPath = Path.of(System.getProperty("user.home"), ".orchard", "gateway-host-key").toString();
     private String internalSshKeyPath = Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519").toString();
     private final Fence fence = new Fence();
@@ -15,7 +15,7 @@ public class GatewayProperties {
     private final Trellis trellis = new Trellis();
 
     public static class Fence {
-        private String issuerUri = "http://localhost:17779";
+        private String issuerUri = "http://localhost:7779";
         public String getIssuerUri() { return issuerUri; }
         public void setIssuerUri(String issuerUri) { this.issuerUri = issuerUri; }
     }

@@ -1,5 +1,5 @@
 server:
-  port: ${FENCE_PORT:17779}
+  port: ${FENCE_PORT:7779}
 
 spring:
   application:
@@ -8,7 +8,7 @@ spring:
 fence:
   standalone:
     enabled: false
-  issuer: ${FENCE_ISSUER:http://localhost:${FENCE_PORT:17779}}
+  issuer: ${FENCE_ISSUER:http://localhost:${FENCE_PORT:7779}}
   signing-key:
     path: ${FENCE_SIGNING_KEY_PATH:${user.home}/.fence/signing-key.jwk}
   client:

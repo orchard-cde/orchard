@@ -501,6 +501,7 @@ public class DevServerCommand implements Callable<Integer> {
             command.add("-jar");
             command.add(fenceJar.toString());
             command.add("--server.port=" + fencePort);
+            command.add("--fence.issuer=http://localhost:" + fencePort);
             command.add("--spring.profiles.active=standalone");
             command.add("--fence.gateway-client.client-secret=" + DEV_GATEWAY_CLIENT_SECRET);
             return command;

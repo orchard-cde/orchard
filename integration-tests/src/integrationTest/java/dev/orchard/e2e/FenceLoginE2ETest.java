@@ -33,10 +33,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * embedded Spring Boot apps in one JVM ({@code @SpringBootTest} only supports one
  * context per test class).
  * <p>
- * fence's issuer and default port (17779) are hardcoded in
+ * fence's issuer and default port (7779) are hardcoded in
  * {@code AuthorizationServerConfig}/{@code application.yml} rather than configurable
  * per-instance, so fence is booted on its real default port here rather than a random
- * one; trellis's {@code devserver} profile issuer-uri is hardcoded to match.
+ * one; trellis is given the matching issuer-uri explicitly.
  */
 class FenceLoginE2ETest {
 
@@ -59,12 +59,12 @@ class FenceLoginE2ETest {
         // actually win over whichever application.yml ends up on the classpath.
         fenceContext = new SpringApplicationBuilder(FenceApplication.class)
                 .run(
-                        "--server.port=17779",
+                        "--server.port=7779",
                         "--spring.security.oauth2.client.registration.google.client-id=test-google-client-id",
                         "--spring.security.oauth2.client.registration.google.client-secret=test-google-client-secret",
                         "--spring.security.oauth2.client.registration.google.scope=openid,profile,email",
                         "--spring.security.oauth2.client.provider.google.issuer-uri=https://accounts.google.com",
-                        "--fence.issuer=http://localhost:17779",
+                        "--fence.issuer=http://localhost:7779",
                         "--fence.signing-key.path=${java.io.tmpdir}/orchard-fence-e2e-test/signing-key.jwk",
                         "--fence.client.client-id=orchard-ui",
                         "--fence.client.redirect-uri=http://localhost:3000/callback",
@@ -82,6 +82,7 @@ class FenceLoginE2ETest {
         trellisContext = new SpringApplicationBuilder(OrchardApplication.class)
                 .profiles("devserver", "e2etest")
                 .run("--server.port=0",
+                        "--spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:7779",
                         "--orchard.qemu.auto-provision=false",
                         "--orchard.qemu.base-image-path=/tmp/orchard/images/base.qcow2");
         trellisPort = Integer.parseInt(trellisContext.getEnvironment().getProperty("local.server.port"));
@@ -106,7 +107,7 @@ class FenceLoginE2ETest {
         deviceAuthBody.add("client_id", "trowel-cli");
 
         ResponseEntity<Map> deviceAuthResponse = restTemplate.postForEntity(
-                "http://localhost:17779/oauth2/device_authorization",
+                "http://localhost:7779/oauth2/device_authorization",
                 new HttpEntity<>(deviceAuthBody, formHeaders),
                 Map.class);
         assertThat(deviceAuthResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -138,7 +139,7 @@ class FenceLoginE2ETest {
         tokenBody.add("client_id", "trowel-cli");
 
         ResponseEntity<Map> tokenResponse = restTemplate.postForEntity(
-                "http://localhost:17779/oauth2/token",
+                "http://localhost:7779/oauth2/token",
                 new HttpEntity<>(tokenBody, formHeaders),
                 Map.class);
         assertThat(tokenResponse.getStatusCode()).isEqualTo(HttpStatus.OK);

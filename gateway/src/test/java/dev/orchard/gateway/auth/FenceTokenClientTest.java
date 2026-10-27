@@ -17,7 +17,7 @@ class FenceTokenClientTest {
 
     private GatewayProperties properties() {
         GatewayProperties p = new GatewayProperties();
-        p.getFence().setIssuerUri("http://localhost:17779");
+        p.getFence().setIssuerUri("http://localhost:7779");
         p.getOauth2().setClientId("orchard-gateway");
         p.getOauth2().setClientSecret("dev-secret");
         return p;
@@ -30,7 +30,7 @@ class FenceTokenClientTest {
         RestClient restClient = builder.build();
         FenceTokenClient client = new FenceTokenClient(restClient, properties());
 
-        server.expect(requestTo("http://localhost:17779/oauth2/token"))
+        server.expect(requestTo("http://localhost:7779/oauth2/token"))
                 .andExpect(method(POST))
                 .andExpect(header("Authorization", "Basic b3JjaGFyZC1nYXRld2F5OmRldi1zZWNyZXQ="))
                 .andRespond(withSuccess(
@@ -49,9 +49,9 @@ class FenceTokenClientTest {
         RestClient restClient = builder.build();
         FenceTokenClient client = new FenceTokenClient(restClient, properties());
 
-        server.expect(requestTo("http://localhost:17779/oauth2/token")).andRespond(withSuccess(
+        server.expect(requestTo("http://localhost:7779/oauth2/token")).andRespond(withSuccess(
                 "{\"access_token\":\"jwt-1\",\"expires_in\":0}", MediaType.APPLICATION_JSON));
-        server.expect(requestTo("http://localhost:17779/oauth2/token")).andRespond(withSuccess(
+        server.expect(requestTo("http://localhost:7779/oauth2/token")).andRespond(withSuccess(
                 "{\"access_token\":\"jwt-2\",\"expires_in\":3600}", MediaType.APPLICATION_JSON));
 
         assertThat(client.accessToken()).isEqualTo("jwt-1");

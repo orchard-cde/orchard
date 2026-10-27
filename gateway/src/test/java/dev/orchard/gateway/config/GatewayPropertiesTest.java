@@ -20,10 +20,10 @@ class GatewayPropertiesTest {
     void defaultsMatchSpecTable() {
         contextRunner.run(context -> {
             GatewayProperties props = context.getBean(GatewayProperties.class);
-            assertThat(props.getSshPort()).isEqualTo(12222);
+            assertThat(props.getSshPort()).isEqualTo(2222);
             assertThat(props.getHostKeyPath()).endsWith("/.orchard/gateway-host-key");
             assertThat(props.getInternalSshKeyPath()).endsWith("/.ssh/orchard_ed25519");
-            assertThat(props.getFence().getIssuerUri()).isEqualTo("http://localhost:17779");
+            assertThat(props.getFence().getIssuerUri()).isEqualTo("http://localhost:7779");
             assertThat(props.getOauth2().getClientId()).isEqualTo("orchard-gateway");
             assertThat(props.getTrellis().getBaseUrl()).isEqualTo("http://localhost:8080");
         });

@@ -667,6 +667,38 @@ class DevServerCommandTest {
     }
 
     @Test
+    void buildFenceCommand_passesPortAndIssuerExplicitly() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        java.util.List<String> cmd = start.buildFenceCommand(Path.of("/bin/fence.jar"));
+
+        assertThat(cmd).contains("--server.port=17779", "--fence.issuer=http://localhost:17779");
+    }
+
+    @Test
+    void buildFenceCommand_issuerFollowsCustomFencePort() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setFencePortForTest(4444);
+
+        java.util.List<String> cmd = start.buildFenceCommand(Path.of("/bin/fence.jar"));
+
+        assertThat(cmd).contains("--server.port=4444", "--fence.issuer=http://localhost:4444");
+    }
+
+    @Test
+    void buildGatewayCommand_issuerFollowsCustomFencePort() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setFencePortForTest(4444);
+        start.setGatewaySshPortForTest(3333);
+
+        java.util.List<String> cmd = start.buildGatewayCommand(Path.of("/bin/gateway.jar"));
+
+        assertThat(cmd).contains(
+            "--orchard.gateway.fence.issuer-uri=http://localhost:4444",
+            "--orchard.gateway.ssh-port=3333");
+    }
+
+    @Test
     void fenceAndGatewayClientSecrets_match() {
         // Load-bearing: fence's registered gateway client secret and the gateway's
         // oauth2.client-secret must be identical or the client_credentials exchange fails.
