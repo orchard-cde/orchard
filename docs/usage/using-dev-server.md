@@ -124,9 +124,9 @@ ssh-keygen -t ed25519 -f ~/.ssh/orchard_ed25519 -N ""
 
 The key path can also be set via the `ORCHARD_SSH_PUBLIC_KEY` environment variable.
 
-## Upgrading to V10
+## Schema reset
 
-V10 replaces the `seedling_*` columns on `groves` with `plot_json`. On PostgreSQL and on the native dev-server's H2 (the native `orchard-server` always runs Flyway, whatever `spring.flyway.enabled` says), V10 deletes `CLEARED` groves and their bees, then fails on the `plot_json NOT NULL` add if any other grove remains. The error is the raw database NOT NULL violation, not a custom message. Clear or delete those groves first, and confirm no `ORPHANED` substrate is left behind. On H2, DDL cannot roll back: a refused V10 leaves the `CLEARED` rows deleted but every column intact. Dev-server users can instead delete `~/.orchard/data/` once and restart.
+The migration history was collapsed into a single `V1`, so a database created before the reset fails Flyway validation and must be recreated. Stop the dev-server, delete `~/.orchard/data/` once, and restart.
 
 ## Troubleshooting
 

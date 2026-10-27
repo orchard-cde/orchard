@@ -102,9 +102,9 @@ trowel grove clear <grove-id>
 
 This stops containers, destroys the VM, and transitions the grove to CLEARED.
 
-## Upgrading to V10
+## Schema reset
 
-V10 deletes `CLEARED` groves and their bees, then fails (raw `NOT NULL` error on `plot_json`) if any other grove remains. This applies to PostgreSQL and to the native `trowel dev-server`'s H2. Run `trowel grove clear` on each grove (and confirm no `ORPHANED` substrate remains) before upgrading. On H2 a refused V10 leaves `CLEARED` rows deleted but columns intact; dev-server users can instead delete `~/.orchard/data/` once.
+The migration history was collapsed into a single `V1`, so a database created before the reset fails Flyway validation and must be recreated. On PostgreSQL, drop and recreate the `orchard` database. For `trowel dev-server`, delete `~/.orchard/data/` once.
 
 ## Web UI (Canopy)
 
