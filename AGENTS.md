@@ -98,7 +98,7 @@ java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar status
 
 Schema is in `roots/src/main/resources/db/migration/V1__initial_schema.sql`. Main tables:
 - `cultivators` - users
-- `groves` - workspaces; the plot is stored as JSON in `plot_json` (V10)
+- `groves` - workspaces; each grove stores its plot as JSON
 
 ## Future Work
 

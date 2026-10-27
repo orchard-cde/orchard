@@ -221,12 +221,11 @@ path is `/workspace`.
 
 ### 2.2.1 Plot persistence and provenance
 
-`groves.plot_json` (V10, `TEXT NOT NULL`) holds the whole `Plot` as JSON and is the only record of the plot: `GroveEntity.plot()` deserializes it and `setPlot` serializes it, via `PlotSerializer`. The `@type` tag is `vm` or `container`. `authorizedKeys` is never written and reloads as `List.of()`. V10 dropped the nine `seedling_*` columns. It is plain SQL, portable across PostgreSQL and H2 (the native dev-server runs Flyway on H2): it deletes `CLEARED` groves and their bees, adds `plot_json TEXT NOT NULL` (which fails if any grove remains, and is the refusal; there is no custom message), then drops the columns one statement each. On H2 DDL auto-commits, so the refusal happens before any drop and leaves columns intact; PostgreSQL rolls the whole migration back.
+The grove stores its whole `Plot` as JSON; that is the only record of the plot. `GroveEntity.plot()` and `setPlot` convert through `PlotSerializer`, with an `@type` tag of `vm` or `container`. `authorizedKeys` is a launch-time input and is never persisted, so a reloaded `VmPlot` has none.
 
 - **Dispatch by provenance.** Every operation on an existing grove (teardown, stop/start, bee command runner, reconciler liveness) resolves its provider with `ProviderRegistry.require(plot.providerId())`. A grove therefore keeps using the provider that created its plot even if `orchard.nursery.provider` changes. `getDefault()` is used only where no plot exists yet: `plantGrove` (to size and `reserve` the first plot) and `HealthController`.
 - **Unregistered provider.** Reachable only if config changes between restarts. `require` throws `IllegalStateException`; async teardown catches it and ends the grove `ORPHANED`, the reconciler marks the grove `BLIGHTED`, and request paths surface the existing 409. No dedicated exception type exists and `GlobalExceptionHandler` is unchanged; a bare `Optional.orElseThrow()` would map to 404 and is not used.
 - **Stale-route guards.** QEMU reuses ports from a fixed range, so a stopped or cleared grove's `host:sshPort` can belong to another cultivator's VM. Two independent guards: (1) after a successful `uproot`, teardown Phase 2 writes the plot back as `WITHERED`, compare-and-set on the persisted plot id so a concurrent `startGrove` that installed a new plot is not overwritten; (2) `GatewayGroveService.isRoutable` requires grove `FLOURISHING`, a `VmPlot` with non-null `host`, and plot state `SAPLING`. Container plots are never routable. The gateway route carries `host` and `sshPort`.
-- **Pre-V10 rows.** A row with null or blank `plot_json` (a database where Flyway did not run and Hibernate `update` added the column without a default) fails `plot()` with a message telling the user to delete `~/.orchard/data/`. The reconciler marks such `FLOURISHING` rows `BLIGHTED` at startup.
 
 ### 2.3 Available Providers
 
@@ -279,7 +278,7 @@ sequenceDiagram
 **Phase 1 — Synchronous (within transaction)**:
 1. Ensure cultivator exists
 2. Create `Grove` record (state: `PLANTING`)
-3. Reserve a plot via `GroveProvider.reserve` (state: `GERMINATING`), sized from the `SeedlingSpec` for the requested tier (small/medium/large) and persisted on the grove as `plot_json`
+3. Reserve a plot via `GroveProvider.reserve` (state: `GERMINATING`), sized from the `SeedlingSpec` for the requested tier (small/medium/large) and persisted on the grove
 4. Persist to database
 5. Register async callback via `TransactionSynchronization.afterCommit()`
 
@@ -438,7 +437,7 @@ Runs on application startup via `ApplicationRunner`:
 | `PREPARING`, `PLANTING`, `GROWING` | Stuck from previous run | `BLIGHTED` |
 | `CLEARING` | Interrupted teardown, not re-attempted | `ORPHANED` |
 
-Liveness is `registry.require(plot.providerId()).inspect(plot)`, never a socket probe. Any exception (unregistered provider, failed `inspect`, unreadable or missing `plot_json`) counts as unreachable and is logged at ERROR.
+Liveness is `registry.require(plot.providerId()).inspect(plot)`, never a socket probe. Any exception (unregistered provider, failed `inspect`, unreadable or missing plot) counts as unreachable and is logged at ERROR.
 
 ---
 
