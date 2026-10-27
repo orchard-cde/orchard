@@ -14,7 +14,7 @@ Everything in this project uses orchard/gardening terminology:
 | **Grove** | A workspace | A plot plus the fruit growing on it |
 | **Cultivator** | A user/developer | Who tends the groves |
 | **Plot** | The substrate a grove is planted in: a VM, or later a container host | `Plot` — sealed: `VmPlot`, `ContainerPlot`; holds one or more fruit |
-| **Seedling** | What is planted into a plot | Described by `SeedlingSpec` (plot configuration plus metadata). The legacy `Seedling` record is the VM plot, pending its move onto `Plot` |
+| **Seedling** | What is planted into a plot | Described by `SeedlingSpec` (plot configuration plus metadata) |
 | **Sapling** | Ready state of a plot | `PlotState.SAPLING` — the provider has an operational substrate |
 | **Fruit** | A devcontainer instance | Running development environment, grown on a plot |
 | **Seed** | A devcontainer.json spec | Blueprint for growing fruit |
@@ -73,7 +73,7 @@ All domain objects are Java records with factory methods:
 ### State Machines
 Each entity has a state enum with gardening-themed states:
 - `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED)
-- `PlotState`: GERMINATING → SPROUTING → SAPLING → WILTING → WITHERED (or BLIGHTED on provisioning failure). The legacy `SeedlingState` has the same constants and is replaced by `PlotState` once `Grove` holds a `Plot` (issue #86).
+- `PlotState`: GERMINATING → SPROUTING → SAPLING → WILTING → WITHERED (or BLIGHTED on provisioning failure).
 - `FruitState`: BUDDING → RIPENING → RIPE (or ROTTED)
 
 ### Async Provisioning
@@ -98,7 +98,7 @@ java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar status
 
 Schema is in `roots/src/main/resources/db/migration/V1__initial_schema.sql`. Main tables:
 - `cultivators` - users
-- `groves` - workspaces with embedded seedling/fruit state
+- `groves` - workspaces; each grove stores its plot as JSON
 
 ## Future Work
 

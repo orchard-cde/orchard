@@ -3,6 +3,7 @@ package dev.orchard.e2e;
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.core.model.GroveState;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.trellis.OrchardApplication;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -109,10 +110,10 @@ class GroveLifecycleE2ETest {
 
         latestResponse = getGrove(groveId);
 
-        assertThat(latestResponse.seedling()).isNotNull();
-        assertThat(latestResponse.seedling().state()).isEqualTo("SAPLING");
-        assertThat(latestResponse.seedling().ipAddress()).isEqualTo("127.0.0.1");
-        assertThat(latestResponse.seedling().sshPort()).isBetween(49200, 49299);
+        assertThat(latestResponse.plot()).isNotNull();
+        assertThat(latestResponse.plot().state()).isEqualTo(PlotState.SAPLING);
+        assertThat(latestResponse.plot().host()).isEqualTo("127.0.0.1");
+        assertThat(latestResponse.plot().sshPort()).isBetween(49200, 49299);
         assertThat(latestResponse.fruits()).isNotEmpty();
         assertThat(latestResponse.fruits().getFirst().state()).isEqualTo("RIPE");
         assertThat(latestResponse.fruits().getFirst().containerId()).isNotNull();
@@ -129,7 +130,7 @@ class GroveLifecycleE2ETest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("Host orchard-");
-        assertThat(response.getBody()).contains("Port " + latestResponse.seedling().sshPort());
+        assertThat(response.getBody()).contains("Port " + latestResponse.plot().sshPort());
         assertThat(response.getBody()).contains("User cultivator");
     }
 
@@ -138,7 +139,7 @@ class GroveLifecycleE2ETest {
     void canSshIntoSeedling() throws Exception {
         assertThat(latestResponse).as("latestResponse must be set").isNotNull();
 
-        int sshPort = latestResponse.seedling().sshPort();
+        int sshPort = latestResponse.plot().sshPort();
         Path privateKey = Path.of(System.getProperty("orchard.ssh.key-path",
             System.getProperty("user.home") + "/.ssh/orchard_ed25519"));
 

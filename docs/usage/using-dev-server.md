@@ -9,11 +9,11 @@ For the themed naming glossary, see [README.md](../../README.md#themed-glossary)
 The fastest way to run the full stack locally is the `trowel dev-server` command, which launches the core API and the Canopy UI together using an embedded H2 database (no PostgreSQL required):
 
 ```bash
-trowel dev-server start        # core API on :7778, Canopy UI on :7777
-trowel dev-server start --no-ui  # core API only on :7778
+trowel dev-server start        # core API on :17778, Canopy UI on :17777
+trowel dev-server start --no-ui  # core API only on :17778
 ```
 
-Open <http://localhost:7777> for the UI. The CLI's default `server` (written by `trowel config init`) is `http://localhost:7778`, so it talks to this core automatically. See the [README](../../README.md#start-the-platform) for details.
+Open <http://localhost:17777> for the UI. The CLI's default `server` (written by `trowel config init`) is `http://localhost:17778`, so it talks to this core automatically. See the [README](../../README.md#start-the-platform) for details.
 
 The rest of this guide covers the **manual contributor workflow** — running Trellis from source — which is useful when developing the server itself.
 
@@ -91,7 +91,7 @@ The Canopy web UI is in a separate repository: [orchard-cde/orchard-ui](https://
 java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar config init
 ```
 
-`trowel config init` defaults the server to `http://localhost:7778` (the `trowel dev-server` core port). When running Trellis manually via `bootRun` it listens on `8080`, so point the CLI at it explicitly:
+`trowel config init` defaults the server to `http://localhost:17778` (the `trowel dev-server` core port). When running Trellis manually via `bootRun` it listens on `8080`, so point the CLI at it explicitly:
 
 ```bash
 java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar config set --server http://localhost:8080

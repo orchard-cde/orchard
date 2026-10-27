@@ -80,7 +80,7 @@ trowel grove list
 trowel grove show <grove-id>
 ```
 
-This shows the grove's state, plot (VM) info, fruit (container) status, and SSH connection details.
+This shows the grove's state, plot info, fruit (container) status, and SSH connection details. A VM plot shows its host and SSH port; a container plot shows its runtime and has no SSH details, so `ssh-config` returns 409 for it.
 
 ## Connecting to a Grove
 

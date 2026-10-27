@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * fence's issuer and default port (7779) are hardcoded in
  * {@code AuthorizationServerConfig}/{@code application.yml} rather than configurable
  * per-instance, so fence is booted on its real default port here rather than a random
- * one; trellis's {@code devserver} profile issuer-uri is hardcoded to match.
+ * one; trellis is given the matching issuer-uri explicitly.
  */
 class FenceLoginE2ETest {
 
@@ -82,6 +82,7 @@ class FenceLoginE2ETest {
         trellisContext = new SpringApplicationBuilder(OrchardApplication.class)
                 .profiles("devserver", "e2etest")
                 .run("--server.port=0",
+                        "--spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:7779",
                         "--orchard.qemu.auto-provision=false",
                         "--orchard.qemu.base-image-path=/tmp/orchard/images/base.qcow2");
         trellisPort = Integer.parseInt(trellisContext.getEnvironment().getProperty("local.server.port"));

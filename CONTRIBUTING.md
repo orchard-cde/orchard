@@ -6,11 +6,11 @@ Contributions are welcome. Please open an issue or pull request and follow the c
 
 `trowel dev-server start` launches two processes:
 
-- **orchard-server** (core, API only) on port **7778**
-- **orchard-ui-backend** (Canopy UI BFF) on port **7777** — serves the Canopy UI and
+- **orchard-server** (core, API only) on port **17778**
+- **orchard-ui-backend** (Canopy UI BFF) on port **17777** — serves the Canopy UI and
   reverse-proxies `/api/**` to core
 
-Open **http://localhost:7777** in your browser. Use `--no-ui` to run core only (`:7778`).
+Open **http://localhost:17777** in your browser. Use `--no-ui` to run core only (`:17778`).
 
 ### Dev Mode UI Authentication
 

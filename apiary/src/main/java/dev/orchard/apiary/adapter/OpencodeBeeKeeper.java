@@ -21,7 +21,7 @@ import java.util.concurrent.Executors;
 
 /**
  * BeeKeeper implementation for OpenCode (https://github.com/anomalyco/opencode).
- * Installs the CLI on the Seedling if missing and writes a workspace-scoped opencode.jsonc
+ * Installs the CLI on the VM plot if missing and writes a workspace-scoped opencode.jsonc
  * config. By default runs `opencode serve` in the background as OpenCode's headless HTTP
  * server; if the bee's spec sets configOverrides["mode"] = "interactive", release() skips
  * starting a process instead, so the cultivator can launch `opencode` themselves from a

@@ -43,8 +43,8 @@ class GatewayGroveControllerTest {
         mockMvc.perform(get("/api/gateway/groves/{groveId}", groveId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.groveId").value(groveId.toString()))
-            .andExpect(jsonPath("$.seedlingIp").value("127.0.0.1"))
-            .andExpect(jsonPath("$.seedlingPort").value(22))
+            .andExpect(jsonPath("$.host").value("127.0.0.1"))
+            .andExpect(jsonPath("$.sshPort").value(22))
             .andExpect(jsonPath("$.state").value("FLOURISHING"));
     }
 

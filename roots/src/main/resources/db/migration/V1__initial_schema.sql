@@ -1,16 +1,17 @@
--- Cultivators table (users who tend to groves)
 CREATE TABLE cultivators (
     id UUID PRIMARY KEY,
     username VARCHAR(255) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    last_active_at TIMESTAMP WITH TIME ZONE NOT NULL
+    last_active_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    provider VARCHAR(50) NOT NULL DEFAULT 'oidc',
+    provider_id VARCHAR(255),
+    avatar_url VARCHAR(1024),
+    display_name VARCHAR(255)
 );
 
-CREATE INDEX idx_cultivators_username ON cultivators(username);
-CREATE INDEX idx_cultivators_email ON cultivators(email);
+CREATE UNIQUE INDEX idx_cultivators_provider ON cultivators(provider, provider_id);
 
--- Groves table (workspaces)
 CREATE TABLE groves (
     id UUID PRIMARY KEY,
     cultivator_id UUID NOT NULL REFERENCES cultivators(id),
@@ -21,25 +22,64 @@ CREATE TABLE groves (
     state VARCHAR(50) NOT NULL,
     planted_at TIMESTAMP WITH TIME ZONE NOT NULL,
     last_accessed_at TIMESTAMP WITH TIME ZONE NOT NULL,
-
-    -- Seedling (VM) embedded fields
-    seedling_id UUID,
-    seedling_provider_instance_id VARCHAR(255),
-    seedling_ip_address VARCHAR(45),
-    seedling_ssh_port INTEGER,
-    seedling_state VARCHAR(50),
-    seedling_cpu_cores INTEGER,
-    seedling_memory_mb INTEGER,
-    seedling_disk_gb INTEGER,
-
-    -- Fruit (container) embedded fields
-    fruit_id UUID,
-    fruit_container_id VARCHAR(255),
-    fruit_container_name VARCHAR(255),
-    fruit_state VARCHAR(50),
-    seed_json TEXT
+    seed_spec VARCHAR(20) DEFAULT 'AUTO' NOT NULL,
+    plot_json TEXT NOT NULL
 );
 
-CREATE INDEX idx_groves_cultivator ON groves(cultivator_id);
 CREATE INDEX idx_groves_state ON groves(state);
 CREATE INDEX idx_groves_cultivator_state ON groves(cultivator_id, state);
+
+CREATE TABLE fruits (
+    id UUID PRIMARY KEY,
+    grove_id UUID NOT NULL REFERENCES groves(id) ON DELETE CASCADE,
+    plot_id UUID,
+    container_id VARCHAR(255),
+    container_name VARCHAR(255),
+    service_name VARCHAR(255),
+    state VARCHAR(50) NOT NULL,
+    seed_json TEXT,
+    budded_at TIMESTAMP WITH TIME ZONE,
+    ripened_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_fruits_grove_state ON fruits(grove_id, state);
+
+CREATE TABLE prebuilds (
+    id UUID PRIMARY KEY,
+    repository_url VARCHAR(1024) NOT NULL,
+    branch VARCHAR(255) NOT NULL,
+    commit_sha VARCHAR(64),
+    image_ref VARCHAR(1024),
+    state VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_prebuilds_state_repo_branch ON prebuilds(state, repository_url, branch);
+CREATE INDEX idx_prebuilds_repo_branch ON prebuilds(repository_url, branch);
+
+CREATE TABLE bees (
+    id UUID PRIMARY KEY,
+    grove_id UUID NOT NULL REFERENCES groves(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL,
+    state VARCHAR(20) NOT NULL,
+    spec_type VARCHAR(20) NOT NULL,
+    spec_version VARCHAR(50),
+    process_id VARCHAR(100),
+    hatched_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE,
+    stopped_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_bees_grove_id_state ON bees(grove_id, state);
+
+CREATE TABLE ssh_public_keys (
+    id UUID PRIMARY KEY,
+    cultivator_id UUID NOT NULL REFERENCES cultivators(id),
+    name VARCHAR(255) NOT NULL,
+    public_key TEXT NOT NULL,
+    fingerprint VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE INDEX idx_ssh_public_keys_cultivator ON ssh_public_keys(cultivator_id);

@@ -48,15 +48,15 @@ class TrellisApiClientTest {
                 .andExpect(method(GET))
                 .andExpect(header("Authorization", "Bearer svc-token"))
                 .andRespond(withSuccess(
-                        "{\"groveId\":\"" + groveId + "\",\"cultivatorId\":\"%s\",\"seedlingIp\":\"127.0.0.1\",\"seedlingPort\":22,\"state\":\"FLOURISHING\"}"
+                        "{\"groveId\":\"" + groveId + "\",\"cultivatorId\":\"%s\",\"host\":\"127.0.0.1\",\"sshPort\":22,\"state\":\"FLOURISHING\"}"
                                 .formatted(UUID.randomUUID()),
                         APPLICATION_JSON));
 
         Optional<GatewayRoute> route = client.resolveGrove(groveId);
         assertThat(route).isPresent();
         assertThat(route.get().groveId()).isEqualTo(groveId);
-        assertThat(route.get().seedlingIp()).isEqualTo("127.0.0.1");
-        assertThat(route.get().seedlingPort()).isEqualTo(22);
+        assertThat(route.get().host()).isEqualTo("127.0.0.1");
+        assertThat(route.get().sshPort()).isEqualTo(22);
     }
 
     @Test

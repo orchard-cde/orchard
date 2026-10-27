@@ -76,7 +76,7 @@ public class BeeService {
 
         final Bee beeToProvision = bee;
         final BeeKeeper keeper = beeKeeper;
-        final CommandRunner runner = commandRunnerFor(groveEntity);
+        final CommandRunner runner = commandRunnerFor(groveEntity.plot());
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
@@ -119,7 +119,11 @@ public class BeeService {
                 log.warn("Grove {} not found for bee {}, cannot wake", bee.groveId(), beeId);
                 return bee;
             }
-            CommandRunner runner = commandRunnerFor(groveEntity);
+            CommandRunner runner = reachableRunnerFor(groveEntity);
+            if (runner == null) {
+                log.warn("Grove {} is not reachable for bee {}, cannot wake", bee.groveId(), beeId);
+                return bee;
+            }
 
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -145,7 +149,7 @@ public class BeeService {
 
             BeeKeeper keeper = beeKeeperRegistry.get(bee.type()).orElse(null);
             GroveEntity groveEntity = keeper != null ? groveRepository.findById(bee.groveId()).orElse(null) : null;
-            CommandRunner runner = groveEntity != null ? commandRunnerFor(groveEntity) : null;
+            CommandRunner runner = groveEntity != null ? reachableRunnerFor(groveEntity) : null;
 
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -294,27 +298,19 @@ public class BeeService {
         }
     }
 
-    private CommandRunner commandRunnerFor(GroveEntity groveEntity) {
-        GroveProvider provider = providerRegistry.getDefault();
-        VmPlot plot = new VmPlot(
-            groveEntity.getSeedlingId(),
-            groveEntity.getId(),
-            provider.getProviderId(),
-            groveEntity.getSeedlingProviderInstanceId(),
-            groveEntity.getSeedlingState() != null
-                ? PlotState.valueOf(groveEntity.getSeedlingState().name()) : null,
-            groveEntity.getPlantedAt(),
-            null,
-            groveEntity.getSeedlingIpAddress(),
-            groveEntity.getSeedlingSshPort() != null ? groveEntity.getSeedlingSshPort() : 22,
-            List.of(),
-            new VmSpec(
-                groveEntity.getSeedlingCpuCores() != null ? groveEntity.getSeedlingCpuCores() : 0,
-                groveEntity.getSeedlingMemoryMb() != null ? groveEntity.getSeedlingMemoryMb() : 0,
-                groveEntity.getSeedlingDiskGb() != null ? groveEntity.getSeedlingDiskGb() : 0,
-                null,
-                null)
-        );
+    private CommandRunner reachableRunnerFor(GroveEntity groveEntity) {
+        if (groveEntity.getState() != GroveState.FLOURISHING) {
+            return null;
+        }
+        Plot plot = groveEntity.plot();
+        if (plot.state() != PlotState.SAPLING) {
+            return null;
+        }
+        return commandRunnerFor(plot);
+    }
+
+    private CommandRunner commandRunnerFor(Plot plot) {
+        GroveProvider provider = providerRegistry.require(plot.providerId());
         return provider.vine(plot).commands();
     }
 }

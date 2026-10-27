@@ -1,7 +1,10 @@
 package dev.orchard.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 public record VmPlot(
@@ -14,11 +17,16 @@ public record VmPlot(
     Instant readyAt,
     String host,
     int sshPort,
-    List<String> authorizedKeys,
+    @JsonIgnore List<String> authorizedKeys,
     VmSpec spec
 ) implements Plot {
 
-    /** A {@code GERMINATING} plot with nothing acquired. Mirrors {@link Seedling#germinate}. */
+    public VmPlot {
+        Objects.requireNonNull(providerId, "providerId");
+        authorizedKeys = authorizedKeys == null ? List.of() : authorizedKeys;
+    }
+
+    /** A {@code GERMINATING} plot with nothing acquired. */
     public static VmPlot germinate(UUID groveId, String providerId, SeedlingSpec seedlingSpec) {
         return new VmPlot(
             UUID.randomUUID(),
@@ -41,6 +49,11 @@ public record VmPlot(
         return new VmPlot(id, groveId, providerId, providerInstanceId, newState, plantedAt,
             newState == PlotState.SAPLING ? Instant.now() : readyAt,
             host, sshPort, authorizedKeys, spec);
+    }
+
+    public VmPlot withAuthorizedKeys(List<String> keys) {
+        return new VmPlot(id, groveId, providerId, providerInstanceId, state, plantedAt, readyAt,
+            host, sshPort, keys, spec);
     }
 
     public VmPlot withEndpoint(VmEndpoint endpoint) {

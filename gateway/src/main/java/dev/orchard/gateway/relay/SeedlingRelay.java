@@ -90,14 +90,14 @@ public class SeedlingRelay {
             if (cached != null && !cached.isClosed()) {
                 return cached;
             }
-            ClientSession client = sshClient.connect(DEFAULT_SSH_USER, route.seedlingIp(), route.seedlingPort())
+            ClientSession client = sshClient.connect(DEFAULT_SSH_USER, route.host(), route.sshPort())
                     .verify(10, TimeUnit.SECONDS)
                     .getSession();
             client.addPublicKeyIdentity(internalKey);
             client.auth().verify(10, TimeUnit.SECONDS);
             serverSession.setAttribute(RELAY_SESSION_KEY, client);
             serverSession.addCloseFutureListener(future -> client.close(false));
-            log.debug("Opened relay session to {}:{}", route.seedlingIp(), route.seedlingPort());
+            log.debug("Opened relay session to {}:{}", route.host(), route.sshPort());
             return client;
         }
     }

@@ -275,7 +275,7 @@ public record BeeHealth(
 
 ## 6. Database Schema
 
-New Flyway migration (V7) in `roots/src/main/resources/db/migration/`:
+Bee persistence in the schema under `roots/src/main/resources/db/migration/`:
 
 **`bees` table:**
 

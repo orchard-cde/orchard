@@ -32,6 +32,7 @@ class DevserverOAuth2WiringTest {
         // qemu provider skips QemuStartupRunner, which otherwise fails startup on
         // machines/CI runners without qemu binaries installed.
         registry.add("orchard.nursery.provider", () -> "none");
+        registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> "http://localhost:7779");
     }
 
     @Test

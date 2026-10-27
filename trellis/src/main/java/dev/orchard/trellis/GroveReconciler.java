@@ -1,30 +1,41 @@
 package dev.orchard.trellis;
 
 import dev.orchard.core.model.GroveState;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.GroveRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class GroveReconciler implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(GroveReconciler.class);
-    private static final int LIVENESS_TIMEOUT_MS = 3000;
 
     private final GroveRepository groveRepository;
+    private final ProviderRegistry registry;
+    private final Duration inspectTimeout;
 
-    public GroveReconciler(GroveRepository groveRepository) {
+    @Autowired
+    public GroveReconciler(GroveRepository groveRepository, ProviderRegistry registry) {
+        this(groveRepository, registry, Duration.ofSeconds(10));
+    }
+
+    GroveReconciler(GroveRepository groveRepository, ProviderRegistry registry, Duration inspectTimeout) {
         this.groveRepository = groveRepository;
+        this.registry = registry;
+        this.inspectTimeout = inspectTimeout;
     }
 
     @Override
@@ -88,17 +99,15 @@ public class GroveReconciler implements ApplicationRunner {
     }
 
     private boolean isReachable(GroveEntity grove) {
-        String ip = grove.getSeedlingIpAddress();
-        Integer port = grove.getSeedlingSshPort();
-        if (ip == null || port == null) {
-            log.warn("Grove '{}' [{}] has no seedling address — treating as unreachable",
-                    grove.getName(), grove.getId());
-            return false;
-        }
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ip, port), LIVENESS_TIMEOUT_MS);
-            return true;
-        } catch (IOException e) {
+        String providerId = null;
+        try {
+            Plot plot = grove.plot();
+            providerId = plot.providerId();
+            return registry.require(providerId).inspect(plot)
+                .orTimeout(inspectTimeout.toMillis(), TimeUnit.MILLISECONDS).join().state() == PlotState.SAPLING;
+        } catch (Exception e) {
+            log.error("Grove '{}' [{}] liveness inspection failed (provider '{}') — treating as unreachable",
+                    grove.getName(), grove.getId(), providerId, e);
             return false;
         }
     }

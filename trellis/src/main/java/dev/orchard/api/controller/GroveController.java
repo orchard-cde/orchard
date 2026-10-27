@@ -3,7 +3,9 @@ package dev.orchard.api.controller;
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.api.service.GroveService;
+import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.Grove;
+import dev.orchard.core.model.VmPlot;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -67,19 +69,22 @@ public class GroveController {
     }
 
     /**
-     * Returns an SSH config block for connecting to the grove's seedling.
+     * Returns an SSH config block for connecting to the grove's VM plot.
      * This is consumed by the VS Code extension to set up Remote-SSH connections.
      */
     @GetMapping(value = "/{groveId}/ssh-config", produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<String> getSshConfig(@PathVariable UUID groveId) {
         return groveService.getGrove(groveId)
             .map(grove -> {
-                if (grove.seedling() == null || grove.seedling().ipAddress() == null) {
+                if (grove.plot() instanceof ContainerPlot) {
+                    throw new IllegalStateException("grove is not SSH-reachable");
+                }
+                VmPlot vm = grove.sshReachableVm().orElse(null);
+                if (vm == null) {
                     return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                        .body("Grove seedling is not ready yet");
+                        .body("Grove plot is not ready yet");
                 }
 
-                var seedling = grove.seedling();
                 String hostName = "orchard-" + grove.name().replaceAll("[^a-zA-Z0-9-]", "-");
                 String identityFile = resolveSshKeyPath();
                 String sshConfig = String.format("""
@@ -95,8 +100,8 @@ public class GroveController {
                     """,
                     grove.name(),
                     hostName,
-                    seedling.ipAddress(),
-                    seedling.sshPort(),
+                    vm.host(),
+                    vm.sshPort(),
                     identityFile
                 );
 
