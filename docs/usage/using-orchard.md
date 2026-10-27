@@ -102,10 +102,6 @@ trowel grove clear <grove-id>
 
 This stops containers, destroys the VM, and transitions the grove to CLEARED.
 
-## Schema reset
-
-The migration history was collapsed into a single `V1`, so a database created before the reset fails Flyway validation and must be recreated. On PostgreSQL, drop and recreate the `orchard` database. For `trowel dev-server`, delete `~/.orchard/data/` once.
-
 ## Web UI (Canopy)
 
 Orchard also provides a web interface called Canopy for managing groves from your browser. Canopy is a separate application — see the [orchard-ui repository](https://github.com/orchard-cde/orchard-ui) for setup and usage.

@@ -97,9 +97,6 @@ java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar config init
 java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar config set --server http://localhost:8080
 ```
 
-An existing `~/.orchard/config.toml` whose `local` target points at `http://localhost:7778` must be updated to `http://localhost:17778` (or re-run `trowel config init`).
-
-
 ### Verify Connectivity
 
 ```bash
@@ -123,10 +120,6 @@ ssh-keygen -t ed25519 -f ~/.ssh/orchard_ed25519 -N ""
 ```
 
 The key path can also be set via the `ORCHARD_SSH_PUBLIC_KEY` environment variable.
-
-## Schema reset
-
-The migration history was collapsed into a single `V1`, so a database created before the reset fails Flyway validation and must be recreated. Stop the dev-server, delete `~/.orchard/data/` once, and restart.
 
 ## Troubleshooting
 
