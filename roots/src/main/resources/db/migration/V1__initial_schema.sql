@@ -22,7 +22,7 @@ CREATE TABLE groves (
     state VARCHAR(50) NOT NULL,
     planted_at TIMESTAMP WITH TIME ZONE NOT NULL,
     last_accessed_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    seed_spec VARCHAR(20) DEFAULT 'AUTO',
+    seed_spec VARCHAR(20) DEFAULT 'AUTO' NOT NULL,
     plot_json TEXT NOT NULL
 );
 
@@ -51,8 +51,8 @@ CREATE TABLE prebuilds (
     commit_sha VARCHAR(64),
     image_ref VARCHAR(1024),
     state VARCHAR(50) NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    completed_at TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    completed_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE INDEX idx_prebuilds_state_repo_branch ON prebuilds(state, repository_url, branch);
@@ -60,15 +60,15 @@ CREATE INDEX idx_prebuilds_repo_branch ON prebuilds(repository_url, branch);
 
 CREATE TABLE bees (
     id UUID PRIMARY KEY,
-    grove_id UUID NOT NULL REFERENCES groves(id),
+    grove_id UUID NOT NULL REFERENCES groves(id) ON DELETE CASCADE,
     type VARCHAR(20) NOT NULL,
     state VARCHAR(20) NOT NULL,
     spec_type VARCHAR(20) NOT NULL,
     spec_version VARCHAR(50),
     process_id VARCHAR(100),
-    hatched_at TIMESTAMP NOT NULL,
-    started_at TIMESTAMP,
-    stopped_at TIMESTAMP
+    hatched_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE,
+    stopped_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE INDEX idx_bees_grove_id_state ON bees(grove_id, state);

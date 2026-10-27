@@ -47,6 +47,34 @@ class SchemaMigrationTest {
         assertThat(query(url, user, password, "SELECT column_name FROM information_schema.columns"
             + " WHERE LOWER(column_name) LIKE 'seedling\\_%'"))
             .isEmpty();
+        assertThat(query(url, user, password, "SELECT is_nullable FROM information_schema.columns"
+            + " WHERE LOWER(table_name) = 'groves' AND LOWER(column_name) = 'seed_spec'"))
+            .containsExactly("NO");
+        assertThat(query(url, user, password, "SELECT LOWER(data_type) FROM information_schema.columns"
+            + " WHERE LOWER(table_name) IN ('bees', 'prebuilds') AND LOWER(column_name) LIKE '%\\_at'"))
+            .hasSize(5)
+            .allMatch(type -> type.equals("timestamp with time zone"));
+        assertDeletingGroveDeletesItsBees(url, user, password);
+    }
+
+    private static void assertDeletingGroveDeletesItsBees(String url, String user, String password)
+            throws SQLException {
+        UUID cultivator = UUID.randomUUID();
+        UUID grove = UUID.randomUUID();
+        try (Connection c = DriverManager.getConnection(url, user, password);
+             Statement s = c.createStatement()) {
+            s.executeUpdate("INSERT INTO cultivators (id, username, email, created_at, last_active_at)"
+                + " VALUES ('" + cultivator + "', 'u-" + cultivator + "', 'e-" + cultivator + "',"
+                + " CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+            s.executeUpdate("INSERT INTO groves (id, cultivator_id, name, repository_url, branch, state,"
+                + " planted_at, last_accessed_at, plot_json) VALUES ('" + grove + "', '" + cultivator + "',"
+                + " 'g', 'https://example.invalid/r.git', 'main', 'CLEARED', CURRENT_TIMESTAMP,"
+                + " CURRENT_TIMESTAMP, '{}')");
+            s.executeUpdate("INSERT INTO bees (id, grove_id, type, state, spec_type, hatched_at) VALUES ('"
+                + UUID.randomUUID() + "', '" + grove + "', 'OPENCODE', 'SMOKED', 'DEFAULT', CURRENT_TIMESTAMP)");
+            s.executeUpdate("DELETE FROM groves WHERE id = '" + grove + "'");
+        }
+        assertThat(query(url, user, password, "SELECT id FROM bees WHERE grove_id = '" + grove + "'")).isEmpty();
     }
 
     private static List<String> query(String url, String user, String password, String sql) throws SQLException {
