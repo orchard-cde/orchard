@@ -1,7 +1,6 @@
 package dev.orchard.nursery.aws;
 
 import dev.orchard.nursery.aws.Ec2Operations.AwsInstanceState;
-import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import dev.orchard.vine.SshCommandBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Polls EC2 instance state until {@code RUNNING}, then waits for SSH to become reachable.
@@ -61,47 +63,36 @@ public class Ec2InstanceWaiter {
 
     /** Polls {@code describeInstance} until the instance is {@link AwsInstanceState#RUNNING}. */
     public void awaitRunning(String instanceId) {
-        log.info("Waiting for EC2 instance {} to enter RUNNING state", instanceId);
-        Instant deadline = Instant.now().plus(runningTimeout);
-        while (Instant.now().isBefore(deadline)) {
-            InstanceDescription desc = operations.describeInstance(instanceId);
-            switch (desc.state()) {
-                case RUNNING -> {
-                    log.info("EC2 instance {} is RUNNING", instanceId);
-                    return;
-                }
-                case PENDING -> sleepQuietly(runningPollInterval);
-                case TERMINATED, SHUTTING_DOWN, STOPPED, STOPPING, UNKNOWN ->
-                    throw new IllegalStateException(
-                        "Instance " + instanceId + " entered terminal state "
-                            + desc.state() + " while waiting for RUNNING");
-            }
-        }
-        throw new WaitTimeoutException(
-            "Timeout waiting for EC2 instance " + instanceId + " to become running");
+        awaitState(instanceId, AwsInstanceState.RUNNING, EnumSet.of(AwsInstanceState.PENDING));
     }
 
     /** Polls {@code describeInstance} until the instance is {@link AwsInstanceState#STOPPED}. */
     public void awaitStopped(String instanceId) {
-        log.info("Waiting for EC2 instance {} to enter STOPPED state", instanceId);
+        // DescribeInstances is eventually consistent: right after StopInstances it can still report RUNNING.
+        awaitState(instanceId, AwsInstanceState.STOPPED, EnumSet.of(
+            AwsInstanceState.STOPPING, AwsInstanceState.RUNNING, AwsInstanceState.PENDING,
+            AwsInstanceState.UNKNOWN));
+    }
+
+    private void awaitState(String instanceId, AwsInstanceState target, Set<AwsInstanceState> pollingStates) {
+        log.info("Waiting for EC2 instance {} to enter {} state", instanceId, target);
         Instant deadline = Instant.now().plus(runningTimeout);
         while (Instant.now().isBefore(deadline)) {
-            InstanceDescription desc = operations.describeInstance(instanceId);
-            switch (desc.state()) {
-                case STOPPED -> {
-                    log.info("EC2 instance {} is STOPPED", instanceId);
-                    return;
-                }
-                // DescribeInstances is eventually consistent: right after StopInstances it can still report RUNNING.
-                case STOPPING, RUNNING, PENDING, UNKNOWN -> sleepQuietly(runningPollInterval);
-                case TERMINATED, SHUTTING_DOWN ->
-                    throw new IllegalStateException(
-                        "Instance " + instanceId + " entered terminal state "
-                            + desc.state() + " while waiting for STOPPED");
+            AwsInstanceState state = operations.describeInstance(instanceId).state();
+            if (state == target) {
+                log.info("EC2 instance {} is {}", instanceId, target);
+                return;
             }
+            if (!pollingStates.contains(state)) {
+                throw new IllegalStateException(
+                    "Instance " + instanceId + " entered terminal state "
+                        + state + " while waiting for " + target);
+            }
+            sleepQuietly(runningPollInterval);
         }
         throw new WaitTimeoutException(
-            "Timeout waiting for EC2 instance " + instanceId + " to become stopped");
+            "Timeout waiting for EC2 instance " + instanceId + " to become "
+                + target.name().toLowerCase(Locale.ROOT));
     }
 
     /**

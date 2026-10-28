@@ -115,12 +115,7 @@ public class GroveService {
         // Start async provisioning after the transaction commits,
         // so the grove row exists before updateGroveState() runs
         final Grove groveToProvision = grove;
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                CompletableFuture.runAsync(() -> provisionGrove(groveToProvision, seedSpec));
-            }
-        });
+        runAfterCommit(() -> provisionGrove(groveToProvision, seedSpec));
 
         return grove;
     }
@@ -549,12 +544,7 @@ public class GroveService {
             groveRepository.save(entity);
 
             Grove grove = entityToModel(entity);
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    CompletableFuture.runAsync(() -> tearDownAndRecord(groveId, grove, entity));
-                }
-            });
+            runAfterCommit(() -> tearDownAndRecord(groveId, grove, entity));
         });
     }
 
@@ -651,14 +641,9 @@ public class GroveService {
             GroveProvider provider = providerRegistry.require(plot.providerId());
 
             log.info("Stopping grove {}", groveId);
-            Grove grove = transitionNow(entity, GroveState.DORMANT, "stop");
+            Grove grove = transitionNow(entity, plot, GroveState.DORMANT, "stop");
             beeService.hibernateAll(groveId);
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    CompletableFuture.runAsync(() -> completeStop(grove, provider));
-                }
-            });
+            runAfterCommit(() -> completeStop(grove, provider));
             return grove;
         });
     }
@@ -683,14 +668,18 @@ public class GroveService {
             GroveProvider provider = providerRegistry.require(plot.providerId());
 
             log.info("Starting grove {}", groveId);
-            Grove grove = transitionNow(entity, GroveState.PLANTING, "start");
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    CompletableFuture.runAsync(() -> completeStart(grove, provider));
-                }
-            });
+            Grove grove = transitionNow(entity, plot, GroveState.PLANTING, "start");
+            runAfterCommit(() -> completeStart(grove, provider));
             return grove;
+        });
+    }
+
+    private static void runAfterCommit(Runnable task) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                CompletableFuture.runAsync(task);
+            }
         });
     }
 
@@ -703,9 +692,8 @@ public class GroveService {
      * Moves the grove from the state the request observed, conditionally, so that of two
      * concurrent requests only one proceeds and the other is refused.
      */
-    private Grove transitionNow(GroveEntity entity, GroveState next, String action) {
+    private Grove transitionNow(GroveEntity entity, Plot plot, GroveState next, String action) {
         GroveState observed = entity.getState();
-        Plot plot = entity.plot();
         int rows = groveRepository.transitionIfState(
             entity.getId(), observed, next, GroveEntity.serializePlot(plot));
         if (rows != 1) {

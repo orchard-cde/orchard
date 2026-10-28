@@ -88,47 +88,26 @@ public class DefaultEc2Operations implements Ec2Operations {
 
     @Override
     public void terminateInstance(String instanceId) {
-        try {
-            client.terminateInstances(TerminateInstancesRequest.builder()
+        swallowingErrorCode(NOT_FOUND_CODE, "Instance {} already terminated; treating as success", instanceId,
+            () -> client.terminateInstances(TerminateInstancesRequest.builder()
                 .instanceIds(instanceId)
-                .build());
-        } catch (AwsServiceException e) {
-            if (isErrorCode(e, NOT_FOUND_CODE)) {
-                log.info("Instance {} already terminated; treating as success", instanceId);
-                return;
-            }
-            throw e;
-        }
+                .build()));
     }
 
     @Override
     public void startInstance(String instanceId) {
-        try {
-            client.startInstances(StartInstancesRequest.builder()
+        swallowingErrorCode(INCORRECT_STATE_CODE, "Instance {} already running or pending; treating as success",
+            instanceId, () -> client.startInstances(StartInstancesRequest.builder()
                 .instanceIds(instanceId)
-                .build());
-        } catch (AwsServiceException e) {
-            if (isErrorCode(e, INCORRECT_STATE_CODE)) {
-                log.info("Instance {} already running or pending; treating as success", instanceId);
-                return;
-            }
-            throw e;
-        }
+                .build()));
     }
 
     @Override
     public void stopInstance(String instanceId) {
-        try {
-            client.stopInstances(StopInstancesRequest.builder()
+        swallowingErrorCode(INCORRECT_STATE_CODE, "Instance {} already stopping or stopped; treating as success",
+            instanceId, () -> client.stopInstances(StopInstancesRequest.builder()
                 .instanceIds(instanceId)
-                .build());
-        } catch (AwsServiceException e) {
-            if (isErrorCode(e, INCORRECT_STATE_CODE)) {
-                log.info("Instance {} already stopping or stopped; treating as success", instanceId);
-                return;
-            }
-            throw e;
-        }
+                .build()));
     }
 
     @Override
@@ -139,6 +118,18 @@ public class DefaultEc2Operations implements Ec2Operations {
         } catch (Exception e) {
             log.debug("EC2 API unreachable: {}", e.getMessage());
             return false;
+        }
+    }
+
+    private static void swallowingErrorCode(String code, String logMessage, String instanceId, Runnable call) {
+        try {
+            call.run();
+        } catch (AwsServiceException e) {
+            if (isErrorCode(e, code)) {
+                log.info(logMessage, instanceId);
+                return;
+            }
+            throw e;
         }
     }
 

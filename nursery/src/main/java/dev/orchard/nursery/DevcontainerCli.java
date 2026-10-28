@@ -55,9 +55,7 @@ public class DevcontainerCli {
         AtomicReference<String> outcomeLine = new AtomicReference<>();
         runner.executeStreaming(cmd, line -> {
             rawLineConsumer.accept(line);
-            // The outcome line is the only one with an "outcome" key (matched as a JSON key prefix
-            // to avoid false positives on log messages that mention "outcome" in a value).
-            if (line.contains("\"outcome\":\"")) {
+            if (isOutcomeLine(line)) {
                 outcomeLine.set(line);
             }
         }, config.upTimeoutSeconds());
@@ -69,8 +67,7 @@ public class DevcontainerCli {
         }
 
         JsonNode node = mapper.readTree(outcomeLine.get());
-        String outcome = node.has("outcome") ? node.get("outcome").asText() : null;
-        if (!"success".equals(outcome)) {
+        if (!isSuccess(node)) {
             throw new DevcontainerCliException(new CliError(
                 node.path("message").asText(null),
                 node.path("description").asText(null),
@@ -106,7 +103,7 @@ public class DevcontainerCli {
         String output = runner.execute(cmd, config.upTimeoutSeconds());
         String outcomeLine = null;
         for (String line : output.split("\n")) {
-            if (line.contains("\"outcome\":\"")) {
+            if (isOutcomeLine(line)) {
                 outcomeLine = line;
             }
         }
@@ -114,7 +111,7 @@ public class DevcontainerCli {
             return;
         }
         JsonNode node = mapper.readTree(outcomeLine);
-        if (!"success".equals(node.path("outcome").asText(null))) {
+        if (!isSuccess(node)) {
             throw new DevcontainerCliException(new CliError(
                 node.path("message").asText(null),
                 node.path("description").asText(null),
@@ -135,6 +132,18 @@ public class DevcontainerCli {
             .trim();
         // docker inspect returns "/name" with a leading slash; strip it.
         return name.startsWith("/") ? name.substring(1) : name;
+    }
+
+    /**
+     * The outcome line is the only one with an "outcome" key (matched as a JSON key prefix to avoid
+     * false positives on log messages that mention "outcome" in a value).
+     */
+    private static boolean isOutcomeLine(String line) {
+        return line.contains("\"outcome\":\"");
+    }
+
+    private static boolean isSuccess(JsonNode outcomeNode) {
+        return "success".equals(outcomeNode.path("outcome").asText(null));
     }
 
     private static String shellEscape(String s) {

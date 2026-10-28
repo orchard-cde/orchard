@@ -80,7 +80,7 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
     protected QemuLaunch launch(VmPlot plot) throws IOException, InterruptedException {
         log.info("Planting plot {} with spec: {}", plot.id(), plot.spec());
 
-        Path vmDir = config.vmStoragePath().resolve(plot.id().toString());
+        Path vmDir = vmDir(plot.id());
         Files.createDirectories(vmDir);
 
         Path diskImage = vmDir.resolve("disk.qcow2");
@@ -92,7 +92,7 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
         int sshPort = commands.allocateSshPort();
 
         Process vmProcess = commands.startQemu(plot, diskImage, cloudInitIso, sshPort);
-        Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(vmProcess.pid()));
+        Files.writeString(pidFile(plot.id()), String.valueOf(vmProcess.pid()));
         runningVms.put(plot.id(), vmProcess.toHandle());
 
         return new QemuLaunch(sshPort);
@@ -112,10 +112,7 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
     @Override
     public CompletableFuture<Plot> water(Plot plot) {
         VmPlot vm = narrow(plot);
-        if (vm.state() != PlotState.DORMANT) {
-            throw new IllegalStateException(
-                "Only a DORMANT plot can be watered; plot " + vm.id() + " is " + vm.state());
-        }
+        requireDormant(vm);
         ProcessHandle tracked = runningVms.get(vm.id());
         if (tracked != null && tracked.isAlive()) {
             throw new IllegalStateException(
@@ -123,13 +120,13 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
         }
         return CompletableFuture.supplyAsync(() -> {
             log.info("Watering plot {}", vm.id());
-            Path vmDir = config.vmStoragePath().resolve(vm.id().toString());
+            Path vmDir = vmDir(vm.id());
             Process process = null;
             try {
                 int sshPort = commands.allocateSshPort();
                 process = commands.startQemu(vm, vmDir.resolve("disk.qcow2"),
                     vmDir.resolve("cloud-init.iso"), sshPort);
-                Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(process.pid()));
+                Files.writeString(pidFile(vm.id()), String.valueOf(process.pid()));
                 runningVms.put(vm.id(), process.toHandle());
 
                 VmEndpoint endpoint = resolveEndpoint(vm, new QemuLaunch(sshPort));
@@ -174,7 +171,7 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
                     awaitPoweroff(vm, handle);
                 }
                 runningVms.remove(vm.id());
-                Path pidFile = config.vmStoragePath().resolve(vm.id().toString()).resolve("qemu.pid");
+                Path pidFile = pidFile(vm.id());
                 try {
                     Files.deleteIfExists(pidFile);
                 } catch (IOException e) {
@@ -210,7 +207,7 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
             }
 
             // Clean up VM directory (PID file is inside, deleted with the rest)
-            Path vmDir = config.vmStoragePath().resolve(vm.id().toString());
+            Path vmDir = vmDir(vm.id());
             try {
                 if (Files.exists(vmDir)) {
                     Files.walk(vmDir)
@@ -272,9 +269,9 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
             if (handle != null && handle.isAlive()) {
                 return vm.withState(PlotState.ROOTED);
             }
-            Path vmDir = config.vmStoragePath().resolve(vm.id().toString());
+            Path vmDir = vmDir(vm.id());
             if (Files.exists(vmDir.resolve("disk.qcow2"))) {
-                if (Files.exists(vmDir.resolve("qemu.pid"))) {
+                if (Files.exists(pidFile(vm.id()))) {
                     log.warn("Plot {} has a stale qemu.pid and no running VM; it was not shut down cleanly",
                         vm.id());
                 }
@@ -321,6 +318,14 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
             block.append("      - ").append(key).append('\n');
         }
         return block.toString();
+    }
+
+    private Path vmDir(UUID id) {
+        return config.vmStoragePath().resolve(id.toString());
+    }
+
+    private Path pidFile(UUID id) {
+        return vmDir(id).resolve("qemu.pid");
     }
 
     public void reattachSurvivingVms() {

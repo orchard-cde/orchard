@@ -24,6 +24,8 @@ public class GroveReconciler implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(GroveReconciler.class);
 
+    private static final int DORMANT_TIMEOUT_MULTIPLIER = 6;
+
     private final GroveRepository groveRepository;
     private final ProviderRegistry registry;
     private final Duration inspectTimeout;
@@ -70,20 +72,22 @@ public class GroveReconciler implements ApplicationRunner {
                         alive++;
                         log.info("Grove '{}' [{}] is still reachable — leaving FLOURISHING",
                                 grove.getName(), grove.getId());
-                    } else if (inspected != null && inspected.state() == PlotState.DORMANT) {
-                        grove.setPlot(inspected);
-                        grove.setState(GroveState.BLIGHTED);
-                        groveRepository.save(grove);
-                        blighted++;
-                        log.warn("Grove '{}' [{}] plot was powered off outside Orchard — marked BLIGHTED "
-                                + "with a DORMANT plot; start can resume it",
-                                grove.getName(), grove.getId());
                     } else {
+                        boolean poweredOff = inspected != null && inspected.state() == PlotState.DORMANT;
+                        if (poweredOff) {
+                            grove.setPlot(inspected);
+                        }
                         grove.setState(GroveState.BLIGHTED);
                         groveRepository.save(grove);
                         blighted++;
-                        log.warn("Grove '{}' [{}] is unreachable — marked BLIGHTED",
-                                grove.getName(), grove.getId());
+                        if (poweredOff) {
+                            log.warn("Grove '{}' [{}] plot was powered off outside Orchard — marked BLIGHTED "
+                                    + "with a DORMANT plot; start can resume it",
+                                    grove.getName(), grove.getId());
+                        } else {
+                            log.warn("Grove '{}' [{}] is unreachable — marked BLIGHTED",
+                                    grove.getName(), grove.getId());
+                        }
                     }
                 }
                 case PREPARING, PLANTING, GROWING -> {
@@ -128,7 +132,7 @@ public class GroveReconciler implements ApplicationRunner {
             Plot dormant = inspected;
             if (inspected.state() == PlotState.ROOTED || inspected.state() == PlotState.WILTING) {
                 dormant = provider.dormant(inspected)
-                    .orTimeout(inspectTimeout.toMillis() * 6, TimeUnit.MILLISECONDS).join();
+                    .orTimeout(inspectTimeout.toMillis() * DORMANT_TIMEOUT_MULTIPLIER, TimeUnit.MILLISECONDS).join();
             }
             if (dormant.state() != PlotState.DORMANT) {
                 throw new IllegalStateException("plot is " + dormant.state() + ", expected DORMANT");

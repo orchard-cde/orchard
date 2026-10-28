@@ -92,7 +92,7 @@ public class FruitGrower {
                     yield growDevfileViaDocker(target.runner(), fruit);
                 }
                 case DevcontainerSeed ignored -> {
-                    boolean useCli = useDevcontainerCli && devcontainerCli != null;
+                    boolean useCli = cliEnabled();
                     log.info("Growing fruit {} on target {} (path={})", fruit.id(), target.targetId(),
                         useCli ? "devcontainer-cli" : "legacy-docker");
                     yield useCli ? growViaCli(target, fruit)
@@ -492,10 +492,9 @@ public class FruitGrower {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Picking fruit {}", fruit.id());
-                if (fruit.composeProjectName() != null) {
-                    executeSsh(target.runner(), "docker compose -p " + shellQuote(fruit.composeProjectName()) + " stop");
-                } else if (fruit.containerId() != null) {
-                    executeSsh(target.runner(), "docker stop " + fruit.containerId());
+                String command = lifecycleCommand(fruit, "stop");
+                if (command != null) {
+                    executeSsh(target.runner(), command);
                 }
                 return fruit.withState(FruitState.PICKED);
             } catch (Exception e) {
@@ -518,11 +517,9 @@ public class FruitGrower {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Ripening fruit {}", fruit.id());
-                CommandRunner runner = target.runner();
-                if (fruit.composeProjectName() != null) {
-                    executeSsh(runner, "docker compose -p " + shellQuote(fruit.composeProjectName()) + " start");
-                } else if (fruit.containerId() != null) {
-                    executeSsh(runner, "docker start " + fruit.containerId());
+                String command = lifecycleCommand(fruit, "start");
+                if (command != null) {
+                    executeSsh(target.runner(), command);
                 }
                 runPostStart(target, fruit);
                 return fruit.withState(FruitState.RIPE);
@@ -536,9 +533,20 @@ public class FruitGrower {
         }, executor);
     }
 
+    private static String lifecycleCommand(Fruit fruit, String verb) {
+        if (fruit.composeProjectName() != null) {
+            return "docker compose -p " + shellQuote(fruit.composeProjectName()) + " " + verb;
+        }
+        return fruit.containerId() != null ? "docker " + verb + " " + fruit.containerId() : null;
+    }
+
+    private boolean cliEnabled() {
+        return useDevcontainerCli && devcontainerCli != null;
+    }
+
     private void runPostStart(ExecTarget target, Fruit fruit) throws InterruptedException {
         try {
-            if (fruit.seed() instanceof DevcontainerSeed && useDevcontainerCli && devcontainerCli != null) {
+            if (fruit.seed() instanceof DevcontainerSeed && cliEnabled()) {
                 devcontainerCli.runUserCommands(target.runner(), target.workspacePath(), fruit.containerId());
                 return;
             }
@@ -582,7 +590,7 @@ public class FruitGrower {
             try {
                 DevcontainerSeed seed = devcontainerSeed(fruit);
                 if (seed.postAttachCommand() != null) {
-                    if (useDevcontainerCli && devcontainerCli != null) {
+                    if (cliEnabled()) {
                         runLifecycleCommand(seed.postAttachCommand(),
                             cmd -> devcontainerCli.exec(target.runner(), target.workspacePath(), cmd));
                     } else {
