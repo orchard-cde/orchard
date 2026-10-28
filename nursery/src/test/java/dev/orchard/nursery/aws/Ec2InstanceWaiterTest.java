@@ -3,6 +3,8 @@ package dev.orchard.nursery.aws;
 import dev.orchard.nursery.aws.Ec2Operations.AwsInstanceState;
 import dev.orchard.nursery.aws.Ec2Operations.InstanceDescription;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -84,6 +86,59 @@ class Ec2InstanceWaiterTest {
             .hasMessageContaining("UNKNOWN");
     }
 
+    private static Ec2InstanceWaiter waiterFor(Ec2Operations ops, Duration runningTimeout) {
+        return new Ec2InstanceWaiter(
+            ops, runningTimeout, Duration.ofMillis(10),
+            Duration.ofSeconds(1), Duration.ofMillis(10),
+            (host, port) -> true);
+    }
+
+    @Test
+    void awaitStopped_returnsImmediatelyWhenStopped() {
+        waiterFor(new StubOps(desc(AwsInstanceState.STOPPED)), Duration.ofSeconds(1)).awaitStopped("i-1");
+    }
+
+    @Test
+    void awaitStopped_pollsWhileStoppingUntilStopped() {
+        StubOps ops = new StubOps(
+            desc(AwsInstanceState.STOPPING),
+            desc(AwsInstanceState.STOPPING),
+            desc(AwsInstanceState.STOPPED));
+
+        waiterFor(ops, Duration.ofSeconds(2)).awaitStopped("i-1");
+
+        assertThat(ops.callsMade()).isEqualTo(3);
+    }
+
+    @Test
+    void awaitStopped_throwsOnTimeout() {
+        Ec2Operations ops = new StubOps(desc(AwsInstanceState.STOPPING));
+
+        assertThatThrownBy(() -> waiterFor(ops, Duration.ofMillis(50)).awaitStopped("i-1"))
+            .isInstanceOf(Ec2InstanceWaiter.WaitTimeoutException.class)
+            .hasMessageContaining("stopped");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AwsInstanceState.class, names = {"TERMINATED", "SHUTTING_DOWN"})
+    void awaitStopped_throwsImmediatelyWhenInstanceIsGoing(AwsInstanceState state) {
+        Ec2Operations ops = new StubOps(desc(state));
+
+        assertThatThrownBy(() -> waiterFor(ops, Duration.ofSeconds(1)).awaitStopped("i-1"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(state.name());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AwsInstanceState.class, names = {"RUNNING", "PENDING", "UNKNOWN"})
+    void awaitStopped_throwsWhenInstanceIsNotHeadingToStopped(AwsInstanceState state) {
+        Ec2Operations ops = new StubOps(desc(state));
+
+        assertThatThrownBy(() -> waiterFor(ops, Duration.ofSeconds(1)).awaitStopped("i-1"))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(state.name());
+    }
+
     @Test
     void awaitSshReady_succeedsAgainstListeningSocket() throws IOException {
         try (ServerSocket server = new ServerSocket(0)) {
@@ -153,6 +208,7 @@ class Ec2InstanceWaiterTest {
         @Override public String runInstance(RunInstanceParams params) { throw new UnsupportedOperationException(); }
         @Override public void terminateInstance(String instanceId) { throw new UnsupportedOperationException(); }
         @Override public void startInstance(String instanceId) { throw new UnsupportedOperationException(); }
+        @Override public void stopInstance(String instanceId) { throw new UnsupportedOperationException(); }
         @Override public boolean canReachApi() { return true; }
     }
 }

@@ -23,7 +23,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -39,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -195,35 +198,76 @@ class Ec2GroveProviderTest {
         assertThat(result.host()).isEqualTo("10.0.0.4");
     }
 
+    private VmPlot dormantPlot(int sshPort) {
+        return germinated
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), sshPort))
+            .withState(PlotState.DORMANT);
+    }
+
     @Test
-    void water_startsInstanceAndRefreshesIp() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
-            .withState(PlotState.WILTING);
+    void water_startsWaitsRefreshesIpAndAwaitsSsh_returnsRooted() {
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "5.6.7.8", "10.0.0.4"));
 
         VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .water(planted).join();
+            .water(dormantPlot(germinated.sshPort())).join();
 
         assertThat(result.state()).isEqualTo(PlotState.ROOTED);
         assertThat(result.host()).isEqualTo("5.6.7.8");
-        verify(ops).startInstance("i-abc");
-        verify(waiter).awaitRunning("i-abc");
+        InOrder order = inOrder(ops, waiter);
+        order.verify(ops).startInstance("i-abc");
+        order.verify(waiter).awaitRunning("i-abc");
+        order.verify(ops).describeInstance("i-abc");
+        order.verify(waiter).awaitSshReady("5.6.7.8", 22);
     }
 
     @Test
     void water_refreshesHostButPreservesSshPort() {
-        VmPlot planted = germinated
-            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), 2201))
-            .withState(PlotState.WILTING);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "5.6.7.8", "10.0.0.4"));
 
-        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO)).water(planted).join();
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .water(dormantPlot(2201)).join();
 
         assertThat(result.state()).isEqualTo(PlotState.ROOTED);
         assertThat(result.host()).isEqualTo("5.6.7.8");
         assertThat(result.sshPort()).isEqualTo(2201);
+        verify(waiter).awaitSshReady("5.6.7.8", 2201);
+    }
+
+    @Test
+    void water_failure_completesExceptionally() {
+        doThrow(new IllegalStateException("start failed")).when(ops).startInstance("i-abc");
+
+        assertThatThrownBy(() -> providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .water(dormantPlot(22)).join())
+            .isInstanceOf(CompletionException.class)
+            .hasRootCauseMessage("start failed");
+    }
+
+    @Test
+    void water_sshNeverReady_completesExceptionally() {
+        when(ops.describeInstance("i-abc")).thenReturn(
+            new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "5.6.7.8", "10.0.0.4"));
+        doThrow(new Ec2InstanceWaiter.WaitTimeoutException("ssh timeout"))
+            .when(waiter).awaitSshReady("5.6.7.8", 22);
+
+        assertThatThrownBy(() -> providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .water(dormantPlot(22)).join())
+            .isInstanceOf(CompletionException.class)
+            .hasRootCauseMessage("ssh timeout");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PlotState.class, mode = EnumSource.Mode.EXCLUDE, names = "DORMANT")
+    void water_notDormant_throwsIllegalState(PlotState state) {
+        VmPlot plot = dormantPlot(22).withState(state);
+        Ec2GroveProvider provider = providerWith(configWith(Ec2Config.IpMode.AUTO));
+
+        assertThatThrownBy(() -> provider.water(plot))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(state.name());
+        verifyNoInteractions(ops, waiter);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -248,15 +292,45 @@ class Ec2GroveProviderTest {
     }
 
     @Test
-    void dormant_returnsWiltingWithoutTouchingAws() {
-        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
-            .withState(PlotState.ROOTED);
+    void dormant_stopsAndWaits_returnsDormant() {
+        VmPlot planted = germinated
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.WILTING);
 
         VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .dormant(planted).join();
 
-        assertThat(result.state()).isEqualTo(PlotState.WILTING);
-        verifyNoInteractions(ops, waiter);
+        assertThat(result.state()).isEqualTo(PlotState.DORMANT);
+        InOrder order = inOrder(ops, waiter);
+        order.verify(ops).stopInstance("i-abc");
+        order.verify(waiter).awaitStopped("i-abc");
+    }
+
+    @Test
+    void dormant_stopFails_completesExceptionally() {
+        VmPlot planted = germinated
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.WILTING);
+        doThrow(new IllegalStateException("stop failed")).when(ops).stopInstance("i-abc");
+
+        assertThatThrownBy(() -> providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .dormant(planted).join())
+            .isInstanceOf(CompletionException.class)
+            .hasRootCauseMessage("stop failed");
+        verify(waiter, never()).awaitStopped(anyString());
+    }
+
+    @Test
+    void dormant_neverStops_completesExceptionally() {
+        VmPlot planted = germinated
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.WILTING);
+        doThrow(new Ec2InstanceWaiter.WaitTimeoutException("stop timeout")).when(waiter).awaitStopped("i-abc");
+
+        assertThatThrownBy(() -> providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .dormant(planted).join())
+            .isInstanceOf(CompletionException.class)
+            .hasRootCauseMessage("stop timeout");
     }
 
     @Test

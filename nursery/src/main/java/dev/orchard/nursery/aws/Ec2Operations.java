@@ -41,6 +41,12 @@ public interface Ec2Operations {
     void startInstance(String instanceId);
 
     /**
+     * Stops a running EC2 instance, preserving its disk. Implementations should swallow
+     * {@code IncorrectInstanceState} errors when the instance is already stopping or stopped.
+     */
+    void stopInstance(String instanceId);
+
+    /**
      * Returns true iff the EC2 API is reachable from this process with the
      * configured region and credentials. Implementations should perform a
      * minimal request (e.g. {@code DescribeRegions}) and return false on any

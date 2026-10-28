@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.ec2.model.ResourceType;
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest;
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse;
 import software.amazon.awssdk.services.ec2.model.StartInstancesRequest;
+import software.amazon.awssdk.services.ec2.model.StopInstancesRequest;
 import software.amazon.awssdk.services.ec2.model.Tag;
 import software.amazon.awssdk.services.ec2.model.TagSpecification;
 import software.amazon.awssdk.services.ec2.model.TerminateInstancesRequest;
@@ -109,6 +110,21 @@ public class DefaultEc2Operations implements Ec2Operations {
         } catch (AwsServiceException e) {
             if (isErrorCode(e, INCORRECT_STATE_CODE)) {
                 log.info("Instance {} already running or pending; treating as success", instanceId);
+                return;
+            }
+            throw e;
+        }
+    }
+
+    @Override
+    public void stopInstance(String instanceId) {
+        try {
+            client.stopInstances(StopInstancesRequest.builder()
+                .instanceIds(instanceId)
+                .build());
+        } catch (AwsServiceException e) {
+            if (isErrorCode(e, INCORRECT_STATE_CODE)) {
+                log.info("Instance {} already stopping or stopped; treating as success", instanceId);
                 return;
             }
             throw e;

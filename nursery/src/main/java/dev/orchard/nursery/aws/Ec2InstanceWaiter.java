@@ -81,6 +81,28 @@ public class Ec2InstanceWaiter {
             "Timeout waiting for EC2 instance " + instanceId + " to become running");
     }
 
+    /** Polls {@code describeInstance} until the instance is {@link AwsInstanceState#STOPPED}. */
+    public void awaitStopped(String instanceId) {
+        log.info("Waiting for EC2 instance {} to enter STOPPED state", instanceId);
+        Instant deadline = Instant.now().plus(runningTimeout);
+        while (Instant.now().isBefore(deadline)) {
+            InstanceDescription desc = operations.describeInstance(instanceId);
+            switch (desc.state()) {
+                case STOPPED -> {
+                    log.info("EC2 instance {} is STOPPED", instanceId);
+                    return;
+                }
+                case STOPPING -> sleepQuietly(runningPollInterval);
+                case TERMINATED, SHUTTING_DOWN, RUNNING, PENDING, UNKNOWN ->
+                    throw new IllegalStateException(
+                        "Instance " + instanceId + " entered state "
+                            + desc.state() + " while waiting for STOPPED");
+            }
+        }
+        throw new WaitTimeoutException(
+            "Timeout waiting for EC2 instance " + instanceId + " to become stopped");
+    }
+
     /**
      * Waits until {@code host:port} is reachable AND the {@link SshProbe} reports success.
      * Two phases mirror {@code DefaultQemuCommands.awaitReachable}: TCP port openness, then
