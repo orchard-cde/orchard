@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -403,6 +404,51 @@ class DevfileParserTest {
         assertThat(result).isPresent();
         DevfileSeed seed = result.get();
         assertThat(seed.preStartCommand()).isNull();
+        assertThat(seed.postStartCommand()).isNull();
+    }
+
+    // Loose shapes: the bound records keep the coercions the former JsonNode walk applied.
+
+    @Test
+    void parseYaml_nullContainer_isStillThePrimaryComponent() {
+        DevfileSeed seed = parser.parseYaml("""
+                schemaVersion: 2.2.0
+                components:
+                  - name: c
+                    container: null
+                  - name: d
+                    container:
+                      image: j
+                """).orElseThrow();
+
+        assertThat(seed.componentName()).isEqualTo("c");
+        assertThat(seed.image()).isNull();
+    }
+
+    @Test
+    void parseYaml_mistypedValues_areIgnored() {
+        DevfileSeed seed = parser.parseYaml("""
+                schemaVersion: 2.1.0
+                metadata: just-a-string
+                components:
+                  - container:
+                      image: [not, a, string]
+                      env:
+                        - name: A
+                        - name: B
+                          value: 3
+                      endpoints:
+                        - targetPort: '8080'
+                        - targetPort: abc
+                        - targetPort: 0
+                events:
+                  postStart: not-a-list
+                """).orElseThrow();
+
+        assertThat(seed.name()).isNull();
+        assertThat(seed.image()).isNull();
+        assertThat(seed.containerEnv()).containsExactly(Map.entry("A", ""), Map.entry("B", "3"));
+        assertThat(seed.forwardPorts()).containsExactly("8080");
         assertThat(seed.postStartCommand()).isNull();
     }
 }
