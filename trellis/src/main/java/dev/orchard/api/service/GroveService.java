@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -55,6 +56,8 @@ public class GroveService {
     private final DevfileParser devfileParser;
     private final SeedSerializer seedSerializer;
     private final ApplicationEventPublisher eventPublisher;
+    private final BeeService beeService;
+    private final TransactionTemplate transactionTemplate;
 
     public GroveService(
             GroveRepository groveRepository,
@@ -63,7 +66,9 @@ public class GroveService {
             DevcontainerCliConfig devcontainerCliConfig,
             CultivatorService cultivatorService,
             ApplicationEventPublisher eventPublisher,
-            SshPublicKeyService sshPublicKeyService) {
+            SshPublicKeyService sshPublicKeyService,
+            BeeService beeService,
+            TransactionTemplate transactionTemplate) {
         this.groveRepository = groveRepository;
         this.fruitRepository = fruitRepository;
         this.providerRegistry = providerRegistry;
@@ -74,6 +79,8 @@ public class GroveService {
         this.devfileParser = new DevfileParser();
         this.seedSerializer = new SeedSerializer();
         this.eventPublisher = eventPublisher;
+        this.beeService = beeService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @Transactional
@@ -485,16 +492,8 @@ public class GroveService {
             GroveEntity entity = GroveEntity.fromModel(grove);
             groveRepository.save(entity);
 
-            if (previousState != null && previousState != grove.state()) {
-                eventPublisher.publishEvent(GroveStateChangedEvent.of(
-                    grove.id(),
-                    grove.cultivatorId(),
-                    grove.name(),
-                    previousState,
-                    grove.state()
-                ));
-                log.info("Published state change event for grove {}: {} -> {}",
-                    grove.id(), previousState, grove.state());
+            if (previousState != null) {
+                publishStateChange(grove, previousState);
             }
         } catch (Exception e) {
             log.error("Failed to update grove state", e);
@@ -553,8 +552,7 @@ public class GroveService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(
-                        () -> tearDownAndRecord(groveId, grove, entity, GroveState.CLEARED));
+                    CompletableFuture.runAsync(() -> tearDownAndRecord(groveId, grove, entity));
                 }
             });
         });
@@ -569,7 +567,7 @@ public class GroveService {
      * <p>Package-private so tests can drive it directly; production enters via
      * {@code afterCommit} → {@code runAsync}, which no test can reach.
      */
-    void tearDownAndRecord(UUID groveId, Grove grove, GroveEntity entity, GroveState successState) {
+    void tearDownAndRecord(UUID groveId, Grove grove, GroveEntity entity) {
         // Phase 1 — release the substrate. A failure here may have left a resource behind, so
         // every record is retained and the grove is marked ORPHANED.
         try {
@@ -592,37 +590,18 @@ public class GroveService {
         // the save() below is what fails, the row keeps CLEARING and the reconciler marks it
         // ORPHANED at the next startup instead.
         try {
-            // On the stop path this detached entity already holds successState, so rewriting it
-            // would clobber a startGrove that ran in between. Guards the state column only — the
-            // fruit rows are protected separately, below.
-            if (entity.getState() != successState) {
-                entity.setState(successState);
-                groveRepository.save(entity);
+            entity.setState(GroveState.CLEARED);
+            if (grove.plot() != null) {
+                entity.setPlot(grove.plot().withState(PlotState.WITHERED));
             }
-            // Only the generation captured when teardown began: re-querying at completion would
-            // delete rows a subsequent startGrove created, since this runs asynchronously.
-            List<UUID> capturedFruitIds = grove.fruits() == null ? List.of()
-                : grove.fruits().stream().map(Fruit::id).toList();
-            fruitRepository.deleteAllById(capturedFruitIds);
-            log.info("Grove {} reached {}", groveId, successState);
-            witherPlotIfUnchanged(groveId, grove.plot());
+            groveRepository.save(entity);
+            fruitRepository.deleteAllById(grove.fruits() == null ? List.of()
+                : grove.fruits().stream().map(Fruit::id).toList());
+            log.info("Grove {} reached {}", groveId, GroveState.CLEARED);
         } catch (Exception e) {
             log.error("Grove {} substrate was released but bookkeeping failed; state or fruit rows "
                 + "may be stale. The substrate is NOT leaked.", groveId, e);
         }
-    }
-
-    /** Compare-and-set on the plot id: a concurrent startGrove may have replaced the plot. */
-    private void witherPlotIfUnchanged(UUID groveId, Plot tornDown) {
-        if (tornDown == null) {
-            return;
-        }
-        groveRepository.findById(groveId)
-            .filter(fresh -> fresh.plot().id().equals(tornDown.id()))
-            .ifPresent(fresh -> {
-                fresh.setPlot(tornDown.withState(PlotState.WITHERED));
-                groveRepository.save(fresh);
-            });
     }
 
     /** Best-effort container cleanup, gated on provider inspection. */
@@ -652,68 +631,176 @@ public class GroveService {
     }
 
     /**
-     * Stops a running grove by tearing down its fruit and plot, transitioning it to
-     * {@link GroveState#DORMANT}. Only groves in {@link GroveState#GROWING} or
-     * {@link GroveState#FLOURISHING} can be stopped.
+     * Stops a grove without destroying it: the grove becomes {@link GroveState#DORMANT} at once,
+     * then its fruits are picked and its plot powered off, keeping disk and containers. Allowed
+     * from {@link GroveState#GROWING}, {@link GroveState#FLOURISHING}, or {@link GroveState#BLIGHTED}
+     * with a {@link PlotState#ROOTED} plot.
+     *
+     * @throws IllegalStateException if the grove cannot be stopped in its current state
      */
     @Transactional
     public Optional<Grove> stopGrove(UUID groveId) {
         return groveRepository.findById(groveId).map(entity -> {
             GroveState state = entity.getState();
-            if (state != GroveState.GROWING && state != GroveState.FLOURISHING) {
-                log.warn("Cannot stop grove {} in state {}", groveId, state);
-                return entityToModel(entity);
+            Plot plot = entity.plot();
+            boolean running = state == GroveState.GROWING || state == GroveState.FLOURISHING;
+            boolean blightedButRooted = state == GroveState.BLIGHTED && plot.state() == PlotState.ROOTED;
+            if (!running && !blightedButRooted) {
+                throw refusal("stop", groveId, state, plot);
             }
+            GroveProvider provider = providerRegistry.require(plot.providerId());
 
             log.info("Stopping grove {}", groveId);
-            entity.setState(GroveState.DORMANT);
-            groveRepository.save(entity);
-
-            Grove grove = entityToModel(entity);
+            Grove grove = transitionNow(entity, GroveState.DORMANT);
+            beeService.hibernateAll(groveId);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(
-                        () -> tearDownAndRecord(groveId, grove, entity, GroveState.DORMANT));
+                    CompletableFuture.runAsync(() -> completeStop(grove, provider));
                 }
             });
-
             return grove;
         });
     }
 
     /**
-     * Restarts a dormant grove by re-provisioning its plot and fruit, transitioning it
-     * back to {@link GroveState#GROWING} / {@link GroveState#FLOURISHING}.
-     * Only groves in {@link GroveState#DORMANT} can be started.
+     * Starts a stopped grove on the same plot: powers it on and starts the same containers,
+     * walking {@link GroveState#PLANTING} → {@link GroveState#GROWING} →
+     * {@link GroveState#FLOURISHING}. Allowed only while the plot is {@link PlotState#DORMANT}
+     * and the grove is {@link GroveState#DORMANT} or {@link GroveState#BLIGHTED}.
+     *
+     * @throws IllegalStateException if the grove cannot be started in its current state
      */
     @Transactional
     public Optional<Grove> startGrove(UUID groveId) {
         return groveRepository.findById(groveId).map(entity -> {
             GroveState state = entity.getState();
-            if (state != GroveState.DORMANT) {
-                log.warn("Cannot start grove {} in state {}", groveId, state);
-                return entityToModel(entity);
+            Plot plot = entity.plot();
+            boolean stopped = state == GroveState.DORMANT || state == GroveState.BLIGHTED;
+            if (!stopped || plot.state() != PlotState.DORMANT) {
+                throw refusal("start", groveId, state, plot);
             }
+            GroveProvider provider = providerRegistry.require(plot.providerId());
 
             log.info("Starting grove {}", groveId);
-            Grove grove = entityToModel(entity);
-            grove = grove.withPlot(providerRegistry.require(grove.plot().providerId())
-                .reserve(grove.id(), SeedlingSpec.from(grove.plot())));
-            grove = grove.withState(GroveState.PLANTING);
-            updateGroveState(grove);
-
-            final Grove groveToProvision = grove;
-            final SeedSpec seedSpec = grove.seedSpec() != null ? grove.seedSpec() : SeedSpec.AUTO;
+            Grove grove = transitionNow(entity, GroveState.PLANTING);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(() -> provisionGrove(groveToProvision, seedSpec));
+                    CompletableFuture.runAsync(() -> completeStart(grove, provider));
                 }
             });
-
             return grove;
         });
+    }
+
+    private static IllegalStateException refusal(String action, UUID groveId, GroveState state, Plot plot) {
+        return new IllegalStateException("Cannot %s grove %s: grove is %s and its plot is %s"
+            .formatted(action, groveId, state, plot.state()));
+    }
+
+    private Grove transitionNow(GroveEntity entity, GroveState next) {
+        GroveState previous = entity.getState();
+        entity.setState(next);
+        groveRepository.save(entity);
+        Grove grove = entityToModel(entity);
+        publishStateChange(grove, previous);
+        return grove;
+    }
+
+    /**
+     * The async half of {@link #stopGrove}. Package-private so tests can drive it directly.
+     * Any failure leaves the grove {@link GroveState#BLIGHTED} with its plot as last persisted,
+     * still {@link PlotState#ROOTED}, so stop can be retried.
+     */
+    void completeStop(Grove grove, GroveProvider provider) {
+        Grove current = grove;
+        try {
+            for (Fruit fruit : current.fruits()) {
+                if (fruit.containerId() != null) {
+                    current = current.withFruit(provider.pickFruit(current.plot(), fruit).join());
+                }
+            }
+            if (!advance(grove.id(), GroveState.DORMANT, current)) {
+                return;
+            }
+            current = current.withPlot(provider.dormant(current.plot()).join());
+            if (advance(grove.id(), GroveState.DORMANT, current)) {
+                log.info("Grove {} is DORMANT", grove.id());
+            }
+        } catch (Exception e) {
+            log.error("Stopping grove {} failed — marking BLIGHTED", grove.id(), e);
+            blight(GroveState.DORMANT, current);
+        }
+    }
+
+    /**
+     * The async half of {@link #startGrove}. Package-private so tests can drive it directly.
+     * Any failure leaves the grove {@link GroveState#BLIGHTED} with its plot as last known:
+     * {@link PlotState#DORMANT} if watering failed (start again), {@link PlotState#ROOTED} if
+     * ripening failed (stop again).
+     */
+    void completeStart(Grove grove, GroveProvider provider) {
+        Grove current = grove;
+        GroveState expected = GroveState.PLANTING;
+        try {
+            current = current.withPlot(provider.water(current.plot()).join()).withState(GroveState.GROWING);
+            if (!advance(grove.id(), expected, current)) {
+                return;
+            }
+            expected = GroveState.GROWING;
+            for (Fruit fruit : current.fruits()) {
+                if (fruit.containerId() != null) {
+                    current = current.withFruit(provider.ripenFruit(current.plot(), fruit).join());
+                }
+            }
+            current = current.withState(GroveState.FLOURISHING);
+            if (advance(grove.id(), expected, current)) {
+                log.info("Grove {} is FLOURISHING", grove.id());
+            }
+        } catch (Exception e) {
+            log.error("Starting grove {} failed — marking BLIGHTED", grove.id(), e);
+            blight(expected, current);
+        }
+    }
+
+    private void blight(GroveState expected, Grove current) {
+        try {
+            advance(current.id(), expected, current.withState(GroveState.BLIGHTED));
+        } catch (Exception e) {
+            log.error("Could not mark grove {} BLIGHTED", current.id(), e);
+        }
+    }
+
+    /**
+     * Writes {@code next} only if the grove is still in {@code expected}, together with its fruit
+     * rows, in one transaction. Returns false when the grove has moved on (e.g. a clear landed),
+     * in which case nothing is written and the caller abandons.
+     */
+    private boolean advance(UUID groveId, GroveState expected, Grove next) {
+        boolean applied = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            int rows = groveRepository.transitionIfState(
+                groveId, expected, next.state(), GroveEntity.serializePlot(next.plot()));
+            if (rows != 1) {
+                return false;
+            }
+            saveFruits(next.fruits());
+            publishStateChange(next, expected);
+            return true;
+        }));
+        if (!applied) {
+            log.info("Grove {} is no longer {} — abandoning its move to {}", groveId, expected, next.state());
+        }
+        return applied;
+    }
+
+    private void publishStateChange(Grove grove, GroveState previous) {
+        if (previous == grove.state()) {
+            return;
+        }
+        eventPublisher.publishEvent(GroveStateChangedEvent.of(
+            grove.id(), grove.cultivatorId(), grove.name(), previous, grove.state()));
+        log.info("Published state change event for grove {}: {} -> {}", grove.id(), previous, grove.state());
     }
 
     private Grove entityToModel(GroveEntity entity) {
