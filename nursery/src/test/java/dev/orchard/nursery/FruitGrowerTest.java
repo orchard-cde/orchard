@@ -476,6 +476,34 @@ class FruitGrowerTest {
     }
 
     @Test
+    void ripen_cliGrownDevcontainer_noOutcomeLine_stillRipe_logsWarning() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(org.mockito.ArgumentMatchers.startsWith("devcontainer run-user-commands"),
+                org.mockito.ArgumentMatchers.anyLong()))
+            .thenReturn("");
+        FruitGrower grower = new FruitGrower(
+            new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 600, 60)), true, null);
+        Fruit fruit = runningFruit(seedWithPostStart());
+
+        java.io.PrintStream originalErr = System.err;
+        var captured = new java.io.ByteArrayOutputStream();
+        Fruit result;
+        try {
+            System.setErr(new java.io.PrintStream(captured, true));
+            result = grower.ripen(execTarget(runner), fruit).join();
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        assertThat(captured.toString())
+            .contains("WARN")
+            .contains("postStartCommand")
+            .contains(fruit.id().toString())
+            .contains("no result JSON");
+    }
+
+    @Test
     void ripen_devfileSeed_cliEnabled_stillRunsPostStartViaDockerExec() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
         DevcontainerCli cli = mock(DevcontainerCli.class);

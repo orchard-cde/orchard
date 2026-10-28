@@ -211,6 +211,24 @@ class DevcontainerCliTest {
             .hasMessageContaining("postStartCommand failed");
     }
     @Test
+    void runUserCommands_noOutcomeLine_throws() {
+        CommandRunner runner = new CannedRunner(List.of(), 0) {
+            @Override
+            public String execute(String c, long timeoutSeconds) {
+                return "{\"type\":\"progress\",\"name\":\"Running postStartCommand\"}\n";
+            }
+        };
+
+        assertThatThrownBy(() -> cliFor().runUserCommands(runner, "/srv/ws", "abc123"))
+            .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
+            .satisfies(t -> {
+                DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
+                assertThat(ex.error().message()).isEqualTo("no outcome line");
+                assertThat(ex.error().containerId()).isEqualTo("abc123");
+            });
+    }
+
+    @Test
     void runUserCommands_errorOutcomeWithoutContainerId_fillsInTargetContainer() {
         CommandRunner runner = new CannedRunner(List.of(), 0) {
             @Override

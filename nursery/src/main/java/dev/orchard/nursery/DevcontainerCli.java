@@ -86,7 +86,7 @@ public class DevcontainerCli {
      * markers skip create-time hooks already run in this container and rerun {@code postStartCommand}
      * once per container start. {@code postAttachCommand} is skipped, as it is for {@code up}.
      *
-     * @throws DevcontainerCliException on outcome=error
+     * @throws DevcontainerCliException on outcome=error or a missing outcome line
      * @throws IOException if the CLI exits non-zero
      */
     public void runUserCommands(CommandRunner runner, String workspacePath, String containerId)
@@ -104,7 +104,9 @@ public class DevcontainerCli {
             }
         }
         if (outcomeLine == null) {
-            return;
+            throw new DevcontainerCliException(new CliError(
+                "no outcome line", "devcontainer run-user-commands emitted no result JSON — possible CLI crash",
+                null, containerId, null, null));
         }
         if (!mapper.readValue(outcomeLine, Outcome.class).isSuccess()) {
             CliError error = mapper.readValue(outcomeLine, CliError.class);
