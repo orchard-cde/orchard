@@ -125,6 +125,25 @@ class FruitGrowerTest {
     }
 
     @Test
+    void growViaCli_capturesComposeProjectName() throws Exception {
+        DevcontainerCli cli = mock(DevcontainerCli.class);
+        CommandRunner runner = runner();
+        Fruit withProject = buddedFruit(defaultSeed());
+        Fruit withoutProject = buddedFruit(defaultSeed());
+
+        when(cli.up(any(), eq(WORKSPACE_PATH), eq(withProject.id()), any(), any()))
+            .thenReturn(new DevcontainerCliResult("c1", "proj", "vscode", WORKSPACE_PATH));
+        when(cli.up(any(), eq(WORKSPACE_PATH), eq(withoutProject.id()), any(), any()))
+            .thenReturn(new DevcontainerCliResult("c2", null, "vscode", WORKSPACE_PATH));
+        when(cli.inspectContainerName(any(), any())).thenReturn("real-name");
+
+        FruitGrower grower = new FruitGrower(cli, true, mock(ApplicationEventPublisher.class));
+
+        assertThat(grower.grow(execTarget(runner), withProject).get().composeProjectName()).isEqualTo("proj");
+        assertThat(grower.grow(execTarget(runner), withoutProject).get().composeProjectName()).isNull();
+    }
+
+    @Test
     void growViaCli_cliError_returnsRottedFruit() throws Exception {
         DevcontainerCli cli = mock(DevcontainerCli.class);
         CommandRunner runner = runner();

@@ -105,6 +105,19 @@ class FruitTest {
         assertThat(fruit.isReady()).isFalse();
     }
 
+    @Test
+    void withState_preservesComposeProjectName() {
+        Fruit fruit = Fruit.bud(groveId, seedlingId, testSeed()).withComposeProjectName("p1");
+
+        assertThat(fruit.withState(FruitState.RIPE).composeProjectName()).isEqualTo("p1");
+        assertThat(fruit.withContainerDetails("c1", List.of()).composeProjectName()).isEqualTo("p1");
+    }
+
+    @Test
+    void bud_leavesComposeProjectNameNull() {
+        assertThat(Fruit.bud(groveId, seedlingId, testSeed()).composeProjectName()).isNull();
+    }
+
     private Seed testSeed() {
         return Seed.devcontainer().name("test").image("ubuntu").build();
     }

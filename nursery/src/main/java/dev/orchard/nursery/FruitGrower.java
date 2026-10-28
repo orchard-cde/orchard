@@ -153,7 +153,8 @@ public class FruitGrower {
             }
 
             Fruit grown = rebuildWithRealName(fruit, realName)
-                .withContainerDetails(result.containerId(), ports);
+                .withContainerDetails(result.containerId(), ports)
+                .withComposeProjectName(result.composeProjectName());
 
             // CLI ran every lifecycle command up to waitFor; if the user asked to wait for
             // postAttach, FruitGrower.attach() will flip to RIPE later.
@@ -188,7 +189,7 @@ public class FruitGrower {
         }
         return new Fruit(
             fruit.id(), fruit.groveId(), fruit.plotId(),
-            fruit.containerId(), newName, fruit.serviceName(), fruit.seed(),
+            fruit.containerId(), newName, fruit.serviceName(), fruit.composeProjectName(), fruit.seed(),
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt());
     }
 
@@ -681,7 +682,7 @@ public class FruitGrower {
 
         Fruit imageFruit = new Fruit(
             fruit.id(), fruit.groveId(), fruit.plotId(),
-            null, fruit.containerName(), fruit.serviceName(), imageOnlySeed,
+            null, fruit.containerName(), fruit.serviceName(), fruit.composeProjectName(), imageOnlySeed,
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt()
         );
 

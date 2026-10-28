@@ -33,6 +33,8 @@ public class FruitEntity {
 
     private String serviceName;
 
+    private String composeProjectName;
+
     @Column(nullable = false)
     private String state;
 
@@ -53,6 +55,7 @@ public class FruitEntity {
         entity.containerId = fruit.containerId();
         entity.containerName = fruit.containerName();
         entity.serviceName = fruit.serviceName();
+        entity.composeProjectName = fruit.composeProjectName();
         entity.state = fruit.state().name();
         entity.buddedAt = fruit.buddedAt();
         entity.ripenedAt = fruit.ripenedAt();
@@ -85,6 +88,7 @@ public class FruitEntity {
             containerId,
             containerName,
             serviceName,
+            composeProjectName,
             seed,
             FruitState.valueOf(state),
             List.of(),
@@ -99,6 +103,7 @@ public class FruitEntity {
     public String getContainerId() { return containerId; }
     public String getContainerName() { return containerName; }
     public String getServiceName() { return serviceName; }
+    public String getComposeProjectName() { return composeProjectName; }
     public String getState() { return state; }
     public String getSeedJson() { return seedJson; }
     public Instant getBuddedAt() { return buddedAt; }

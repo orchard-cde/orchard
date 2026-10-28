@@ -15,6 +15,7 @@ public record Fruit(
     String containerId,
     String containerName,
     String serviceName,
+    String composeProjectName,
     Seed seed,
     FruitState state,
     List<PortMapping> portMappings,
@@ -39,6 +40,7 @@ public record Fruit(
             null,
             seed.name() != null ? seed.name() : "orchard-fruit",
             serviceName,
+            null,
             seed,
             FruitState.BUDDING,
             List.of(),
@@ -48,13 +50,18 @@ public record Fruit(
     }
 
     public Fruit withState(FruitState newState) {
-        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, seed,
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, composeProjectName, seed,
             newState, portMappings, buddedAt, newState == FruitState.RIPE ? Instant.now() : ripenedAt);
     }
 
     public Fruit withContainerDetails(String containerId, List<PortMapping> ports) {
-        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, seed,
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, composeProjectName, seed,
             state, ports, buddedAt, ripenedAt);
+    }
+
+    public Fruit withComposeProjectName(String name) {
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, name, seed,
+            state, portMappings, buddedAt, ripenedAt);
     }
 
     public boolean isReady() {
