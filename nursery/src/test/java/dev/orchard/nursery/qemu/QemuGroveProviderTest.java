@@ -400,6 +400,20 @@ class QemuGroveProviderTest {
     }
 
     @Test
+    void inspect_crashedVmWithStalePidFile_isDormant() throws IOException, InterruptedException {
+        VmPlot plot = newPlot();
+        Path vmDir = tempDir.resolve(plot.id().toString());
+        Files.createDirectories(vmDir);
+        Files.createFile(vmDir.resolve("disk.qcow2"));
+        Process dead = new ProcessBuilder("true").start();
+        dead.waitFor();
+        Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(dead.pid()));
+        provider.reattachSurvivingVms();
+
+        assertThat(provider.inspect(plot).join().state()).isEqualTo(PlotState.DORMANT);
+    }
+
+    @Test
     void inspect_noDirectory_isWithered() {
         assertThat(provider.inspect(newPlot()).join().state()).isEqualTo(PlotState.WITHERED);
     }

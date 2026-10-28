@@ -259,7 +259,11 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
                 return vm.withState(PlotState.ROOTED);
             }
             Path vmDir = config.vmStoragePath().resolve(vm.id().toString());
-            if (Files.exists(vmDir.resolve("disk.qcow2")) && !Files.exists(vmDir.resolve("qemu.pid"))) {
+            if (Files.exists(vmDir.resolve("disk.qcow2"))) {
+                if (Files.exists(vmDir.resolve("qemu.pid"))) {
+                    log.warn("Plot {} has a stale qemu.pid and no running VM; it was not shut down cleanly",
+                        vm.id());
+                }
                 return vm.withState(PlotState.DORMANT);
             }
             return vm.withState(PlotState.WITHERED);
