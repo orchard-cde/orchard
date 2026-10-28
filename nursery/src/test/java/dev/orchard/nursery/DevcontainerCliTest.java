@@ -178,4 +178,36 @@ class DevcontainerCliTest {
 
         assertThat(calls).anyMatch(c -> c.contains("--workspace-folder /srv/custom-workspace"));
     }
+
+    @Test
+    void runUserCommands_targetsExistingContainerWithoutPostAttach() throws Exception {
+        var calls = new ArrayList<String>();
+        CommandRunner runner = new CannedRunner(List.of(), 0) {
+            @Override
+            public String execute(String c, long timeoutSeconds) {
+                calls.add(c);
+                return "{\"outcome\":\"success\",\"result\":\"done\"}\n";
+            }
+        };
+
+        cliFor().runUserCommands(runner, "/srv/ws", "abc123");
+
+        assertThat(calls).containsExactly(
+            "devcontainer run-user-commands --workspace-folder /srv/ws --container-id abc123"
+                + " --log-format json --skip-post-attach");
+    }
+
+    @Test
+    void runUserCommands_errorOutcome_throws() {
+        CommandRunner runner = new CannedRunner(List.of(), 0) {
+            @Override
+            public String execute(String c, long timeoutSeconds) {
+                return "{\"outcome\":\"error\",\"message\":\"postStartCommand failed\"}\n";
+            }
+        };
+
+        assertThatThrownBy(() -> cliFor().runUserCommands(runner, "/srv/ws", "abc123"))
+            .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
+            .hasMessageContaining("postStartCommand failed");
+    }
 }

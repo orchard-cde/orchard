@@ -509,8 +509,10 @@ public class FruitGrower {
     }
 
     /**
-     * Ripens a picked fruit: starts the same containers again, then re-runs the seed's
-     * {@code postStartCommand}. Completes exceptionally if any step fails.
+     * Ripens a picked fruit: starts the same containers again, then re-runs the post-start hook the
+     * way it ran when the fruit was grown — through the devcontainer CLI for CLI-grown devcontainers,
+     * via {@code docker exec} otherwise. Completes exceptionally if the containers do not start; a
+     * failing post-start hook is logged and the fruit is still returned {@link FruitState#RIPE}.
      */
     public CompletableFuture<Fruit> ripen(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
@@ -522,14 +524,7 @@ public class FruitGrower {
                 } else if (fruit.containerId() != null) {
                     executeSsh(runner, "docker start " + fruit.containerId());
                 }
-                LifecycleCommand postStart = switch (fruit.seed()) {
-                    case DevcontainerSeed s -> s.postStartCommand();
-                    case DevfileSeed s -> s.postStartCommand();
-                    default -> null;
-                };
-                if (postStart != null) {
-                    runLifecycleCommand(postStart, cmd -> inContainer(runner, fruit.containerId(), cmd));
-                }
+                runPostStart(target, fruit);
                 return fruit.withState(FruitState.RIPE);
             } catch (Exception e) {
                 log.error("Failed to ripen fruit {}", fruit.id(), e);
@@ -539,6 +534,27 @@ public class FruitGrower {
                 throw new CompletionException(e);
             }
         }, executor);
+    }
+
+    private void runPostStart(ExecTarget target, Fruit fruit) throws InterruptedException {
+        try {
+            if (fruit.seed() instanceof DevcontainerSeed && useDevcontainerCli && devcontainerCli != null) {
+                devcontainerCli.runUserCommands(target.runner(), target.workspacePath(), fruit.containerId());
+                return;
+            }
+            LifecycleCommand postStart = switch (fruit.seed()) {
+                case DevcontainerSeed s -> s.postStartCommand();
+                case DevfileSeed s -> s.postStartCommand();
+                default -> null;
+            };
+            if (postStart != null) {
+                runLifecycleCommand(postStart, cmd -> inContainer(target.runner(), fruit.containerId(), cmd));
+            }
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("postStartCommand for fruit {} failed; its container is running", fruit.id(), e);
+        }
     }
 
     /**

@@ -87,6 +87,41 @@ public class DevcontainerCli {
             node.path("remoteWorkspaceFolder").asText(null));
     }
 
+    /**
+     * Runs {@code devcontainer run-user-commands} against an existing container, as the remote user
+     * in the workspace folder with variable substitution, exactly as {@code up} ran them. The CLI's
+     * markers skip create-time hooks already run in this container and rerun {@code postStartCommand}
+     * once per container start. {@code postAttachCommand} is skipped, as it is for {@code up}.
+     *
+     * @throws DevcontainerCliException on outcome=error
+     * @throws IOException if the CLI exits non-zero
+     */
+    public void runUserCommands(CommandRunner runner, String workspacePath, String containerId)
+            throws IOException, InterruptedException {
+        String cmd = "devcontainer run-user-commands"
+            + " --workspace-folder " + workspacePath
+            + " --container-id " + containerId
+            + " --log-format json"
+            + " --skip-post-attach";
+        String output = runner.execute(cmd, config.upTimeoutSeconds());
+        String outcomeLine = null;
+        for (String line : output.split("\n")) {
+            if (line.contains("\"outcome\":\"")) {
+                outcomeLine = line;
+            }
+        }
+        if (outcomeLine == null) {
+            return;
+        }
+        JsonNode node = mapper.readTree(outcomeLine);
+        if (!"success".equals(node.path("outcome").asText(null))) {
+            throw new DevcontainerCliException(new CliError(
+                node.path("message").asText(null),
+                node.path("description").asText(null),
+                null, containerId, null, null));
+        }
+    }
+
     /** Run a command inside the fruit's container. Used by FruitGrower.attach() for postAttachCommand. */
     public void exec(CommandRunner runner, String workspacePath, String command) throws IOException, InterruptedException {
         String cmd = "devcontainer exec --workspace-folder " + workspacePath + " -- " + command;

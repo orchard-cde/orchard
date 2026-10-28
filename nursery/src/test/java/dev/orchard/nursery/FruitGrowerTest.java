@@ -407,6 +407,91 @@ class FruitGrowerTest {
     }
 
     @Test
+    void ripen_startOk_postStartFails_stillRipe_logsWarning() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute("docker exec cid1 /bin/sh -c 'echo up'")).thenThrow(new IOException("exit 128"));
+        Fruit fruit = runningFruit(seedWithPostStart());
+
+        java.io.PrintStream originalErr = System.err;
+        var captured = new java.io.ByteArrayOutputStream();
+        Fruit result;
+        try {
+            System.setErr(new java.io.PrintStream(captured, true));
+            result = plainGrower().ripen(execTarget(runner), fruit).join();
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        verify(runner).execute("docker start cid1");
+        assertThat(captured.toString())
+            .contains("WARN")
+            .contains("postStartCommand")
+            .contains(fruit.id().toString());
+    }
+
+    @Test
+    void ripen_containerStartFails_completesExceptionally_withoutPostStart() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute("docker start cid1")).thenThrow(new IOException("no such container"));
+
+        assertThatThrownBy(() -> plainGrower().ripen(execTarget(runner), runningFruit(seedWithPostStart())).join())
+            .isInstanceOf(CompletionException.class);
+        verify(runner, never()).execute("docker exec cid1 /bin/sh -c 'echo up'");
+    }
+
+    @Test
+    void ripen_cliGrownDevcontainer_runsUserCommandsViaCli() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(org.mockito.ArgumentMatchers.startsWith("devcontainer run-user-commands"),
+                org.mockito.ArgumentMatchers.anyLong()))
+            .thenReturn("{\"outcome\":\"success\"}\n");
+        FruitGrower grower = new FruitGrower(
+            new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 600, 60)), true, null);
+
+        Fruit result = grower.ripen(execTarget(runner), runningFruit(seedWithPostStart())).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        var order = inOrder(runner);
+        order.verify(runner).execute("docker start cid1");
+        order.verify(runner).execute(
+            "devcontainer run-user-commands --workspace-folder " + WORKSPACE_PATH
+                + " --container-id cid1 --log-format json --skip-post-attach",
+            600L);
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void ripen_cliGrownDevcontainer_userCommandsFail_stillRipe() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(org.mockito.ArgumentMatchers.startsWith("devcontainer run-user-commands"),
+                org.mockito.ArgumentMatchers.anyLong()))
+            .thenThrow(new IOException("exit 1"));
+        FruitGrower grower = new FruitGrower(
+            new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 600, 60)), true, null);
+
+        Fruit result = grower.ripen(execTarget(runner), runningFruit(seedWithPostStart())).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+    }
+
+    @Test
+    void ripen_devfileSeed_cliEnabled_stillRunsPostStartViaDockerExec() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        DevcontainerCli cli = mock(DevcontainerCli.class);
+        Seed seed = DevfileSeed.builder().name("n").image("img").postStartCommand(POST_START).build();
+
+        Fruit result = new FruitGrower(cli, true, null).ripen(execTarget(runner), runningFruit(seed)).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        var order = inOrder(runner);
+        order.verify(runner).execute("docker start cid1");
+        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verifyNoMoreInteractions();
+        org.mockito.Mockito.verifyNoInteractions(cli);
+    }
+
+    @Test
     void ripen_commandFails_completesExceptionally() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
         when(runner.execute(anyString())).thenThrow(new IOException("boom"));
