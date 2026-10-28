@@ -454,7 +454,11 @@ Runs on application startup via `ApplicationRunner`:
 | Previous State | Action | New State |
 |---------------|--------|-----------|
 | `FLOURISHING` + `inspect` returns `ROOTED` | Leave as-is | `FLOURISHING` |
+| `FLOURISHING` + `inspect` returns `DORMANT` (powered off outside Orchard) | Persist the `DORMANT` plot | `BLIGHTED` (startable) |
 | `FLOURISHING` + `inspect` returns another state or throws | Mark failed | `BLIGHTED` |
+| `DORMANT` + `inspect` returns `ROOTED` or `WILTING` (restart mid-stop) | Re-run `dormant`, persist the plot | `DORMANT` |
+| `DORMANT` + `inspect` returns `DORMANT` | Persist the plot | `DORMANT` |
+| `DORMANT` + `dormant` or `inspect` fails or returns another state | Mark failed | `BLIGHTED` |
 | `PREPARING`, `PLANTING`, `GROWING` | Stuck from previous run | `BLIGHTED` |
 | `CLEARING` | Interrupted teardown, not re-attempted | `ORPHANED` |
 

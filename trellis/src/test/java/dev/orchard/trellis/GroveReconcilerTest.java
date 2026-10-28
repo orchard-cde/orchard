@@ -10,6 +10,7 @@ import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.GroveRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -21,6 +22,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -131,5 +134,101 @@ class GroveReconcilerTest {
         reconcile(entity);
 
         assertThat(entity.getState()).isEqualTo(GroveState.BLIGHTED);
+    }
+
+    private GroveEntity dormantGrove(VmPlot plot) {
+        Grove grove = Grove
+            .plant(UUID.randomUUID(), "g", "https://example.invalid/r.git", "main")
+            .withState(GroveState.DORMANT)
+            .withPlot(plot);
+        return GroveEntity.fromModel(grove);
+    }
+
+    private void reconcileDormant(GroveEntity entity) {
+        when(groveRepository.findActiveGroves()).thenReturn(List.of());
+        when(groveRepository.findByState(GroveState.PREPARING)).thenReturn(List.of());
+        when(groveRepository.findByState(GroveState.CLEARING)).thenReturn(List.of());
+        when(groveRepository.findByState(GroveState.DORMANT)).thenReturn(List.of(entity));
+        new GroveReconciler(groveRepository, registry).run(null);
+    }
+
+    @Test
+    void dormantGroveWithRootedPlot_reRunsDormant_persistsDormantPlot() {
+        VmPlot plot = closedPortPlot("owner");
+        GroveEntity entity = dormantGrove(plot);
+        when(registry.require("owner")).thenReturn(provider);
+        when(provider.inspect(any())).thenReturn(CompletableFuture.completedFuture(plot));
+        when(provider.dormant(any()))
+            .thenReturn(CompletableFuture.completedFuture(plot.withState(PlotState.DORMANT)));
+
+        reconcileDormant(entity);
+
+        verify(provider).dormant(plot);
+        assertThat(entity.getState()).isEqualTo(GroveState.DORMANT);
+        assertThat(entity.plot().state()).isEqualTo(PlotState.DORMANT);
+        verify(groveRepository).save(entity);
+    }
+
+    @Test
+    void dormantGroveWithWiltingPlot_reRunsDormant() {
+        VmPlot plot = closedPortPlot("owner");
+        GroveEntity entity = dormantGrove(plot);
+        when(registry.require("owner")).thenReturn(provider);
+        when(provider.inspect(any()))
+            .thenReturn(CompletableFuture.completedFuture(plot.withState(PlotState.WILTING)));
+        when(provider.dormant(any()))
+            .thenReturn(CompletableFuture.completedFuture(plot.withState(PlotState.DORMANT)));
+
+        reconcileDormant(entity);
+
+        verify(provider).dormant(any());
+        assertThat(entity.plot().state()).isEqualTo(PlotState.DORMANT);
+    }
+
+    @Test
+    void dormantGroveWithDormantPlot_persistsDormant_noProviderMutation() {
+        VmPlot plot = closedPortPlot("owner");
+        GroveEntity entity = dormantGrove(plot);
+        when(registry.require("owner")).thenReturn(provider);
+        when(provider.inspect(any()))
+            .thenReturn(CompletableFuture.completedFuture(plot.withState(PlotState.DORMANT)));
+
+        reconcileDormant(entity);
+
+        verify(provider, never()).dormant(any());
+        assertThat(entity.getState()).isEqualTo(GroveState.DORMANT);
+        assertThat(entity.plot().state()).isEqualTo(PlotState.DORMANT);
+        verify(groveRepository).save(entity);
+    }
+
+    @Test
+    void dormantGrove_dormantFails_blighted() {
+        VmPlot plot = closedPortPlot("owner");
+        GroveEntity entity = dormantGrove(plot);
+        when(registry.require("owner")).thenReturn(provider);
+        when(provider.inspect(any())).thenReturn(CompletableFuture.completedFuture(plot));
+        when(provider.dormant(any()))
+            .thenReturn(CompletableFuture.failedFuture(new RuntimeException("boom")));
+
+        reconcileDormant(entity);
+
+        assertThat(entity.getState()).isEqualTo(GroveState.BLIGHTED);
+        verify(groveRepository).save(entity);
+    }
+
+    @Test
+    void flourishingWithDormantPlot_becomesBlightedWithDormantPlot() {
+        VmPlot plot = closedPortPlot("owner");
+        GroveEntity entity = flourishing(plot);
+        when(registry.require("owner")).thenReturn(provider);
+        when(provider.inspect(any()))
+            .thenReturn(CompletableFuture.completedFuture(plot.withState(PlotState.DORMANT)));
+
+        reconcile(entity);
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository).save(saved.capture());
+        assertThat(saved.getValue().getState()).isEqualTo(GroveState.BLIGHTED);
+        assertThat(saved.getValue().plot().state()).isEqualTo(PlotState.DORMANT);
     }
 }
