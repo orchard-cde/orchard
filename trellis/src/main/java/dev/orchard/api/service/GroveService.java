@@ -701,7 +701,7 @@ public class GroveService {
 
     /**
      * Moves the grove from the state the request observed, conditionally, so that of two
-     * concurrent requests only one proceeds; the other is refused as if it had seen the new state.
+     * concurrent requests only one proceeds and the other is refused.
      */
     private Grove transitionNow(GroveEntity entity, GroveState next, String action) {
         GroveState observed = entity.getState();
