@@ -158,6 +158,8 @@ class ProviderRegistryTest {
         @Override public CompletableFuture<Plot> inspect(Plot s) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Fruit> growFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Void> compostFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Fruit> pickFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Fruit> ripenFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
         @Override public Vine vine(Plot s) { throw new UnsupportedOperationException(); }
         @Override public void verifyDevcontainerCli(Plot s, String expectedVersion) { throw new UnsupportedOperationException(); }
     }

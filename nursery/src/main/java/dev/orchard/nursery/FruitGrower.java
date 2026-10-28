@@ -485,14 +485,16 @@ public class FruitGrower {
     }
 
     /**
-     * Picks a fruit (stops the container). Same SSH semantics on both paths — the CLI has no
-     * {@code down} subcommand.
+     * Picks a fruit (stops its containers without removing them). A compose fruit stops the whole
+     * project. Completes exceptionally if the stop fails.
      */
     public CompletableFuture<Fruit> pick(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Picking fruit {}", fruit.id());
-                if (fruit.containerId() != null) {
+                if (fruit.composeProjectName() != null) {
+                    executeSsh(target.runner(), "docker compose -p " + shellQuote(fruit.composeProjectName()) + " stop");
+                } else if (fruit.containerId() != null) {
                     executeSsh(target.runner(), "docker stop " + fruit.containerId());
                 }
                 return fruit.withState(FruitState.PICKED);
@@ -501,7 +503,40 @@ public class FruitGrower {
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                return fruit;
+                throw new CompletionException(e);
+            }
+        }, executor);
+    }
+
+    /**
+     * Ripens a picked fruit: starts the same containers again, then re-runs the seed's
+     * {@code postStartCommand}. Completes exceptionally if any step fails.
+     */
+    public CompletableFuture<Fruit> ripen(ExecTarget target, Fruit fruit) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                log.info("Ripening fruit {}", fruit.id());
+                CommandRunner runner = target.runner();
+                if (fruit.composeProjectName() != null) {
+                    executeSsh(runner, "docker compose -p " + shellQuote(fruit.composeProjectName()) + " start");
+                } else if (fruit.containerId() != null) {
+                    executeSsh(runner, "docker start " + fruit.containerId());
+                }
+                LifecycleCommand postStart = switch (fruit.seed()) {
+                    case DevcontainerSeed s -> s.postStartCommand();
+                    case DevfileSeed s -> s.postStartCommand();
+                    default -> null;
+                };
+                if (postStart != null) {
+                    runLifecycleCommand(postStart, cmd -> inContainer(runner, fruit.containerId(), cmd));
+                }
+                return fruit.withState(FruitState.RIPE);
+            } catch (Exception e) {
+                log.error("Failed to ripen fruit {}", fruit.id(), e);
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                throw new CompletionException(e);
             }
         }, executor);
     }

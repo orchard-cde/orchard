@@ -135,6 +135,16 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
         return fruitGrower.compost(execTarget(plot), fruit);
     }
 
+    @Override
+    public final CompletableFuture<Fruit> pickFruit(Plot plot, Fruit fruit) {
+        return fruitGrower.pick(execTarget(plot), fruit);
+    }
+
+    @Override
+    public final CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit) {
+        return fruitGrower.ripen(execTarget(plot), fruit);
+    }
+
     private ExecTarget execTarget(Plot plot) {
         P narrowed = narrow(plot);
         return new ExecTarget(vineFor(narrowed).commands(), workspacePath(narrowed), narrowed.id());

@@ -76,6 +76,21 @@ public interface GroveProvider {
     CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit);
 
     /**
+     * Stops one fruit's containers without removing them, so {@link #ripenFruit} can start the
+     * same containers again.
+     *
+     * <p>The returned future completes exceptionally if any container could not be stopped.
+     */
+    CompletableFuture<Fruit> pickFruit(Plot plot, Fruit fruit);
+
+    /**
+     * Starts a picked fruit's containers again and re-runs its post-start hook.
+     *
+     * <p>The returned future completes exceptionally if any container could not be started.
+     */
+    CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit);
+
+    /**
      * How to reach into this grove. Available before the substrate is routable — provisioning and
      * diagnostic callers depend on that.
      */
