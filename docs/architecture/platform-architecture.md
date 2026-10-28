@@ -404,7 +404,7 @@ Stop powers the plot off and keeps its disk, containers and every record; start 
 | Operation | Allowed when | Synchronous (request transaction) | Async, after commit |
 |---|---|---|---|
 | `stopGrove` | grove `GROWING`/`FLOURISHING`, or `BLIGHTED` with plot `ROOTED` | grove `DORMANT`; `BeeService.hibernateAll` marks `HATCHING`/`BUZZING`/`POLLINATING` bees `HIBERNATING` | `pickFruit` each fruit with a container → fruits `PICKED`; `dormant(plot)` → plot `DORMANT` |
-| `startGrove` | plot `DORMANT` and grove `DORMANT` or `BLIGHTED` | grove `PLANTING` | `water(plot)` → plot `ROOTED`, grove `GROWING`; `ripenFruit` each fruit with a container → fruits `RIPE`, grove `FLOURISHING` |
+| `startGrove` | plot `DORMANT` and grove `DORMANT` or `BLIGHTED` | grove `PLANTING` | `water(plot)` → plot `ROOTED`, grove `GROWING`; `ripenFruit` each fruit → fruits `RIPE`, grove `FLOURISHING`; zero fruits or a fruit without a container fails the start |
 
 Start does not wake bees; the cultivator wakes each with `POST /api/bees/{id}/actions/wake`.
 

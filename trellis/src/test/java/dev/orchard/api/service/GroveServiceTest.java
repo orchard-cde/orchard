@@ -895,6 +895,45 @@ class GroveServiceTest {
     }
 
     @Test
+    void startGrove_noFruit_blightsWithRootedPlot() {
+        Grove grove = ownerGrove(GroveState.PLANTING, PlotState.DORMANT, FruitState.PICKED).withFruits(List.of());
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+
+        groveService.completeStart(grove, ownerProvider);
+
+        assertThat(transitions).extracting(Transition::next)
+            .containsExactly(GroveState.GROWING, GroveState.BLIGHTED);
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.GROWING);
+        assertThat(last.plot().state()).isEqualTo(PlotState.ROOTED);
+        verify(ownerProvider, never()).ripenFruit(any(), any());
+    }
+
+    @Test
+    void startGrove_fruitWithoutContainer_blightsWithRootedPlot() {
+        Grove withContainer = ownerGrove(GroveState.PLANTING, PlotState.DORMANT, FruitState.PICKED);
+        Fruit containerless = Fruit.bud(withContainer.id(), withContainer.plot().id(), SEED);
+        Grove grove = withContainer.withFruit(containerless);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        lenient().when(ownerProvider.ripenFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+
+        groveService.completeStart(grove, ownerProvider);
+
+        assertThat(transitions).extracting(Transition::next)
+            .containsExactly(GroveState.GROWING, GroveState.BLIGHTED);
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.GROWING);
+        assertThat(last.plot().state()).isEqualTo(PlotState.ROOTED);
+        verify(ownerProvider, never()).ripenFruit(any(),
+            org.mockito.ArgumentMatchers.argThat(f -> f.id().equals(containerless.id())));
+    }
+
+    @Test
     void asyncStep_abandonsWhenAdvanceReturnsFalse() {
         Grove grove = ownerGrove(GroveState.PLANTING, PlotState.DORMANT, FruitState.PICKED);
         List<Transition> transitions = recordTransitions(0);

@@ -738,7 +738,8 @@ public class GroveService {
      * The async half of {@link #startGrove}. Package-private so tests can drive it directly.
      * Any failure leaves the grove {@link GroveState#BLIGHTED} with its plot as last known:
      * {@link PlotState#DORMANT} if watering failed (start again), {@link PlotState#ROOTED} if
-     * ripening failed (stop again).
+     * ripening failed (stop again). A grove with no fruit, or a fruit without a container, has no
+     * workspace to start and fails the same way rather than reaching FLOURISHING.
      */
     void completeStart(Grove grove, GroveProvider provider) {
         Grove current = grove;
@@ -749,10 +750,15 @@ public class GroveService {
                 return;
             }
             expected = GroveState.GROWING;
+            if (current.fruits().isEmpty() || current.fruits().stream().anyMatch(f -> f.containerId() == null)) {
+                throw new IllegalStateException("grove " + grove.id() + " has no container to start");
+            }
             for (Fruit fruit : current.fruits()) {
-                if (fruit.containerId() != null) {
-                    current = current.withFruit(provider.ripenFruit(current.plot(), fruit).join());
+                Fruit ripened = provider.ripenFruit(current.plot(), fruit).join();
+                if (ripened.state() != FruitState.RIPE) {
+                    throw new IllegalStateException("fruit " + fruit.id() + " ended " + ripened.state());
                 }
+                current = current.withFruit(ripened);
             }
             current = current.withState(GroveState.FLOURISHING);
             if (advance(grove.id(), expected, current)) {
