@@ -97,6 +97,10 @@ public class GroveEntity {
     }
 
     public void setPlot(Plot plot) {
-        this.plotJson = plot == null ? null : plotSerializer.serialize(plot);
+        this.plotJson = serializePlot(plot);
+    }
+
+    public static String serializePlot(Plot plot) {
+        return plot == null ? null : plotSerializer.serialize(plot);
     }
 }
