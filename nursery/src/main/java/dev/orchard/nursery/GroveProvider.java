@@ -2,6 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
@@ -48,8 +49,19 @@ public interface GroveProvider {
     /** Acquires the substrate. Resolves to ROOTED on success, BLIGHTED on failure. */
     CompletableFuture<Plot> plantSubstrate(Plot draft);
 
+    /**
+     * Powers a {@link PlotState#DORMANT} plot back on over its existing disk. Throws
+     * {@link IllegalStateException} on the calling thread for any other plot state. The future
+     * resolves to the plot {@link PlotState#ROOTED} with a refreshed endpoint once it is reachable,
+     * and completes exceptionally if it could not be started.
+     */
     CompletableFuture<Plot> water(Plot plot);
 
+    /**
+     * Powers a plot off, keeping its disk. The future resolves to the plot
+     * {@link PlotState#DORMANT} only once the substrate is confirmed powered off, and completes
+     * exceptionally otherwise; callers must then treat the plot as possibly still running.
+     */
     CompletableFuture<Plot> dormant(Plot plot);
 
     /**
@@ -86,7 +98,8 @@ public interface GroveProvider {
     /**
      * Starts a picked fruit's containers again and re-runs its post-start hook.
      *
-     * <p>The returned future completes exceptionally if any container could not be started.
+     * <p>The returned future completes exceptionally if any container could not be started. A
+     * failing post-start hook is logged and does not fail it.
      */
     CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit);
 

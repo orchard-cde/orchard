@@ -193,6 +193,8 @@ public interface GroveProvider {
     CompletableFuture<Plot> inspect(Plot plot);                     // Check status
     CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit);
     CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit);
+    CompletableFuture<Fruit> pickFruit(Plot plot, Fruit fruit);     // Stop containers, keep them
+    CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit);    // Start them again, rerun post-start
     Vine vine(Plot plot);                                           // How to reach in
     void verifyDevcontainerCli(Plot plot, String expectedVersion);
 }
@@ -354,6 +356,7 @@ stateDiagram-v2
     DORMANT --> BLIGHTED : stop failed
     DORMANT --> PLANTING : start (plot DORMANT)
     BLIGHTED --> PLANTING : start (plot DORMANT)
+    DORMANT --> CLEARING : User requests clear
 
     FLOURISHING --> BLIGHTED : Reconciler detects unreachable
 ```
@@ -369,6 +372,7 @@ stateDiagram-v2
     ROOTED --> WILTING : dormant
     WILTING --> DORMANT : powered off
     DORMANT --> ROOTED : water
+    DORMANT --> WITHERED : uproot (clear)
     WILTING --> WITHERED : terminated
     GERMINATING --> BLIGHTED : Failed
     SPROUTING --> BLIGHTED : Failed
@@ -403,8 +407,12 @@ Stop powers the plot off and keeps its disk, containers and every record; start 
 
 | Operation | Allowed when | Synchronous (request transaction) | Async, after commit |
 |---|---|---|---|
-| `stopGrove` | grove `GROWING`/`FLOURISHING`, or `BLIGHTED` with plot `ROOTED` | grove `DORMANT`; `BeeService.hibernateAll` marks `HATCHING`/`BUZZING`/`POLLINATING` bees `HIBERNATING` | `pickFruit` each fruit with a container → fruits `PICKED`; `dormant(plot)` → plot `DORMANT` |
+| `stopGrove` | grove `GROWING`/`FLOURISHING`, or `BLIGHTED` with plot `ROOTED` | grove `DORMANT`; `BeeService.hibernateAll` marks `HATCHING`/`BUZZING`/`POLLINATING` bees `HIBERNATING` | `inspect(plot)`: already `DORMANT` → persist it and stop there; otherwise `pickFruit` each fruit with a container → fruits `PICKED`, then `dormant(plot)` → plot `DORMANT` |
 | `startGrove` | plot `DORMANT` and grove `DORMANT` or `BLIGHTED` | grove `PLANTING` | `water(plot)` → plot `ROOTED`, grove `GROWING`; `ripenFruit` each fruit → fruits `RIPE`, grove `FLOURISHING`; zero fruits or a fruit without a container fails the start |
+
+The synchronous transition is itself a `transitionIfState` from the state the request read, so of two concurrent stops or starts only one proceeds; the other is refused with 409. QEMU's `water` also refuses a plot whose VM it still tracks as running.
+
+`ripenFruit` reruns the post-start hook the way it ran at plant time: for a devcontainer grown through the devcontainer CLI, `devcontainer run-user-commands --container-id … --skip-post-attach` (the CLI's markers skip create-time hooks and rerun `postStartCommand` once per container start); for devfile and legacy-docker fruit, `docker exec`. A failing post-start hook is logged at WARN and the fruit is still `RIPE`; only containers that do not start fail the ripen.
 
 Start does not wake bees; the cultivator wakes each with `POST /api/bees/{id}/actions/wake`.
 

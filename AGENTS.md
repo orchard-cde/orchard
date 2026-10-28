@@ -15,7 +15,7 @@ Everything in this project uses orchard/gardening terminology:
 | **Cultivator** | A user/developer | Who tends the groves |
 | **Plot** | The substrate a grove is planted in: a VM, or later a container host | `Plot` — sealed: `VmPlot`, `ContainerPlot`; holds one or more fruit |
 | **Seedling** | What is planted into a plot | Described by `SeedlingSpec` (plot configuration plus metadata) |
-| **Sapling** | Ready state of a plot | `PlotState.ROOTED` — the provider has an operational substrate |
+| **Sapling** | A `ROOTED` plot, ready to grow fruit | `PlotState.ROOTED` — the provider has an operational substrate |
 | **Fruit** | A devcontainer instance | Running development environment, grown on a plot |
 | **Seed** | A devcontainer.json spec | Blueprint for growing fruit |
 | **Trowel** | The CLI tool | Hand tool for planting |
@@ -72,7 +72,7 @@ All domain objects are Java records with factory methods:
 
 ### State Machines
 Each entity has a state enum with gardening-themed states:
-- `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED)
+- `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED); stop → DORMANT, start → PLANTING; clear → CLEARING → CLEARED (or ORPHANED)
 - `PlotState`: GERMINATING → SPROUTING → ROOTED → WILTING → DORMANT | WITHERED (or BLIGHTED on provisioning failure).
 - `FruitState`: BUDDING → RIPENING → RIPE (or ROTTED)
 
