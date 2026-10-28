@@ -129,14 +129,25 @@ class Ec2InstanceWaiterTest {
             .hasMessageContaining(state.name());
     }
 
+    @Test
+    void awaitStopped_runningThenStopped_returns() {
+        StubOps ops = new StubOps(
+            desc(AwsInstanceState.RUNNING),
+            desc(AwsInstanceState.STOPPING),
+            desc(AwsInstanceState.STOPPED));
+
+        waiterFor(ops, Duration.ofSeconds(2)).awaitStopped("i-1");
+
+        assertThat(ops.callsMade()).isEqualTo(3);
+    }
+
     @ParameterizedTest
     @EnumSource(value = AwsInstanceState.class, names = {"RUNNING", "PENDING", "UNKNOWN"})
-    void awaitStopped_throwsWhenInstanceIsNotHeadingToStopped(AwsInstanceState state) {
+    void awaitStopped_keepsPollingOnStaleStatesUntilTimeout(AwsInstanceState state) {
         Ec2Operations ops = new StubOps(desc(state));
 
-        assertThatThrownBy(() -> waiterFor(ops, Duration.ofSeconds(1)).awaitStopped("i-1"))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining(state.name());
+        assertThatThrownBy(() -> waiterFor(ops, Duration.ofMillis(50)).awaitStopped("i-1"))
+            .isInstanceOf(Ec2InstanceWaiter.WaitTimeoutException.class);
     }
 
     @Test

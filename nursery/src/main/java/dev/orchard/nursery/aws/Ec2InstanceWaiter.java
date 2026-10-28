@@ -92,10 +92,11 @@ public class Ec2InstanceWaiter {
                     log.info("EC2 instance {} is STOPPED", instanceId);
                     return;
                 }
-                case STOPPING -> sleepQuietly(runningPollInterval);
-                case TERMINATED, SHUTTING_DOWN, RUNNING, PENDING, UNKNOWN ->
+                // DescribeInstances is eventually consistent: right after StopInstances it can still report RUNNING.
+                case STOPPING, RUNNING, PENDING, UNKNOWN -> sleepQuietly(runningPollInterval);
+                case TERMINATED, SHUTTING_DOWN ->
                     throw new IllegalStateException(
-                        "Instance " + instanceId + " entered state "
+                        "Instance " + instanceId + " entered terminal state "
                             + desc.state() + " while waiting for STOPPED");
             }
         }
