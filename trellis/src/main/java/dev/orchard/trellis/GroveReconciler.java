@@ -104,7 +104,7 @@ public class GroveReconciler implements ApplicationRunner {
             Plot plot = grove.plot();
             providerId = plot.providerId();
             return registry.require(providerId).inspect(plot)
-                .orTimeout(inspectTimeout.toMillis(), TimeUnit.MILLISECONDS).join().state() == PlotState.SAPLING;
+                .orTimeout(inspectTimeout.toMillis(), TimeUnit.MILLISECONDS).join().state() == PlotState.ROOTED;
         } catch (Exception e) {
             log.error("Grove '{}' [{}] liveness inspection failed (provider '{}') — treating as unreachable",
                     grove.getName(), grove.getId(), providerId, e);

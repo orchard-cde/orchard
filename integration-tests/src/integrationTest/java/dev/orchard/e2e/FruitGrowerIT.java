@@ -92,8 +92,8 @@ class FruitGrowerIT {
         assertThat(planted).isInstanceOf(VmPlot.class);
         plot = (VmPlot) planted;
         assertThat(plot.state())
-            .as("Plot must reach SAPLING — plantSubstrate() returned %s", plot.state())
-            .isEqualTo(PlotState.SAPLING);
+            .as("Plot must reach ROOTED — plantSubstrate() returned %s", plot.state())
+            .isEqualTo(PlotState.ROOTED);
         assertThat(plot.host()).isNotBlank();
         assertThat(plot.sshPort()).isPositive();
 

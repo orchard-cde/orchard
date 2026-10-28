@@ -47,7 +47,7 @@ public record VmPlot(
     @Override
     public VmPlot withState(PlotState newState) {
         return new VmPlot(id, groveId, providerId, providerInstanceId, newState, plantedAt,
-            newState == PlotState.SAPLING ? Instant.now() : readyAt,
+            newState == PlotState.ROOTED ? Instant.now() : readyAt,
             host, sshPort, authorizedKeys, spec);
     }
 

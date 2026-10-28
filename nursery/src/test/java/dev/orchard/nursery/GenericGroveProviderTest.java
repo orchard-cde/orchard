@@ -43,11 +43,11 @@ class GenericGroveProviderTest {
     }
 
     @Test
-    void plantSubstrate_reachesSaplingThroughTheBase() {
+    void plantSubstrate_reachesRootedThroughTheBase() {
         ContainerTestProvider provider = new ContainerTestProvider(executor, new FruitGrower());
         Plot draft = provider.reserve(UUID.randomUUID(), spec());
 
-        assertThat(provider.plantSubstrate(draft).join().state()).isEqualTo(PlotState.SAPLING);
+        assertThat(provider.plantSubstrate(draft).join().state()).isEqualTo(PlotState.ROOTED);
     }
 
     @Test

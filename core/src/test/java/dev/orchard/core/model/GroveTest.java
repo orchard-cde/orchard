@@ -196,7 +196,7 @@ class GroveTest {
     }
 
     @Test
-    void isReady_falseWhenPlotNotSapling() {
+    void isReady_falseWhenPlotNotRooted() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
         VmPlot plot = VmPlot.germinate(grove.id(), "qemu", SeedlingSpec.from(VmSpec.small()));
 
@@ -264,13 +264,13 @@ class GroveTest {
     }
 
     @Test
-    void getSshConnectionString_nullUnlessPlotIsSapling() {
+    void getSshConnectionString_nullUnlessPlotIsRooted() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
         VmPlot sapling = createReadyPlot(grove.id());
 
         assertThat(grove.withPlot(sapling).getSshConnectionString()).isNotNull();
         for (PlotState other : PlotState.values()) {
-            if (other != PlotState.SAPLING) {
+            if (other != PlotState.ROOTED) {
                 assertThat(grove.withPlot(sapling.withState(other)).getSshConnectionString())
                     .as(other.name()).isNull();
             }
@@ -278,7 +278,7 @@ class GroveTest {
     }
 
     @Test
-    void isReady_trueOnlyForSaplingPlot() {
+    void isReady_trueOnlyForRootedPlot() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
         VmPlot sapling = createReadyPlot(grove.id());
         grove = grove.withState(GroveState.FLOURISHING)
@@ -286,24 +286,24 @@ class GroveTest {
 
         assertThat(grove.withPlot(sapling).isReady()).isTrue();
         for (PlotState other : PlotState.values()) {
-            if (other != PlotState.SAPLING) {
+            if (other != PlotState.ROOTED) {
                 assertThat(grove.withPlot(sapling.withState(other)).isReady()).as(other.name()).isFalse();
             }
         }
-        assertThat(grove.withPlot(createContainerPlot(grove.id()).withState(PlotState.SAPLING)).isReady())
+        assertThat(grove.withPlot(createContainerPlot(grove.id()).withState(PlotState.ROOTED)).isReady())
                 .isTrue();
     }
 
     @Test
     void sshConnectionString_nullForContainerPlot() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main")
-                .withPlot(createContainerPlot(UUID.randomUUID()).withState(PlotState.SAPLING));
+                .withPlot(createContainerPlot(UUID.randomUUID()).withState(PlotState.ROOTED));
 
         assertThat(grove.getSshConnectionString()).isNull();
     }
 
     @Test
-    void sshReachableVm_presentForSaplingVmPlotWithHost() {
+    void sshReachableVm_presentForRootedVmPlotWithHost() {
         VmPlot plot = createReadyPlot(UUID.randomUUID());
         Grove grove = Grove.plant(cultivatorId, "g", "https://github.com/test/repo", "main").withPlot(plot);
 
@@ -313,28 +313,28 @@ class GroveTest {
     @Test
     void sshReachableVm_emptyForNullPlotContainerPlotAndNullHost() {
         Grove grove = Grove.plant(cultivatorId, "g", "https://github.com/test/repo", "main");
-        VmPlot noHost = new VmPlot(UUID.randomUUID(), grove.id(), "qemu", "inst-1", PlotState.SAPLING,
+        VmPlot noHost = new VmPlot(UUID.randomUUID(), grove.id(), "qemu", "inst-1", PlotState.ROOTED,
                 Instant.now(), Instant.now(), null, 2222, List.of(), VmSpec.small());
 
         assertThat(grove.sshReachableVm()).isEmpty();
-        assertThat(grove.withPlot(createContainerPlot(grove.id()).withState(PlotState.SAPLING))
+        assertThat(grove.withPlot(createContainerPlot(grove.id()).withState(PlotState.ROOTED))
                 .sshReachableVm()).isEmpty();
         assertThat(grove.withPlot(noHost).sshReachableVm()).isEmpty();
     }
 
     @Test
-    void sshReachableVm_emptyForEveryNonSaplingState() {
+    void sshReachableVm_emptyForEveryNonRootedState() {
         Grove grove = Grove.plant(cultivatorId, "g", "https://github.com/test/repo", "main");
         VmPlot sapling = createReadyPlot(grove.id());
         for (PlotState other : PlotState.values()) {
-            if (other != PlotState.SAPLING) {
+            if (other != PlotState.ROOTED) {
                 assertThat(grove.withPlot(sapling.withState(other)).sshReachableVm()).as(other.name()).isEmpty();
             }
         }
     }
 
     private VmPlot createReadyPlot(UUID groveId) {
-        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "inst-1", PlotState.SAPLING,
+        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "inst-1", PlotState.ROOTED,
                 Instant.now(), Instant.now(), "192.168.1.1", 2222, List.of(), VmSpec.small());
     }
 

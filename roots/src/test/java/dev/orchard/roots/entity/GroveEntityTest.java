@@ -38,7 +38,7 @@ class GroveEntityTest {
     void fromModel_roundTripsContainerPlot() {
         Grove grove = grove();
         ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), grove.id(), "docker", "c-123",
-            PlotState.SAPLING, NOW, NOW, Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
+            PlotState.ROOTED, NOW, NOW, Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
             new ContainerSpec(2, 4096));
 
         Plot reloaded = GroveEntity.fromModel(grove.withPlot(plot)).plot();
@@ -81,7 +81,7 @@ class GroveEntityTest {
     }
 
     private static VmPlot vmPlot(UUID groveId) {
-        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "vm-1", PlotState.SAPLING, NOW, NOW,
+        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "vm-1", PlotState.ROOTED, NOW, NOW,
             "10.0.0.5", 2222, List.of(), VmSpec.medium());
     }
 

@@ -127,11 +127,11 @@ class Ec2ProviderIntegrationTest {
 
         // LocalStack does not bind a real socket on the instance's IP, so the SSH wait
         // (phase 1: TCP port) will time out. plant() handles that by returning BLIGHTED.
-        // SAPLING is acceptable if LocalStack happens to expose a reachable port; either
+        // ROOTED is acceptable if LocalStack happens to expose a reachable port; either
         // outcome means the provider survived the full call-chain without throwing.
         Plot planted = provider.plantSubstrate(germinated).join();
 
-        assertThat(planted.state()).isIn(PlotState.SAPLING, PlotState.BLIGHTED);
+        assertThat(planted.state()).isIn(PlotState.ROOTED, PlotState.BLIGHTED);
     }
 
     @Test

@@ -631,7 +631,7 @@ public class GroveService {
             return;
         }
         try {
-            if (provider.inspect(grove.plot()).join().state() != PlotState.SAPLING) {
+            if (provider.inspect(grove.plot()).join().state() != PlotState.ROOTED) {
                 log.info("Plot not running for grove {} — skipping container cleanup", groveId);
                 return;
             }

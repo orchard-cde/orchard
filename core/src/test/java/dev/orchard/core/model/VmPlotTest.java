@@ -38,14 +38,14 @@ class VmPlotTest {
     void withState_sapling_setsReadyAt() {
         VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "p", SENTINEL);
 
-        assertThat(plot.withState(PlotState.SAPLING).readyAt()).isNotNull();
+        assertThat(plot.withState(PlotState.ROOTED).readyAt()).isNotNull();
     }
 
     @Test
     void withState_otherState_preservesReadyAt() {
         Instant readyAt = Instant.parse("2026-01-01T00:00:00Z");
         VmPlot plot = new VmPlot(UUID.randomUUID(), UUID.randomUUID(), "p", "i-1",
-            PlotState.SAPLING, Instant.now(), readyAt, "10.0.0.1", 22, List.of(), VmSpec.small());
+            PlotState.ROOTED, Instant.now(), readyAt, "10.0.0.1", 22, List.of(), VmSpec.small());
 
         assertThat(plot.withState(PlotState.WILTING).readyAt()).isEqualTo(readyAt);
     }

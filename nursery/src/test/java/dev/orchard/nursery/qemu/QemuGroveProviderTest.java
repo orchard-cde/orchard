@@ -123,7 +123,7 @@ class QemuGroveProviderTest {
         provider.reattachSurvivingVms();
 
         Plot result = provider.inspect(plot.withEndpoint(new VmEndpoint(new ProviderHandle(plot.id().toString()), new Host("127.0.0.1"), plot.sshPort()))).join();
-        assertThat(result.state()).isEqualTo(PlotState.SAPLING);
+        assertThat(result.state()).isEqualTo(PlotState.ROOTED);
     }
 
     @Test
@@ -206,7 +206,7 @@ class QemuGroveProviderTest {
         provider.reattachSurvivingVms();
 
         assertThat(provider.inspect(alivePlot.withEndpoint(new VmEndpoint(new ProviderHandle(alivePlot.id().toString()), new Host("127.0.0.1"), alivePlot.sshPort()))).join().state())
-            .isEqualTo(PlotState.SAPLING);
+            .isEqualTo(PlotState.ROOTED);
         assertThat(provider.inspect(deadPlot.withEndpoint(new VmEndpoint(new ProviderHandle(deadPlot.id().toString()), new Host("127.0.0.1"), deadPlot.sshPort()))).join().state())
             .isEqualTo(PlotState.WITHERED);
     }
@@ -227,7 +227,7 @@ class QemuGroveProviderTest {
     @ValueSource(strings = {"water", "dormant", "uproot", "inspect"})
     void ownedMethod_containerPlot_isRefusedOnTheCallingThread(String method) {
         ContainerPlot container = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
-            "c-1", PlotState.SAPLING, Instant.now(), null, Path.of("/tmp/ws"),
+            "c-1", PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"),
             ContainerRuntime.DOCKER, new ContainerSpec(2, 2048));
         Runnable call = switch (method) {
             case "water" -> () -> provider.water(container);

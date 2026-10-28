@@ -113,7 +113,7 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
         return CompletableFuture.supplyAsync(() -> {
             log.info("Watering (resuming) plot {}", vm.id());
             // TODO: Implement resume from suspended state
-            return vm.withState(PlotState.SAPLING);
+            return vm.withState(PlotState.ROOTED);
         }, executor);
     }
 
@@ -197,7 +197,7 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
         return CompletableFuture.supplyAsync(() -> {
             ProcessHandle handle = runningVms.get(vm.id());
             if (handle != null && handle.isAlive()) {
-                return vm.withState(PlotState.SAPLING);
+                return vm.withState(PlotState.ROOTED);
             }
             return vm.withState(PlotState.WITHERED);
         }, executor);

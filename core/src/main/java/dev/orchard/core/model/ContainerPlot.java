@@ -26,7 +26,7 @@ public record ContainerPlot(
     @Override
     public ContainerPlot withState(PlotState newState) {
         return new ContainerPlot(id, groveId, providerId, providerInstanceId, newState, plantedAt,
-            newState == PlotState.SAPLING ? Instant.now() : readyAt,
+            newState == PlotState.ROOTED ? Instant.now() : readyAt,
             workspacePath, runtime, spec);
     }
 }

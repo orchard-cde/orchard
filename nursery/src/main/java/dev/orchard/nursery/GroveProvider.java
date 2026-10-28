@@ -45,7 +45,7 @@ public interface GroveProvider {
      */
     Plot reserve(UUID groveId, SeedlingSpec seedlingSpec);
 
-    /** Acquires the substrate. Resolves to SAPLING on success, BLIGHTED on failure. */
+    /** Acquires the substrate. Resolves to ROOTED on success, BLIGHTED on failure. */
     CompletableFuture<Plot> plantSubstrate(Plot draft);
 
     CompletableFuture<Plot> water(Plot plot);
@@ -93,9 +93,9 @@ public interface GroveProvider {
      * Verifies the devcontainer CLI is installed and matches the expected version on the plot.
      *
      * <p>Called by the orchestrating caller (e.g. {@code GroveService}) after the plot has
-     * already reached {@code SAPLING} and cloud-init has finished — not by the provider during
+     * already reached {@code ROOTED} and cloud-init has finished — not by the provider during
      * {@link #plantSubstrate}. Cloud-init may still be installing the CLI when
-     * {@code plantSubstrate()} returns a SAPLING, so verifying any earlier would race a legitimate
+     * {@code plantSubstrate()} returns a ROOTED, so verifying any earlier would race a legitimate
      * in-progress install. See issue #148.
      *
      * <p>{@link #verifyDevcontainerCli(Plot, String)} delegates here with an explicit

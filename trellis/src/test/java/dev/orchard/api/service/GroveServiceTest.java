@@ -397,7 +397,7 @@ class GroveServiceTest {
         when(ownerProvider.vine(any())).thenReturn(vine);
         when(vine.commands()).thenReturn(runner);
         when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
-            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.SAPLING)));
+            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
         when(ownerProvider.growFruit(any(), any())).thenAnswer(inv ->
             CompletableFuture.completedFuture(((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
         when(runner.execute(any())).thenReturn("status: done", "abc123", "yes");
@@ -511,7 +511,7 @@ class GroveServiceTest {
             UUID cultivatorId = UUID.randomUUID();
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.GROWING)
-                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.SAPLING,
+                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.ROOTED,
                     null, null, "127.0.0.1", 22, List.of(), VmSpec.small()));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
@@ -533,7 +533,7 @@ class GroveServiceTest {
             UUID cultivatorId = UUID.randomUUID();
             Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
                 .withState(GroveState.FLOURISHING)
-                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.SAPLING,
+                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.ROOTED,
                     null, null, "127.0.0.1", 22, List.of(), VmSpec.small()));
             GroveEntity entity = GroveEntity.fromModel(grove);
             when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
@@ -654,7 +654,7 @@ class GroveServiceTest {
         }
     }
 
-    /** A freshly germinated VM plot: not yet SAPLING and without a host. */
+    /** A freshly germinated VM plot: not yet ROOTED and without a host. */
     private Grove groveWithPlot() {
         Grove grove = Grove.plant(
             UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");
@@ -890,7 +890,7 @@ class GroveServiceTest {
     }
 
     private static Plot sapling(Plot plot) {
-        return plot.withState(PlotState.SAPLING);
+        return plot.withState(PlotState.ROOTED);
     }
 
     @Test

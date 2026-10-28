@@ -172,7 +172,7 @@ We use orchard/gardening terminology throughout the codebase:
 | **Cultivator** | A user who tends groves |
 | **Plot** | The substrate a grove is planted in (a VM today); holds one or more fruit |
 | **Seedling** | What is planted into a plot |
-| **Sapling** | A plot that is ready to grow fruit |
+| **Sapling** | A `ROOTED` plot, ready to grow fruit |
 | **Fruit** | A running devcontainer |
 | **Seed** | A devcontainer.json specification |
 | **Trowel** | The CLI tool for planting |

@@ -122,7 +122,7 @@ class BeeServiceTest {
         GroveEntity groveEntity = mock(GroveEntity.class);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
-        VmPlot persisted = new VmPlot(UUID.randomUUID(), groveId, "owner", "vm-1", PlotState.SAPLING,
+        VmPlot persisted = new VmPlot(UUID.randomUUID(), groveId, "owner", "vm-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), "10.0.0.5", 2222, List.of(), VmSpec.small());
         when(groveEntity.plot()).thenReturn(persisted);
         setupRegisteredKeeper(BeeType.CLAUDE_CODE);
@@ -687,7 +687,7 @@ class BeeServiceTest {
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
         when(groveEntity.plot()).thenReturn(new VmPlot(UUID.randomUUID(), groveId, "owner", "vm-1",
-            PlotState.SAPLING, Instant.now(), Instant.now(), "10.0.0.5", 2222, List.of(), VmSpec.small()));
+            PlotState.ROOTED, Instant.now(), Instant.now(), "10.0.0.5", 2222, List.of(), VmSpec.small()));
         setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         GroveProvider owner = mock(GroveProvider.class);
         Vine vine = mock(Vine.class);
@@ -706,7 +706,7 @@ class BeeServiceTest {
     }
 
     private VmPlot plotOwnedBy(String providerId) {
-        return new VmPlot(UUID.randomUUID(), groveId, providerId, "vm-1", PlotState.SAPLING,
+        return new VmPlot(UUID.randomUUID(), groveId, providerId, "vm-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), "10.0.0.5", 22, List.of(), VmSpec.small());
     }
 

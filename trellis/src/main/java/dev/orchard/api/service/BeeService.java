@@ -303,7 +303,7 @@ public class BeeService {
             return null;
         }
         Plot plot = groveEntity.plot();
-        if (plot.state() != PlotState.SAPLING) {
+        if (plot.state() != PlotState.ROOTED) {
             return null;
         }
         return commandRunnerFor(plot);

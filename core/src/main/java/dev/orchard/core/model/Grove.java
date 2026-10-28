@@ -94,13 +94,13 @@ public record Grove(
 
     public boolean isReady() {
         return state == GroveState.FLOURISHING
-            && plot != null && plot.state() == PlotState.SAPLING
+            && plot != null && plot.state() == PlotState.ROOTED
             && fruits != null && !fruits.isEmpty()
             && fruits.stream().allMatch(Fruit::isReady);
     }
 
     public Optional<VmPlot> sshReachableVm() {
-        return plot instanceof VmPlot vm && vm.host() != null && vm.state() == PlotState.SAPLING
+        return plot instanceof VmPlot vm && vm.host() != null && vm.state() == PlotState.ROOTED
             ? Optional.of(vm)
             : Optional.empty();
     }

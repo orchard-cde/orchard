@@ -53,7 +53,7 @@ class GroveReconcilerTest {
     }
 
     private VmPlot closedPortPlot(String providerId) {
-        return new VmPlot(UUID.randomUUID(), UUID.randomUUID(), providerId, "i-1", PlotState.SAPLING,
+        return new VmPlot(UUID.randomUUID(), UUID.randomUUID(), providerId, "i-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), "127.0.0.1", 1, List.of(), null);
     }
 
@@ -73,7 +73,7 @@ class GroveReconcilerTest {
     }
 
     @Test
-    void flourishing_inspectSapling_staysFlourishing() {
+    void flourishing_inspectRooted_staysFlourishing() {
         VmPlot plot = closedPortPlot("owner");
         GroveEntity entity = flourishing(plot);
         when(registry.require("owner")).thenReturn(provider);

@@ -19,7 +19,7 @@ class ContainerPlotTest {
 
     @Test
     void withState_sapling_setsReadyAt() {
-        assertThat(plot(null).withState(PlotState.SAPLING).readyAt()).isNotNull();
+        assertThat(plot(null).withState(PlotState.ROOTED).readyAt()).isNotNull();
     }
 
     @Test

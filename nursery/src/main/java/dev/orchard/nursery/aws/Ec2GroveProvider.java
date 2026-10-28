@@ -113,7 +113,7 @@ public class Ec2GroveProvider extends AbstractVmGroveProvider<String> implements
                 InstanceDescription desc = operations.describeInstance(vm.providerInstanceId());
                 return vm.withEndpoint(new VmEndpoint(
                         new ProviderHandle(vm.providerInstanceId()), new Host(selectIp(desc)), vm.sshPort()))
-                    .withState(PlotState.SAPLING);
+                    .withState(PlotState.ROOTED);
             // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
             // and surface as RuntimeException, caught below.
             } catch (Exception e) {
@@ -156,9 +156,10 @@ public class Ec2GroveProvider extends AbstractVmGroveProvider<String> implements
             try {
                 InstanceDescription desc = operations.describeInstance(vm.providerInstanceId());
                 PlotState mapped = switch (desc.state()) {
-                    case RUNNING -> PlotState.SAPLING;
-                    case STOPPED, STOPPING -> PlotState.WILTING;
-                    case TERMINATED, SHUTTING_DOWN -> PlotState.WITHERED;
+                    case RUNNING -> PlotState.ROOTED;
+                    case STOPPING, SHUTTING_DOWN -> PlotState.WILTING;
+                    case STOPPED -> PlotState.DORMANT;
+                    case TERMINATED -> PlotState.WITHERED;
                     case PENDING -> PlotState.SPROUTING;
                     case UNKNOWN -> vm.state();
                 };

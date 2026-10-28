@@ -295,7 +295,7 @@ class FruitGrowerTest {
 
     private static CommandRunner runner() {
         // 127.0.0.255 / port 1 — guaranteed to refuse on any host the test runs on.
-        return new SshVine(new VmPlot(SEEDLING_ID, UUID.randomUUID(), "test", null, PlotState.SAPLING, Instant.now(), null, "127.0.0.255", 1, List.of(), VmSpec.small())).commands();
+        return new SshVine(new VmPlot(SEEDLING_ID, UUID.randomUUID(), "test", null, PlotState.ROOTED, Instant.now(), null, "127.0.0.255", 1, List.of(), VmSpec.small())).commands();
     }
 
     private static ExecTarget execTarget(CommandRunner runner) {

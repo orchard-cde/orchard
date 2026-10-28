@@ -111,7 +111,7 @@ class GroveLifecycleE2ETest {
         latestResponse = getGrove(groveId);
 
         assertThat(latestResponse.plot()).isNotNull();
-        assertThat(latestResponse.plot().state()).isEqualTo(PlotState.SAPLING);
+        assertThat(latestResponse.plot().state()).isEqualTo(PlotState.ROOTED);
         assertThat(latestResponse.plot().host()).isEqualTo("127.0.0.1");
         assertThat(latestResponse.plot().sshPort()).isBetween(49200, 49299);
         assertThat(latestResponse.fruits()).isNotEmpty();

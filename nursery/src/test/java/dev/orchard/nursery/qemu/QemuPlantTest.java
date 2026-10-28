@@ -191,7 +191,7 @@ class QemuPlantTest {
             assertThat(planted.providerInstanceId()).isEqualTo(reserved.id().toString());
             assertThat(provider.inspect(planted).join().state())
                 .as("inspect finds the live process only if runningVms is keyed on the plot id")
-                .isEqualTo(PlotState.SAPLING);
+                .isEqualTo(PlotState.ROOTED);
         } finally {
             started.forEach(Process::destroyForcibly);
         }
