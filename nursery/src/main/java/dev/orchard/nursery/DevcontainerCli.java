@@ -4,7 +4,7 @@ import dev.orchard.vine.CommandRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
-import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -21,11 +21,19 @@ import java.util.function.Consumer;
  * field. We parse the outcome line for the result and pass every line through to a
  * Consumer for callers who want to derive progress events.
  */
-@RegisterReflectionForBinding({DevcontainerCliResult.class, CliError.class})
+@RegisterReflectionForBinding({DevcontainerCliResult.class, CliError.class, DevcontainerCli.Outcome.class})
 public class DevcontainerCli {
 
     private static final Logger log = LoggerFactory.getLogger(DevcontainerCli.class);
-    private static final ObjectMapper mapper = JsonMapper.builder().build();
+    private static final ObjectMapper mapper = JsonMapper.builder()
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .build();
+
+    record Outcome(String outcome) {
+        boolean isSuccess() {
+            return "success".equals(outcome);
+        }
+    }
 
     private final DevcontainerCliConfig config;
 
@@ -66,22 +74,10 @@ public class DevcontainerCli {
                 null, null, null, null));
         }
 
-        JsonNode node = mapper.readTree(outcomeLine.get());
-        if (!isSuccess(node)) {
-            throw new DevcontainerCliException(new CliError(
-                node.path("message").asText(null),
-                node.path("description").asText(null),
-                node.path("disallowedFeatureId").asText(null),
-                node.path("containerId").asText(null),
-                node.has("didStopContainer") ? node.get("didStopContainer").asBoolean() : null,
-                node.path("learnMoreUrl").asText(null)));
+        if (!mapper.readValue(outcomeLine.get(), Outcome.class).isSuccess()) {
+            throw new DevcontainerCliException(mapper.readValue(outcomeLine.get(), CliError.class));
         }
-
-        return new DevcontainerCliResult(
-            node.path("containerId").asText(null),
-            node.path("composeProjectName").asText(null),
-            node.path("remoteUser").asText(null),
-            node.path("remoteWorkspaceFolder").asText(null));
+        return mapper.readValue(outcomeLine.get(), DevcontainerCliResult.class);
     }
 
     /**
@@ -110,12 +106,11 @@ public class DevcontainerCli {
         if (outcomeLine == null) {
             return;
         }
-        JsonNode node = mapper.readTree(outcomeLine);
-        if (!isSuccess(node)) {
-            throw new DevcontainerCliException(new CliError(
-                node.path("message").asText(null),
-                node.path("description").asText(null),
-                null, containerId, null, null));
+        if (!mapper.readValue(outcomeLine, Outcome.class).isSuccess()) {
+            CliError error = mapper.readValue(outcomeLine, CliError.class);
+            throw new DevcontainerCliException(error.containerId() != null ? error : new CliError(
+                error.message(), error.description(), error.disallowedFeatureId(),
+                containerId, error.didStopContainer(), error.learnMoreUrl()));
         }
     }
 
@@ -140,10 +135,6 @@ public class DevcontainerCli {
      */
     private static boolean isOutcomeLine(String line) {
         return line.contains("\"outcome\":\"");
-    }
-
-    private static boolean isSuccess(JsonNode outcomeNode) {
-        return "success".equals(outcomeNode.path("outcome").asText(null));
     }
 
     private static String shellEscape(String s) {
