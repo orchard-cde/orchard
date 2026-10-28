@@ -365,6 +365,50 @@ class BeeServiceTest {
     }
 
     @Test
+    void hibernateAll_movesActiveBees_leavesSmoked() {
+        BeeEntity hatching = beeEntityIn(BeeState.HATCHING);
+        BeeEntity buzzing = beeEntityIn(BeeState.BUZZING);
+        BeeEntity pollinating = beeEntityIn(BeeState.POLLINATING);
+        BeeEntity hibernating = beeEntityIn(BeeState.HIBERNATING);
+        BeeEntity smoked = beeEntityIn(BeeState.SMOKED);
+        when(beeRepository.findByGroveId(groveId))
+            .thenReturn(List.of(hatching, buzzing, pollinating, hibernating, smoked));
+
+        beeService.hibernateAll(groveId);
+
+        assertThat(hatching.getState()).isEqualTo(BeeState.HIBERNATING);
+        assertThat(buzzing.getState()).isEqualTo(BeeState.HIBERNATING);
+        assertThat(pollinating.getState()).isEqualTo(BeeState.HIBERNATING);
+        assertThat(hibernating.getState()).isEqualTo(BeeState.HIBERNATING);
+        assertThat(smoked.getState()).isEqualTo(BeeState.SMOKED);
+        assertThat(List.of(hatching, buzzing, pollinating))
+            .allSatisfy(e -> assertThat(e.getProcessId()).isNull());
+        assertThat(hibernating.getProcessId()).isEqualTo("pid-HIBERNATING");
+        assertThat(smoked.getProcessId()).isEqualTo("pid-SMOKED");
+
+        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, times(3)).publishEvent(events.capture());
+        assertThat(events.getAllValues()).allSatisfy(e -> {
+            BeeStateChangedEvent event = (BeeStateChangedEvent) e;
+            assertThat(event.groveId()).isEqualTo(groveId);
+            assertThat(event.newState()).isEqualTo(BeeState.HIBERNATING);
+        });
+        assertThat(events.getAllValues())
+            .extracting(e -> ((BeeStateChangedEvent) e).beeId())
+            .containsExactlyInAnyOrder(hatching.getId(), buzzing.getId(), pollinating.getId());
+        assertThat(events.getAllValues())
+            .extracting(e -> ((BeeStateChangedEvent) e).previousState())
+            .containsExactlyInAnyOrder(BeeState.HATCHING, BeeState.BUZZING, BeeState.POLLINATING);
+        verify(beeRepository, times(3)).save(any());
+    }
+
+    private BeeEntity beeEntityIn(BeeState state) {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE))
+            .withState(state).withProcessId("pid-" + state);
+        return BeeEntity.fromModel(bee);
+    }
+
+    @Test
     void publishAfterCommit_withNoActiveTransaction_publishesImmediately() {
         BeeStateChangedEvent event = BeeStateChangedEvent.of(
             UUID.randomUUID(), groveId, BeeState.HIBERNATING, BeeState.BUZZING);
