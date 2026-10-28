@@ -116,6 +116,11 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
             throw new IllegalStateException(
                 "Only a DORMANT plot can be watered; plot " + vm.id() + " is " + vm.state());
         }
+        ProcessHandle tracked = runningVms.get(vm.id());
+        if (tracked != null && tracked.isAlive()) {
+            throw new IllegalStateException(
+                "Plot " + vm.id() + " already has a running VM (pid " + tracked.pid() + ")");
+        }
         return CompletableFuture.supplyAsync(() -> {
             log.info("Watering plot {}", vm.id());
             Path vmDir = config.vmStoragePath().resolve(vm.id().toString());
@@ -131,18 +136,25 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
                 awaitReachable(vm, endpoint);
                 return vm.withEndpoint(endpoint).withState(PlotState.ROOTED);
             } catch (IOException | RuntimeException e) {
-                abandonRelaunch(vm, vmDir, process);
+                abandonRelaunch(vm, vmDir, process, e);
                 throw new CompletionException(e);
             }
         }, executor);
     }
 
-    private void abandonRelaunch(VmPlot plot, Path vmDir, Process process) {
+    /** A relaunched VM that cannot be confirmed dead stays tracked, so it is neither forgotten nor relaunched over. */
+    private void abandonRelaunch(VmPlot plot, Path vmDir, Process process, Exception cause) {
         if (process == null) {
             return;
         }
-        runningVms.remove(plot.id());
-        process.toHandle().destroyForcibly();
+        ProcessHandle handle = process.toHandle();
+        try {
+            confirmTerminated(plot, handle);
+        } catch (CompletionException e) {
+            cause.addSuppressed(e);
+            return;
+        }
+        runningVms.remove(plot.id(), handle);
         try {
             Files.deleteIfExists(vmDir.resolve("qemu.pid"));
         } catch (IOException e) {
@@ -157,8 +169,10 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
             log.info("Setting plot {} to dormant", vm.id());
             ProcessHandle handle = runningVms.get(vm.id());
             if (handle != null) {
-                commands.requestPoweroff(vm);
-                awaitPoweroff(vm, handle);
+                if (handle.isAlive()) {
+                    commands.requestPoweroff(vm);
+                    awaitPoweroff(vm, handle);
+                }
                 runningVms.remove(vm.id());
                 Path pidFile = config.vmStoragePath().resolve(vm.id().toString()).resolve("qemu.pid");
                 try {

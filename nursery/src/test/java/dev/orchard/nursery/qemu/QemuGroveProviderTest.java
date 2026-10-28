@@ -35,6 +35,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -252,6 +253,7 @@ class QemuGroveProviderTest {
         int startPortArg;
         int port = 2299;
         boolean poweroffKillsProcess;
+        IOException reachFailure;
         java.util.function.Supplier<Process> processFactory = () -> {
             try {
                 return startAliveProcessTaggedWith("stub-vm");
@@ -288,8 +290,11 @@ class QemuGroveProviderTest {
         }
 
         @Override
-        public void awaitReachable(String host, int sshPort) {
+        public void awaitReachable(String host, int sshPort) throws IOException {
             calls.add("awaitReachable");
+            if (reachFailure != null) {
+                throw reachFailure;
+            }
         }
 
         @Override
@@ -311,22 +316,41 @@ class QemuGroveProviderTest {
         return VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
     }
 
+    /** A one-minute poweroff timeout makes the forced-kill fallback unable to finish within the bound. */
     @Test
-    void dormant_poweroffExits_returnsDormant_keepsDirectory_removesPidFile() {
+    void dormant_poweroffExits_returnsDormant_keepsDirectory_removesPidFile() throws Exception {
         StubCommands stub = new StubCommands();
         stub.poweroffKillsProcess = true;
-        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
+        QemuGroveProvider p = providerWith(stub, Duration.ofMinutes(1));
         VmPlot plot = newPlot();
         p.plantSubstrate(plot).join();
         Path vmDir = tempDir.resolve(plot.id().toString());
         assertThat(vmDir.resolve("qemu.pid")).exists();
 
-        Plot result = p.dormant(plot.withState(PlotState.WILTING)).join();
+        Plot result = p.dormant(plot.withState(PlotState.WILTING)).get(5, TimeUnit.SECONDS);
 
+        assertThat(stub.calls).contains("requestPoweroff");
         assertThat(result.state()).isEqualTo(PlotState.DORMANT);
         assertThat(vmDir.resolve("disk.qcow2")).exists();
         assertThat(vmDir.resolve("qemu.pid")).doesNotExist();
         assertThat(stub.lastProcess.isAlive()).isFalse();
+    }
+
+    @Test
+    void dormant_deadHandle_neverRequestsPoweroff() throws Exception {
+        StubCommands stub = new StubCommands();
+        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
+        VmPlot plot = newPlot();
+        p.plantSubstrate(plot).join();
+        stub.lastProcess.destroyForcibly().waitFor();
+        Path vmDir = tempDir.resolve(plot.id().toString());
+
+        Plot result = p.dormant(plot.withState(PlotState.WILTING)).join();
+
+        assertThat(stub.calls).doesNotContain("requestPoweroff");
+        assertThat(result.state()).isEqualTo(PlotState.DORMANT);
+        assertThat(vmDir.resolve("qemu.pid")).doesNotExist();
+        assertThat(vmDir.resolve("disk.qcow2")).exists();
     }
 
     @Test
@@ -376,6 +400,57 @@ class QemuGroveProviderTest {
         assertThat(Files.readString(vmDir.resolve("qemu.pid")))
             .isEqualTo(String.valueOf(stub.lastProcess.pid()));
         assertThat(p.inspect(result).join().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    @Test
+    void water_liveHandleAlreadyTracked_throwsIllegalState() {
+        StubCommands stub = new StubCommands();
+        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
+        VmPlot plot = newPlot();
+        p.plantSubstrate(plot).join();
+        Process running = stub.lastProcess;
+
+        assertThatThrownBy(() -> p.water(plot.withState(PlotState.DORMANT)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(plot.id().toString());
+        assertThat(stub.calls).containsOnlyOnce("startQemu");
+        assertThat(stub.lastProcess).isSameAs(running);
+        assertThat(p.inspect(plot).join().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    @Test
+    void water_unreachable_processSurvivesKill_staysTrackedWithPidFile() throws IOException {
+        StubCommands stub = new StubCommands();
+        stub.processFactory = NeverExitsProcess::new;
+        stub.reachFailure = new IOException("ssh never came up");
+        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
+        VmPlot plot = newPlot();
+        Path vmDir = tempDir.resolve(plot.id().toString());
+        Files.createDirectories(vmDir);
+        Files.createFile(vmDir.resolve("disk.qcow2"));
+
+        assertThatThrownBy(() -> p.water(plot.withState(PlotState.DORMANT)).join())
+            .isInstanceOf(CompletionException.class)
+            .hasMessageContaining("ssh never came up");
+        assertThat(vmDir.resolve("qemu.pid")).exists();
+        assertThat(p.inspect(plot).join().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    @Test
+    void water_unreachable_killsProcess_removesPidFile() throws IOException {
+        StubCommands stub = new StubCommands();
+        stub.reachFailure = new IOException("ssh never came up");
+        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
+        VmPlot plot = newPlot();
+        Path vmDir = tempDir.resolve(plot.id().toString());
+        Files.createDirectories(vmDir);
+        Files.createFile(vmDir.resolve("disk.qcow2"));
+
+        assertThatThrownBy(() -> p.water(plot.withState(PlotState.DORMANT)).join())
+            .isInstanceOf(CompletionException.class);
+        assertThat(stub.lastProcess.isAlive()).isFalse();
+        assertThat(vmDir.resolve("qemu.pid")).doesNotExist();
+        assertThat(p.inspect(plot).join().state()).isEqualTo(PlotState.DORMANT);
     }
 
     @ParameterizedTest
