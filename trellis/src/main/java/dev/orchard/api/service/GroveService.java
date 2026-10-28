@@ -651,7 +651,7 @@ public class GroveService {
             GroveProvider provider = providerRegistry.require(plot.providerId());
 
             log.info("Stopping grove {}", groveId);
-            Grove grove = transitionNow(entity, GroveState.DORMANT);
+            Grove grove = transitionNow(entity, GroveState.DORMANT, "stop");
             beeService.hibernateAll(groveId);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -683,7 +683,7 @@ public class GroveService {
             GroveProvider provider = providerRegistry.require(plot.providerId());
 
             log.info("Starting grove {}", groveId);
-            Grove grove = transitionNow(entity, GroveState.PLANTING);
+            Grove grove = transitionNow(entity, GroveState.PLANTING, "start");
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
@@ -699,23 +699,39 @@ public class GroveService {
             .formatted(action, groveId, state, plot.state()));
     }
 
-    private Grove transitionNow(GroveEntity entity, GroveState next) {
-        GroveState previous = entity.getState();
-        entity.setState(next);
-        groveRepository.save(entity);
-        Grove grove = entityToModel(entity);
-        publishStateChange(grove, previous);
+    /**
+     * Moves the grove from the state the request observed, conditionally, so that of two
+     * concurrent requests only one proceeds; the other is refused as if it had seen the new state.
+     */
+    private Grove transitionNow(GroveEntity entity, GroveState next, String action) {
+        GroveState observed = entity.getState();
+        Plot plot = entity.plot();
+        int rows = groveRepository.transitionIfState(
+            entity.getId(), observed, next, GroveEntity.serializePlot(plot));
+        if (rows != 1) {
+            throw refusal(action, entity.getId(), observed, plot);
+        }
+        Grove grove = entityToModel(entity).withState(next);
+        publishStateChange(grove, observed);
         return grove;
     }
 
     /**
      * The async half of {@link #stopGrove}. Package-private so tests can drive it directly.
-     * Any failure leaves the grove {@link GroveState#BLIGHTED} with its plot as last persisted,
-     * still {@link PlotState#ROOTED}, so stop can be retried.
+     * A plot that already inspects {@link PlotState#DORMANT} has nothing left to stop and is
+     * recorded as such. Any other failure leaves the grove {@link GroveState#BLIGHTED} with its
+     * plot as last persisted, still {@link PlotState#ROOTED}, so stop can be retried.
      */
     void completeStop(Grove grove, GroveProvider provider) {
         Grove current = grove;
         try {
+            Plot inspected = inspectQuietly(provider, current.plot());
+            if (inspected != null && inspected.state() == PlotState.DORMANT) {
+                if (advance(grove.id(), GroveState.DORMANT, current.withPlot(inspected))) {
+                    log.info("Grove {} is DORMANT; its plot was already powered off", grove.id());
+                }
+                return;
+            }
             for (Fruit fruit : current.fruits()) {
                 if (fruit.containerId() != null) {
                     current = current.withFruit(provider.pickFruit(current.plot(), fruit).join());
@@ -767,6 +783,15 @@ public class GroveService {
         } catch (Exception e) {
             log.error("Starting grove {} failed — marking BLIGHTED", grove.id(), e);
             blight(expected, current);
+        }
+    }
+
+    private Plot inspectQuietly(GroveProvider provider, Plot plot) {
+        try {
+            return provider.inspect(plot).join();
+        } catch (Exception e) {
+            log.warn("Inspecting plot {} failed — assuming it may still be running", plot.id(), e);
+            return null;
         }
     }
 
