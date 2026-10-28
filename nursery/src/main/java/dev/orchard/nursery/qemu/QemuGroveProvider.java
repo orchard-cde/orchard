@@ -47,6 +47,7 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
     private final QemuConfig config;
     private final ConcurrentHashMap<UUID, ProcessHandle> runningVms;
     private final QemuCommands commands;
+    private final Duration poweroffTimeout;
 
     /**
      * Launch state QEMU must carry from {@code launch} to the later planting steps: the SSH port is
@@ -57,16 +58,17 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
     public QemuGroveProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig,
                                 FruitGrower fruitGrower) {
         this(config, devcontainerCliConfig, fruitGrower,
-            new DefaultQemuCommands(config, devcontainerCliConfig));
+            new DefaultQemuCommands(config, devcontainerCliConfig), Duration.ofSeconds(60));
     }
 
     /** Test seam. Production callers use the three-arg constructor. */
     QemuGroveProvider(QemuConfig config, DevcontainerCliConfig devcontainerCliConfig,
-                         FruitGrower fruitGrower, QemuCommands commands) {
+                         FruitGrower fruitGrower, QemuCommands commands, Duration poweroffTimeout) {
         super(Executors.newVirtualThreadPerTaskExecutor(), fruitGrower);
         this.config = config;
         this.runningVms = new ConcurrentHashMap<>();
         this.commands = commands;
+        this.poweroffTimeout = poweroffTimeout;
     }
 
     @Override
@@ -110,11 +112,42 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
     @Override
     public CompletableFuture<Plot> water(Plot plot) {
         VmPlot vm = narrow(plot);
+        if (vm.state() != PlotState.DORMANT) {
+            throw new IllegalStateException(
+                "Only a DORMANT plot can be watered; plot " + vm.id() + " is " + vm.state());
+        }
         return CompletableFuture.supplyAsync(() -> {
-            log.info("Watering (resuming) plot {}", vm.id());
-            // TODO: Implement resume from suspended state
-            return vm.withState(PlotState.ROOTED);
+            log.info("Watering plot {}", vm.id());
+            Path vmDir = config.vmStoragePath().resolve(vm.id().toString());
+            Process process = null;
+            try {
+                int sshPort = commands.allocateSshPort();
+                process = commands.startQemu(vm, vmDir.resolve("disk.qcow2"),
+                    vmDir.resolve("cloud-init.iso"), sshPort);
+                Files.writeString(vmDir.resolve("qemu.pid"), String.valueOf(process.pid()));
+                runningVms.put(vm.id(), process.toHandle());
+
+                VmEndpoint endpoint = resolveEndpoint(vm, new QemuLaunch(sshPort));
+                awaitReachable(vm, endpoint);
+                return vm.withEndpoint(endpoint).withState(PlotState.ROOTED);
+            } catch (IOException | RuntimeException e) {
+                abandonRelaunch(vm, vmDir, process);
+                throw new CompletionException(e);
+            }
         }, executor);
+    }
+
+    private void abandonRelaunch(VmPlot plot, Path vmDir, Process process) {
+        if (process == null) {
+            return;
+        }
+        runningVms.remove(plot.id());
+        process.toHandle().destroyForcibly();
+        try {
+            Files.deleteIfExists(vmDir.resolve("qemu.pid"));
+        } catch (IOException e) {
+            log.warn("Failed to remove pid file for plot {}", plot.id(), e);
+        }
     }
 
     @Override
@@ -122,8 +155,34 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
         VmPlot vm = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             log.info("Setting plot {} to dormant", vm.id());
-            return vm.withState(PlotState.WILTING);
+            ProcessHandle handle = runningVms.get(vm.id());
+            if (handle != null) {
+                commands.requestPoweroff(vm);
+                awaitPoweroff(vm, handle);
+                runningVms.remove(vm.id());
+                Path pidFile = config.vmStoragePath().resolve(vm.id().toString()).resolve("qemu.pid");
+                try {
+                    Files.deleteIfExists(pidFile);
+                } catch (IOException e) {
+                    throw new CompletionException("Failed to remove " + pidFile, e);
+                }
+            }
+            return vm.withState(PlotState.DORMANT);
         }, executor);
+    }
+
+    private void awaitPoweroff(VmPlot plot, ProcessHandle handle) {
+        try {
+            handle.onExit().get(poweroffTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CompletionException(
+                "Interrupted while waiting for QEMU process (pid " + handle.pid()
+                    + ") for plot " + plot.id() + " to power off", e);
+        } catch (ExecutionException | TimeoutException e) {
+            log.warn("Plot {} did not power off within {}; forcing termination", plot.id(), poweroffTimeout);
+            confirmTerminated(plot, handle);
+        }
     }
 
     @Override
@@ -198,6 +257,10 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
             ProcessHandle handle = runningVms.get(vm.id());
             if (handle != null && handle.isAlive()) {
                 return vm.withState(PlotState.ROOTED);
+            }
+            Path vmDir = config.vmStoragePath().resolve(vm.id().toString());
+            if (Files.exists(vmDir.resolve("disk.qcow2")) && !Files.exists(vmDir.resolve("qemu.pid"))) {
+                return vm.withState(PlotState.DORMANT);
             }
             return vm.withState(PlotState.WITHERED);
         }, executor);

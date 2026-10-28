@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -244,6 +245,186 @@ class QemuGroveProviderTest {
     }
 
 
+    private class StubCommands implements QemuCommands {
+        final List<String> calls = new ArrayList<>();
+        Process lastProcess;
+        Path startDiskArg;
+        int startPortArg;
+        int port = 2299;
+        boolean poweroffKillsProcess;
+        java.util.function.Supplier<Process> processFactory = () -> {
+            try {
+                return startAliveProcessTaggedWith("stub-vm");
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        };
+
+        @Override
+        public void createDiskImage(Path image, int diskGb) throws IOException {
+            calls.add("createDiskImage");
+            Files.createFile(image);
+        }
+
+        @Override
+        public void createCloudInitIso(Path iso, VmPlot plot) throws IOException {
+            calls.add("createCloudInitIso");
+            Files.createFile(iso);
+        }
+
+        @Override
+        public int allocateSshPort() {
+            calls.add("allocateSshPort");
+            return port;
+        }
+
+        @Override
+        public Process startQemu(VmPlot plot, Path diskImage, Path cloudInitIso, int sshPort) {
+            calls.add("startQemu");
+            startDiskArg = diskImage;
+            startPortArg = sshPort;
+            lastProcess = processFactory.get();
+            return lastProcess;
+        }
+
+        @Override
+        public void awaitReachable(String host, int sshPort) {
+            calls.add("awaitReachable");
+        }
+
+        @Override
+        public void requestPoweroff(VmPlot plot) {
+            calls.add("requestPoweroff");
+            if (poweroffKillsProcess) {
+                lastProcess.destroyForcibly();
+            }
+        }
+    }
+
+    private QemuGroveProvider providerWith(QemuCommands commands, Duration poweroffTimeout) {
+        QemuConfig config = QemuConfig.builder().vmStoragePath(tempDir).build();
+        return new QemuGroveProvider(config, new DevcontainerCliConfig("0.75.0", 600, 60),
+            new FruitGrower(), commands, poweroffTimeout);
+    }
+
+    private static VmPlot newPlot() {
+        return VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+    }
+
+    @Test
+    void dormant_poweroffExits_returnsDormant_keepsDirectory_removesPidFile() {
+        StubCommands stub = new StubCommands();
+        stub.poweroffKillsProcess = true;
+        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
+        VmPlot plot = newPlot();
+        p.plantSubstrate(plot).join();
+        Path vmDir = tempDir.resolve(plot.id().toString());
+        assertThat(vmDir.resolve("qemu.pid")).exists();
+
+        Plot result = p.dormant(plot.withState(PlotState.WILTING)).join();
+
+        assertThat(result.state()).isEqualTo(PlotState.DORMANT);
+        assertThat(vmDir.resolve("disk.qcow2")).exists();
+        assertThat(vmDir.resolve("qemu.pid")).doesNotExist();
+        assertThat(stub.lastProcess.isAlive()).isFalse();
+    }
+
+    @Test
+    void dormant_poweroffTimesOut_forceKills_returnsDormant() {
+        StubCommands stub = new StubCommands();
+        QemuGroveProvider p = providerWith(stub, Duration.ofMillis(200));
+        VmPlot plot = newPlot();
+        p.plantSubstrate(plot).join();
+
+        Plot result = p.dormant(plot.withState(PlotState.WILTING)).join();
+
+        assertThat(result.state()).isEqualTo(PlotState.DORMANT);
+        assertThat(stub.lastProcess.isAlive()).isFalse();
+        assertThat(tempDir.resolve(plot.id().toString()).resolve("disk.qcow2")).exists();
+    }
+
+    @Test
+    void dormant_forceKillFails_completesExceptionally() {
+        StubCommands stub = new StubCommands();
+        stub.processFactory = NeverExitsProcess::new;
+        QemuGroveProvider p = providerWith(stub, Duration.ofMillis(200));
+        VmPlot plot = newPlot();
+        p.plantSubstrate(plot).join();
+
+        assertThatThrownBy(() -> p.dormant(plot.withState(PlotState.WILTING)).join())
+            .isInstanceOf(CompletionException.class)
+            .hasMessageContaining(String.valueOf(NeverExitsProcess.PID));
+    }
+
+    @Test
+    void water_relaunchesSameDisk_newPort_returnsRooted() throws IOException {
+        StubCommands stub = new StubCommands();
+        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
+        VmPlot plot = newPlot();
+        Path vmDir = tempDir.resolve(plot.id().toString());
+        Files.createDirectories(vmDir);
+        Path disk = Files.createFile(vmDir.resolve("disk.qcow2"));
+        Files.createFile(vmDir.resolve("cloud-init.iso"));
+
+        Plot result = p.water(plot.withState(PlotState.DORMANT)).join();
+
+        assertThat(stub.calls).doesNotContain("createDiskImage", "createCloudInitIso");
+        assertThat(stub.startDiskArg).isEqualTo(disk);
+        assertThat(stub.startPortArg).isEqualTo(2299);
+        assertThat(result.state()).isEqualTo(PlotState.ROOTED);
+        assertThat(((VmPlot) result).sshPort()).isEqualTo(2299);
+        assertThat(Files.readString(vmDir.resolve("qemu.pid")))
+            .isEqualTo(String.valueOf(stub.lastProcess.pid()));
+        assertThat(p.inspect(result).join().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = PlotState.class, names = "DORMANT", mode = EnumSource.Mode.EXCLUDE)
+    void water_notDormant_throwsIllegalState(PlotState state) {
+        StubCommands stub = new StubCommands();
+        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
+
+        assertThatThrownBy(() -> p.water(newPlot().withState(state)))
+            .isInstanceOf(IllegalStateException.class);
+        assertThat(stub.calls).isEmpty();
+    }
+
+    @Test
+    void inspect_dirWithDiskNoPidFile_isDormant() throws IOException {
+        VmPlot plot = newPlot();
+        Path vmDir = tempDir.resolve(plot.id().toString());
+        Files.createDirectories(vmDir);
+        Files.createFile(vmDir.resolve("disk.qcow2"));
+
+        assertThat(provider.inspect(plot).join().state()).isEqualTo(PlotState.DORMANT);
+    }
+
+    @Test
+    void inspect_noDirectory_isWithered() {
+        assertThat(provider.inspect(newPlot()).join().state()).isEqualTo(PlotState.WITHERED);
+    }
+
+    @Test
+    void inspect_aliveProcess_isRooted() {
+        QemuGroveProvider p = providerWith(new StubCommands(), Duration.ofSeconds(10));
+        VmPlot plot = newPlot();
+        p.plantSubstrate(plot).join();
+
+        assertThat(p.inspect(plot).join().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    @Test
+    void uproot_dormantPlot_deletesDirectory() throws IOException {
+        VmPlot plot = newPlot();
+        Path vmDir = tempDir.resolve(plot.id().toString());
+        Files.createDirectories(vmDir);
+        Files.createFile(vmDir.resolve("disk.qcow2"));
+
+        provider.uproot(plot.withState(PlotState.DORMANT)).join();
+
+        assertThat(vmDir).doesNotExist();
+    }
+
     /**
      * A missing handle is the already-gone case and must stay a success path, so uproot remains
      * idempotent for the DELETE-on-ORPHANED retry flow.
@@ -285,10 +466,15 @@ class QemuGroveProviderTest {
             @Override
             public void awaitReachable(String host, int sshPort) {
             }
+
+            @Override
+            public void requestPoweroff(VmPlot plot) {
+            }
         };
         QemuConfig config = QemuConfig.builder().vmStoragePath(tempDir).build();
         QemuGroveProvider p = new QemuGroveProvider(
-            config, new DevcontainerCliConfig("0.75.0", 600, 60), new FruitGrower(), neverExits);
+            config, new DevcontainerCliConfig("0.75.0", 600, 60), new FruitGrower(), neverExits,
+            Duration.ofSeconds(60));
         VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
         p.plantSubstrate(plot).join();
 
