@@ -13,8 +13,8 @@ import java.util.List;
  * JUnit 5 extension that skips E2E tests when QEMU prerequisites are not available.
  * Checks for QEMU binaries, base VM image, and SSH keys. With
  * {@code -Dorchard.e2e.require-qemu=true} a missing prerequisite fails the class instead.
- * The diagnostics are printed to stderr with {@link #OUTPUT_PREFIX} so the Gradle build can
- * surface them.
+ * The diagnostics are printed to stderr with {@link #OUTPUT_PREFIX}, which the
+ * {@code integrationTest} task's test logging shows, so a skip names its reason.
  */
 public class QemuPrerequisiteExtension implements ExecutionCondition {
 
