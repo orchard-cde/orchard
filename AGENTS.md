@@ -109,9 +109,10 @@ The integration suite boots real QEMU VMs and plants this repository (its `.devc
 missing QEMU prerequisite fail instead of silently skipping the VM tests. `prepareQemuBaseImage`
 downloads the base image on first run. Prerequisites: `qemu-system-*` and `qemu-img`, `mkisofs` or
 `genisoimage`, an `~/.ssh/orchard_ed25519` key pair, and a container runtime for Testcontainers
-(with podman, set `DOCKER_HOST` to the podman socket and `TESTCONTAINERS_RYUK_DISABLED=true`).
-`Ec2ProviderIntegrationTest` cannot run under podman (LocalStack needs the Docker socket); any
-other failure is a regression.
+(with podman, set `DOCKER_HOST` to the podman socket, `TESTCONTAINERS_RYUK_DISABLED=true`, and
+`TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` — LocalStack bind-mounts the socket,
+and the path must be the one inside the podman machine, not the host-side `DOCKER_HOST` path).
+Every test must pass; any failure is a regression.
 
 ## Database
 
