@@ -1,6 +1,7 @@
 package dev.orchard.harvest;
 
 import dev.orchard.core.model.DevfileSeed;
+import dev.orchard.core.model.DevfileYaml;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import org.slf4j.Logger;
@@ -40,6 +41,7 @@ public class DevfileParser {
     private static final String SUPPORTED_SCHEMA_PREFIX = "2.";
 
     private static final ObjectMapper yamlMapper = LenientBinding.configure(YAMLMapper.builder(), LenientBinding.Mode.LENIENT)
+        .addMixIn(DevfileYaml.Component.class, DevfileYamlBinding.Component.class)
         .build();
 
     /**

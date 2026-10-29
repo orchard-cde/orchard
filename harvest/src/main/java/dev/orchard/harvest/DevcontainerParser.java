@@ -1,5 +1,6 @@
 package dev.orchard.harvest;
 
+import dev.orchard.core.model.DevcontainerJson;
 import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
@@ -29,6 +30,10 @@ public class DevcontainerParser {
     private static final ObjectMapper objectMapper = LenientBinding.configure(JsonMapper.builder()
             .enable(JsonReadFeature.ALLOW_JAVA_COMMENTS)
             .enable(JsonReadFeature.ALLOW_TRAILING_COMMA), LenientBinding.Mode.STRICT)
+        .addMixIn(DevcontainerJson.class, DevcontainerJsonBinding.class)
+        .addMixIn(DevcontainerJson.Build.class, DevcontainerJsonBinding.Build.class)
+        .addMixIn(DevcontainerJson.Customizations.class, DevcontainerJsonBinding.Customizations.class)
+        .addMixIn(DevcontainerJson.VsCode.class, DevcontainerJsonBinding.VsCode.class)
         .build();
 
     /**

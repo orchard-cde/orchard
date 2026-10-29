@@ -1,7 +1,9 @@
 package dev.orchard.trellis.config;
 
-import dev.orchard.harvest.DevcontainerJson;
-import dev.orchard.harvest.DevfileYaml;
+import dev.orchard.core.model.DevcontainerJson;
+import dev.orchard.core.model.DevfileYaml;
+import dev.orchard.harvest.DevcontainerJsonBinding;
+import dev.orchard.harvest.DevfileYamlBinding;
 import org.junit.jupiter.api.Test;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.TypeReference;
@@ -19,7 +21,10 @@ class SeedReflectionConfigTest {
 
         for (Class<?> type : new Class<?>[] {
                 DevcontainerJson.class, DevcontainerJson.Build.class, DevcontainerJson.VsCode.class,
-                DevcontainerJson.HostRequirements.class, DevfileYaml.Container.class, DevfileYaml.Endpoint.class}) {
+                DevcontainerJson.HostRequirements.class, DevfileYaml.Container.class, DevfileYaml.Endpoint.class,
+                DevcontainerJsonBinding.class, DevcontainerJsonBinding.Build.class,
+                DevcontainerJsonBinding.Customizations.class, DevcontainerJsonBinding.VsCode.class,
+                DevfileYamlBinding.Component.class}) {
             assertThat(RuntimeHintsPredicates.reflection().onType(type)).as(type.getName()).accepts(hints);
         }
         for (String deserializer : new String[] {"StringList", "StringOrList", "Mounts", "Lifecycle",

@@ -1,11 +1,9 @@
-package dev.orchard.harvest;
-
-import tools.jackson.databind.annotation.JsonDeserialize;
+package dev.orchard.core.model;
 
 import java.util.List;
 
 /**
- * The wire shape of a devfile 2.x, as bound by {@link DevfileParser} — only the fields Orchard maps.
+ * The wire shape of a devfile 2.x — only the fields Orchard maps.
  * Spec: https://devfile.io/docs/2.2.0/devfile-schema
  */
 public record DevfileYaml(
@@ -19,9 +17,7 @@ public record DevfileYaml(
     public record Metadata(String name) {}
 
     /** Only {@code container} components are mapped; other kinds bind with a null container. */
-    public record Component(
-        String name,
-        @JsonDeserialize(using = LenientBinding.NullAsEmptyRecord.class) Container container) {}
+    public record Component(String name, Container container) {}
 
     public record Container(
         String image,
