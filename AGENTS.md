@@ -73,7 +73,7 @@ All domain objects are Java records with factory methods:
 ### State Machines
 Each entity has a state enum with gardening-themed states:
 - `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED); stop → DORMANT, start → PLANTING; clear → CLEARING → CLEARED (or ORPHANED)
-- `PlotState`: GERMINATING → SPROUTING → ROOTED → WILTING → DORMANT | WITHERED (or BLIGHTED on provisioning failure).
+- `PlotState`: GERMINATING → SPROUTING → ROOTED → WILTING → DORMANT | WITHERED (or BLIGHTED on provisioning failure); water → DORMANT back to ROOTED.
 - `FruitState`: BUDDING → RIPENING → RIPE (or ROTTED)
 
 ### Async Provisioning

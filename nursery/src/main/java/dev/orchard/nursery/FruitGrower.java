@@ -37,8 +37,11 @@ import java.util.concurrent.Executors;
  *       over the runner. Retained for one release cycle behind the feature flag. {@code seed.features()} is silently ignored on this path.</li>
  * </ul>
  *
- * <p>{@link #pick} and {@link #compost} both run raw {@code docker stop}/{@code docker rm -f}
- * over the runner on either path — the CLI doesn't ship a {@code down} subcommand.
+ * <p>{@link #pick}, {@link #ripen} and {@link #compost} run raw docker commands over the runner on
+ * either path — the CLI doesn't ship a {@code down} subcommand. {@code pick} and {@code ripen} stop
+ * and start the whole compose project ({@code docker compose -p <project> stop|start}) for compose
+ * fruit and the single container otherwise; {@code compost} runs {@code docker rm -f} on the
+ * fruit's container.
  */
 public class FruitGrower {
 
