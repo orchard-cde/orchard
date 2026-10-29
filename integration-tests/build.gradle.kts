@@ -49,4 +49,15 @@ val integrationTest by tasks.registering(Test::class) {
     classpath = sourceSets["integrationTest"].runtimeClasspath
     useJUnitPlatform()
     systemProperty("junit.jupiter.execution.timeout.default", "15m")
+    systemProperty(
+        "orchard.e2e.require-qemu",
+        providers.gradleProperty("orchard.e2e.require-qemu")
+            .orElse(providers.environmentVariable("ORCHARD_E2E_REQUIRE_QEMU"))
+            .orElse("false")
+            .get())
+    addTestOutputListener { _, event ->
+        if (event.message.startsWith("[qemu-prerequisites] ")) {
+            logger.lifecycle(event.message.trimEnd())
+        }
+    }
 }
