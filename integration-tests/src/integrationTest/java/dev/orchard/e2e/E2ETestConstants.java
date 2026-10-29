@@ -7,7 +7,7 @@ public final class E2ETestConstants {
 
     private E2ETestConstants() {}
 
-    public static final String TEST_REPO_URL = "https://github.com/devcontainers/template-starter";
+    public static final String TEST_REPO_URL = "https://github.com/orchard-cde/orchard";
     public static final String TEST_REPO_BRANCH = "main";
 
     public static final Duration POLL_INTERVAL = Duration.ofSeconds(5);

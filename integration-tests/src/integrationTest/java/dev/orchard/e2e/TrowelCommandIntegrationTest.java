@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static dev.orchard.e2e.E2ETestConstants.TEST_CULTIVATOR_ID;
+import static dev.orchard.e2e.E2ETestConstants.TEST_REPO_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(
@@ -105,7 +106,7 @@ class TrowelCommandIntegrationTest {
     }
 
     private UUID plantGrove() {
-        int exitCode = execute("grove", "plant", "https://github.com/devcontainers/template-starter");
+        int exitCode = execute("grove", "plant", TEST_REPO_URL);
 
         assertThat(exitCode).as("plant: exit code").isZero();
         String output = outContent.toString();
