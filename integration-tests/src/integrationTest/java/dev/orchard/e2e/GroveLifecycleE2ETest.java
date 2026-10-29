@@ -66,8 +66,18 @@ class GroveLifecycleE2ETest {
             int sshPort = flourishing.plot().sshPort();
 
             assertSshConfigAvailable(groveId, sshPort);
-            assertSshIntoSeedling(sshPort);
+            assertThat(runOnSeedling(sshPort, "echo orchard-e2e-ok")).as("ssh: output").contains("orchard-e2e-ok");
             assertGroveListed(groveId);
+
+            runOnSeedling(sshPort, "echo kept > /workspace/.orchard-e2e-marker");
+            stopGroveAndAwaitDormant(groveId);
+            startGrove(groveId);
+            GroveResponse resumed = awaitFlourishing(groveId);
+            assertThat(resumed.fruits().getFirst().containerId()).as("start: same container")
+                .isEqualTo(flourishing.fruits().getFirst().containerId());
+            assertThat(runOnSeedling(resumed.plot().sshPort(), "cat /workspace/.orchard-e2e-marker"))
+                .as("start: workspace file survived stop/start").contains("kept");
+
             clearGroveAndAwaitCleared(groveId);
         } finally {
             clearQuietly(groveId);
@@ -151,7 +161,28 @@ class GroveLifecycleE2ETest {
             .contains("User cultivator");
     }
 
-    private void assertSshIntoSeedling(int sshPort) throws Exception {
+    private void stopGroveAndAwaitDormant(UUID groveId) {
+        ResponseEntity<GroveResponse> response = restTemplate.postForEntity(
+            "/api/groves/" + groveId + "/actions/stop", null, GroveResponse.class);
+        assertThat(response.getStatusCode()).as("stop: status").isEqualTo(HttpStatus.OK);
+
+        await()
+            .atMost(GROVE_DORMANT_TIMEOUT)
+            .pollInterval(POLL_INTERVAL)
+            .untilAsserted(() -> {
+                GroveResponse resp = getGrove(groveId);
+                assertThat(resp.state()).as("stop: grove state").isEqualTo(GroveState.DORMANT);
+                assertThat(resp.plot().state()).as("stop: plot state").isEqualTo(PlotState.DORMANT);
+            });
+    }
+
+    private void startGrove(UUID groveId) {
+        ResponseEntity<GroveResponse> response = restTemplate.postForEntity(
+            "/api/groves/" + groveId + "/actions/start", null, GroveResponse.class);
+        assertThat(response.getStatusCode()).as("start: status").isEqualTo(HttpStatus.OK);
+    }
+
+    private String runOnSeedling(int sshPort, String command) throws Exception {
         Path privateKey = Path.of(System.getProperty("orchard.ssh.key-path",
             System.getProperty("user.home") + "/.ssh/orchard_ed25519"));
 
@@ -163,7 +194,7 @@ class GroveLifecycleE2ETest {
             "-i", privateKey.toString(),
             "-p", String.valueOf(sshPort),
             "cultivator@127.0.0.1",
-            "echo orchard-e2e-ok"
+            command
         );
         pb.redirectErrorStream(true);
 
@@ -174,9 +205,9 @@ class GroveLifecycleE2ETest {
         }
         boolean finished = process.waitFor(30, TimeUnit.SECONDS);
 
-        assertThat(finished).as("ssh: should complete within 30 seconds").isTrue();
-        assertThat(process.exitValue()).as("ssh: exit code").isZero();
-        assertThat(output).as("ssh: output").contains("orchard-e2e-ok");
+        assertThat(finished).as("ssh %s: should complete within 30 seconds", command).isTrue();
+        assertThat(process.exitValue()).as("ssh %s: exit code (output: %s)", command, output).isZero();
+        return output;
     }
 
     private void assertGroveListed(UUID groveId) {
