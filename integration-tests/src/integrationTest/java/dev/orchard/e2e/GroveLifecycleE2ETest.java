@@ -5,13 +5,13 @@ import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.core.model.GroveState;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.trellis.OrchardApplication;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -25,6 +25,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -41,21 +42,12 @@ import static org.awaitility.Awaitility.await;
 @AutoConfigureTestRestTemplate
 @ActiveProfiles({"devserver", "e2etest"})
 @ExtendWith(QemuPrerequisiteExtension.class)
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class GroveLifecycleE2ETest {
 
     @Autowired
     private TestRestTemplate restTemplate;
 
-    @LocalServerPort
-    private int port;
-
-    private UUID groveId;
-    private GroveResponse latestResponse;
-
     @Test
-    @Order(1)
     void serverIsHealthy() {
         ResponseEntity<Map> health = restTemplate.getForEntity("/api/health", Map.class);
         assertThat(health.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -67,37 +59,67 @@ class GroveLifecycleE2ETest {
     }
 
     @Test
-    @Order(2)
-    void plantGrove_returnsCreated() {
-        var request = new CreateGroveRequest(TEST_REPO_URL, TEST_REPO_BRANCH, null, "small", null);
+    void plantedGroveFlourishesServesSshAndClears() throws Exception {
+        UUID groveId = plantGrove();
+        try {
+            GroveResponse flourishing = awaitFlourishing(groveId);
+            int sshPort = flourishing.plot().sshPort();
 
+            assertSshConfigAvailable(groveId, sshPort);
+            assertSshIntoSeedling(sshPort);
+            assertGroveListed(groveId);
+            clearGroveAndAwaitCleared(groveId);
+        } finally {
+            clearQuietly(groveId);
+        }
+    }
+
+    @AfterAll
+    static void killStrayVmsAndScratch() {
+        try {
+            new ProcessBuilder("pkill", "-f", "qemu-system.*orchard-e2e")
+                .redirectErrorStream(true)
+                .start()
+                .waitFor(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            // Best effort
+        }
+
+        try {
+            Path e2eDir = Path.of("/tmp/orchard-e2e");
+            if (Files.exists(e2eDir)) {
+                Files.walk(e2eDir)
+                    .sorted(Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try { Files.deleteIfExists(path); } catch (Exception ignored) {}
+                    });
+            }
+        } catch (Exception e) {
+            // Best effort
+        }
+    }
+
+    private UUID plantGrove() {
+        var request = new CreateGroveRequest(TEST_REPO_URL, TEST_REPO_BRANCH, null, "small", null);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         ResponseEntity<GroveResponse> response = restTemplate.exchange(
-            "/api/groves",
-            HttpMethod.POST,
-            new HttpEntity<>(request, headers),
-            GroveResponse.class
-        );
+            "/api/groves", HttpMethod.POST, new HttpEntity<>(request, headers), GroveResponse.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().id()).isNotNull();
-        assertThat(response.getBody().state()).isIn(GroveState.PREPARING, GroveState.PLANTING);
-
-        groveId = response.getBody().id();
+        assertThat(response.getStatusCode()).as("plant: status").isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).as("plant: body").isNotNull();
+        assertThat(response.getBody().id()).as("plant: grove id").isNotNull();
+        assertThat(response.getBody().state()).as("plant: initial state")
+            .isIn(GroveState.PREPARING, GroveState.PLANTING);
+        return response.getBody().id();
     }
 
-    @Test
-    @Order(3)
-    void groveReachesFlourishing() {
-        assertThat(groveId).as("groveId must be set by plantGrove test").isNotNull();
-
+    private GroveResponse awaitFlourishing(UUID groveId) {
         await()
             .atMost(GROVE_FLOURISHING_TIMEOUT)
             .pollInterval(POLL_INTERVAL)
-            .failFast(() -> assertNotBlighted(getGrove(groveId)))
+            .failFast(() -> assertNotBlighted(groveId, getGrove(groveId)))
             .untilAsserted(() -> {
                 GroveResponse resp = getGrove(groveId);
                 assertThat(resp).isNotNull();
@@ -106,38 +128,30 @@ class GroveLifecycleE2ETest {
                     .isEqualTo(GroveState.FLOURISHING);
             });
 
-        latestResponse = getGrove(groveId);
-
-        assertThat(latestResponse.plot()).isNotNull();
-        assertThat(latestResponse.plot().state()).isEqualTo(PlotState.ROOTED);
-        assertThat(latestResponse.plot().host()).isEqualTo("127.0.0.1");
-        assertThat(latestResponse.plot().sshPort()).isBetween(49200, 49299);
-        assertThat(latestResponse.fruits()).isNotEmpty();
-        assertThat(latestResponse.fruits().getFirst().state()).isEqualTo("RIPE");
-        assertThat(latestResponse.fruits().getFirst().containerId()).isNotNull();
-        assertThat(latestResponse.commitSha()).isNotNull();
+        GroveResponse resp = getGrove(groveId);
+        assertThat(resp.plot()).as("flourishing: plot").isNotNull();
+        assertThat(resp.plot().state()).as("flourishing: plot state").isEqualTo(PlotState.ROOTED);
+        assertThat(resp.plot().host()).as("flourishing: plot host").isEqualTo("127.0.0.1");
+        assertThat(resp.plot().sshPort()).as("flourishing: ssh port").isBetween(49200, 49299);
+        assertThat(resp.fruits()).as("flourishing: fruits").isNotEmpty();
+        assertThat(resp.fruits().getFirst().state()).as("flourishing: fruit state").isEqualTo("RIPE");
+        assertThat(resp.fruits().getFirst().containerId()).as("flourishing: container id").isNotNull();
+        assertThat(resp.commitSha()).as("flourishing: commit sha").isNotNull();
+        return resp;
     }
 
-    @Test
-    @Order(4)
-    void sshConfigIsAvailable() {
-        assertThat(latestResponse).as("latestResponse must be set").isNotNull();
-
+    private void assertSshConfigAvailable(UUID groveId, int sshPort) {
         ResponseEntity<String> response = restTemplate.getForEntity(
             "/api/groves/" + groveId + "/ssh-config", String.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).contains("Host orchard-");
-        assertThat(response.getBody()).contains("Port " + latestResponse.plot().sshPort());
-        assertThat(response.getBody()).contains("User cultivator");
+        assertThat(response.getStatusCode()).as("ssh-config: status").isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).as("ssh-config: body")
+            .contains("Host orchard-")
+            .contains("Port " + sshPort)
+            .contains("User cultivator");
     }
 
-    @Test
-    @Order(5)
-    void canSshIntoSeedling() throws Exception {
-        assertThat(latestResponse).as("latestResponse must be set").isNotNull();
-
-        int sshPort = latestResponse.plot().sshPort();
+    private void assertSshIntoSeedling(int sshPort) throws Exception {
         Path privateKey = Path.of(System.getProperty("orchard.ssh.key-path",
             System.getProperty("user.home") + "/.ssh/orchard_ed25519"));
 
@@ -160,53 +174,28 @@ class GroveLifecycleE2ETest {
         }
         boolean finished = process.waitFor(30, TimeUnit.SECONDS);
 
-        assertThat(finished).as("SSH command should complete within 30 seconds").isTrue();
-        assertThat(process.exitValue()).as("SSH exit code").isZero();
-        assertThat(output).contains("orchard-e2e-ok");
+        assertThat(finished).as("ssh: should complete within 30 seconds").isTrue();
+        assertThat(process.exitValue()).as("ssh: exit code").isZero();
+        assertThat(output).as("ssh: output").contains("orchard-e2e-ok");
     }
 
-    @Test
-    @Order(6)
-    void canListGroves() {
-        assertThat(groveId).as("groveId must be set").isNotNull();
-
+    private void assertGroveListed(UUID groveId) {
         ResponseEntity<List<GroveResponse>> response = restTemplate.exchange(
-            "/api/groves",
-            HttpMethod.GET,
-            HttpEntity.EMPTY,
-            new ParameterizedTypeReference<>() {}
-        );
+            "/api/groves", HttpMethod.GET, HttpEntity.EMPTY, new ParameterizedTypeReference<>() {});
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody())
+        assertThat(response.getStatusCode()).as("list: status").isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).as("list: body").isNotNull()
             .extracting(GroveResponse::id)
             .contains(groveId);
     }
 
-    @Test
-    @Order(7)
-    void clearGrove_returnsNoContent() {
-        assertThat(groveId).as("groveId must be set").isNotNull();
-
+    private void clearGroveAndAwaitCleared(UUID groveId) {
         ResponseEntity<Void> response = restTemplate.exchange(
-            "/api/groves/" + groveId,
-            HttpMethod.DELETE,
-            null,
-            Void.class
-        );
+            "/api/groves/" + groveId, HttpMethod.DELETE, null, Void.class);
+        assertThat(response.getStatusCode()).as("clear: status").isEqualTo(HttpStatus.NO_CONTENT);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-    }
-
-    @Test
-    @Order(8)
-    void groveReachesCleared() {
-        assertThat(groveId).as("groveId must be set").isNotNull();
-
-        // Poll until teardown reaches a TERMINAL state (CLEARED or ORPHANED) rather than only
-        // CLEARED — ORPHANED is now reachable on a failed teardown (issue #228), and polling for
-        // CLEARED alone would burn the full timeout instead of failing fast with a clear message.
+        // Await a terminal state rather than CLEARED alone: ORPHANED is terminal too (#228), and
+        // waiting only for CLEARED would burn the full timeout instead of failing with this message.
         await()
             .atMost(GROVE_CLEARED_TIMEOUT)
             .pollInterval(POLL_INTERVAL)
@@ -218,65 +207,38 @@ class GroveLifecycleE2ETest {
                     .isIn(GroveState.CLEARED, GroveState.ORPHANED);
             });
 
-        GroveResponse resp = getGrove(groveId);
-        assertThat(resp).isNotNull();
-        assertThat(resp.state())
-            .as("Teardown reached a terminal state but it was ORPHANED, not CLEARED")
+        assertThat(getGrove(groveId).state())
+            .as("clear: teardown reached a terminal state but it was ORPHANED, not CLEARED")
             .isEqualTo(GroveState.CLEARED);
     }
 
-    @AfterAll
-    void tearDown() {
-        // Layer 1: API-level cleanup if grove was planted but not cleared. ORPHANED is accepted
-        // as an end state too — it means teardown failed and won't be retried by the API, so
-        // waiting for CLEARED here would just hang for the full timeout (issue #228).
-        if (groveId != null) {
-            try {
-                GroveResponse resp = getGrove(groveId);
-                if (resp != null && resp.state() != GroveState.CLEARED && resp.state() != GroveState.ORPHANED) {
-                    restTemplate.delete("/api/groves/" + groveId);
-                    await()
-                        .atMost(GROVE_CLEARED_TIMEOUT)
-                        .pollInterval(POLL_INTERVAL)
-                        .ignoreExceptions()
-                        .until(() -> {
-                            GroveResponse r = getGrove(groveId);
-                            return r == null || r.state() == GroveState.CLEARED || r.state() == GroveState.ORPHANED;
-                        });
-                }
-            } catch (Exception e) {
-                // Fall through to process cleanup
-            }
-        }
-
-        // Layer 2: Kill any orphaned QEMU processes spawned for E2E tests
+    private void clearQuietly(UUID groveId) {
         try {
-            new ProcessBuilder("pkill", "-f", "qemu-system.*orchard-e2e")
-                .redirectErrorStream(true)
-                .start()
-                .waitFor(10, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            // Best effort
-        }
-
-        // Layer 3: Clean up E2E temp directory
-        try {
-            Path e2eDir = Path.of("/tmp/orchard-e2e");
-            if (Files.exists(e2eDir)) {
-                Files.walk(e2eDir)
-                    .sorted(java.util.Comparator.reverseOrder())
-                    .forEach(path -> {
-                        try { Files.deleteIfExists(path); } catch (Exception ignored) {}
-                    });
+            GroveResponse resp = getGrove(groveId);
+            if (resp == null || isTerminal(resp.state())) {
+                return;
             }
+            restTemplate.delete("/api/groves/" + groveId);
+            await()
+                .atMost(GROVE_CLEARED_TIMEOUT)
+                .pollInterval(POLL_INTERVAL)
+                .ignoreExceptions()
+                .until(() -> {
+                    GroveResponse r = getGrove(groveId);
+                    return r == null || isTerminal(r.state());
+                });
         } catch (Exception e) {
-            // Best effort
+            // Best effort; @AfterAll kills any VM left behind
         }
     }
 
-    private void assertNotBlighted(GroveResponse resp) {
+    private static boolean isTerminal(GroveState state) {
+        return state == GroveState.CLEARED || state == GroveState.ORPHANED;
+    }
+
+    private static void assertNotBlighted(UUID groveId, GroveResponse resp) {
         assertThat(resp == null ? null : resp.state())
-            .as("Grove %s became BLIGHTED — provisioning failed: %s", groveId, resp)
+            .as("Grove %s blighted while waiting for FLOURISHING: %s", groveId, resp)
             .isNotEqualTo(GroveState.BLIGHTED);
     }
 

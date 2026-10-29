@@ -4,13 +4,9 @@ import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.core.model.GroveState;
 import dev.orchard.trellis.OrchardApplication;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,153 +38,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 @ExtendWith(QemuPrerequisiteExtension.class)
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class GroveSurvivesRestartE2ETest {
 
     private static final Logger log = LoggerFactory.getLogger(GroveSurvivesRestartE2ETest.class);
 
-    private ConfigurableApplicationContext context;
     private final RestTemplate restTemplate = new RestTemplate();
-    private int port;
+    private final String datasourceUrl =
+        "jdbc:h2:mem:orchard-e2e-restart-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1";
+    private ConfigurableApplicationContext context;
     private String baseUrl;
-    private UUID groveId;
-    private GroveResponse latestResponse;
 
-    @BeforeAll
+    @BeforeEach
     void startServer() {
-        context = SpringApplication.run(OrchardApplication.class,
-            "--spring.profiles.active=devserver,e2etest",
-            "--server.port=0");
-        port = Integer.parseInt(context.getEnvironment().getProperty("local.server.port"));
-        baseUrl = "http://localhost:" + port;
-        log.info("Server started on port {}", port);
+        startTrellis();
     }
 
-    @Test
-    @Order(1)
-    void plantGroveAndWaitForFlourishing() throws Exception {
-        var request = new CreateGroveRequest(TEST_REPO_URL, TEST_REPO_BRANCH, null, "small", null);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        ResponseEntity<GroveResponse> response = restTemplate.exchange(
-            baseUrl + "/api/groves",
-            HttpMethod.POST,
-            new HttpEntity<>(request, headers),
-            GroveResponse.class);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        groveId = response.getBody().id();
-
-        await()
-            .atMost(GROVE_FLOURISHING_TIMEOUT)
-            .pollInterval(POLL_INTERVAL)
-            .failFast(() -> assertNotBlighted(getGrove(groveId)))
-            .untilAsserted(() -> {
-                GroveResponse resp = getGrove(groveId);
-                assertThat(resp).isNotNull();
-                assertThat(resp.state())
-                    .as("Waiting for FLOURISHING, currently %s", resp.state())
-                    .isEqualTo(GroveState.FLOURISHING);
-            });
-
-        latestResponse = getGrove(groveId);
-        assertThat(latestResponse).isNotNull();
-        assertThat(latestResponse.plot()).isNotNull();
-        assertThat(latestResponse.plot().sshPort()).isBetween(49200, 49299);
-
-        verifySshConnection(latestResponse.plot().sshPort());
-    }
-
-    @Test
-    @Order(2)
-    void restartServer() {
-        assertThat(groveId).as("groveId must be set by previous test").isNotNull();
-        log.info("Shutting down server for simulated restart...");
-
-        context.close();
-        log.info("Server shut down. Starting new server instance...");
-
-        context = SpringApplication.run(OrchardApplication.class,
-            "--spring.profiles.active=devserver,e2etest",
-            "--server.port=0");
-        port = Integer.parseInt(context.getEnvironment().getProperty("local.server.port"));
-        baseUrl = "http://localhost:" + port;
-        log.info("Server restarted on port {}", port);
-    }
-
-    @Test
-    @Order(3)
-    void groveStillFlourishingAfterRestart() throws Exception {
-        assertThat(groveId).as("groveId must be set by previous test").isNotNull();
-        assertThat(latestResponse).as("latestResponse must be set by previous test").isNotNull();
-
-        await()
-            .atMost(GROVE_FLOURISHING_TIMEOUT)
-            .pollInterval(POLL_INTERVAL)
-            .failFast(() -> assertNotBlighted(getGrove(groveId)))
-            .untilAsserted(() -> {
-                GroveResponse resp = getGrove(groveId);
-                assertThat(resp).as("Grove must be found after restart").isNotNull();
-                assertThat(resp.state())
-                    .as("Grove must still be FLOURISHING after restart, currently %s", resp.state())
-                    .isEqualTo(GroveState.FLOURISHING);
-            });
-
-        latestResponse = getGrove(groveId);
-        assertThat(latestResponse).isNotNull();
-        verifySshConnection(latestResponse.plot().sshPort());
-    }
-
-    @Test
-    @Order(4)
-    void uprootGroveAndVerifyNoOrphans() throws Exception {
-        assertThat(groveId).as("groveId must be set").isNotNull();
-
-        ResponseEntity<Void> response = restTemplate.exchange(
-            baseUrl + "/api/groves/" + groveId,
-            HttpMethod.DELETE,
-            null,
-            Void.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-
-        // Poll until teardown reaches a TERMINAL state (CLEARED or ORPHANED) rather than only
-        // CLEARED — ORPHANED is now reachable on a failed teardown (issue #228), and polling for
-        // CLEARED alone would burn the full timeout instead of failing fast with a clear message.
-        await()
-            .atMost(GROVE_CLEARED_TIMEOUT)
-            .pollInterval(POLL_INTERVAL)
-            .untilAsserted(() -> {
-                GroveResponse resp = getGrove(groveId);
-                assertThat(resp).isNotNull();
-                assertThat(resp.state())
-                    .as("Waiting for teardown to reach a terminal state, currently %s", resp.state())
-                    .isIn(GroveState.CLEARED, GroveState.ORPHANED);
-            });
-
-        GroveResponse terminal = getGrove(groveId);
-        assertThat(terminal).isNotNull();
-        assertThat(terminal.state())
-            .as("Teardown reached a terminal state but it was ORPHANED, not CLEARED")
-            .isEqualTo(GroveState.CLEARED);
-
-        assertThat(latestResponse).as("latestResponse must be set by a previous test").isNotNull();
-        UUID plotId = latestResponse.plot().id();
-        Process pgrep = new ProcessBuilder("pgrep", "-f", "orchard-" + plotId.toString().substring(0, 8))
-            .redirectErrorStream(true)
-            .start();
-        boolean finished = pgrep.waitFor(10, TimeUnit.SECONDS);
-        assertThat(finished).as("pgrep should complete within 10 seconds").isTrue();
-        assertThat(pgrep.exitValue())
-            .as("No orphaned QEMU process should remain for plot %s", plotId)
-            .isNotZero();
-    }
-
-    @AfterAll
-    void tearDown() {
+    @AfterEach
+    void stopServerAndStrayVms() {
         try {
             new ProcessBuilder("pkill", "-f", "qemu-system.*orchard-e2e")
                 .redirectErrorStream(true)
@@ -216,9 +82,131 @@ class GroveSurvivesRestartE2ETest {
         }
     }
 
-    private void assertNotBlighted(GroveResponse resp) {
+    @Test
+    void flourishingGroveSurvivesServerRestartAndUprootsCleanly() throws Exception {
+        UUID groveId = plantGrove();
+        try {
+            GroveResponse beforeRestart = awaitFlourishing(groveId, "before restart");
+            assertThat(beforeRestart.plot()).as("before restart: plot").isNotNull();
+            assertThat(beforeRestart.plot().sshPort()).as("before restart: ssh port").isBetween(49200, 49299);
+            verifySshConnection(beforeRestart.plot().sshPort(), "before restart");
+
+            restartTrellis();
+
+            GroveResponse afterRestart = awaitFlourishing(groveId, "after restart");
+            verifySshConnection(afterRestart.plot().sshPort(), "after restart");
+
+            uprootAndAssertNoOrphans(groveId, afterRestart.plot().id());
+        } finally {
+            clearQuietly(groveId);
+        }
+    }
+
+    private void startTrellis() {
+        context = SpringApplication.run(OrchardApplication.class,
+            "--spring.profiles.active=devserver,e2etest",
+            "--spring.datasource.url=" + datasourceUrl,
+            "--server.port=0");
+        baseUrl = "http://localhost:" + context.getEnvironment().getProperty("local.server.port");
+        log.info("Server started at {}", baseUrl);
+    }
+
+    private void restartTrellis() {
+        log.info("Shutting down server for simulated restart...");
+        context.close();
+        startTrellis();
+    }
+
+    private UUID plantGrove() {
+        var request = new CreateGroveRequest(TEST_REPO_URL, TEST_REPO_BRANCH, null, "small", null);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<GroveResponse> response = restTemplate.exchange(
+            baseUrl + "/api/groves", HttpMethod.POST, new HttpEntity<>(request, headers), GroveResponse.class);
+
+        assertThat(response.getStatusCode()).as("plant: status").isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).as("plant: body").isNotNull();
+        return response.getBody().id();
+    }
+
+    private GroveResponse awaitFlourishing(UUID groveId, String step) {
+        await()
+            .atMost(GROVE_FLOURISHING_TIMEOUT)
+            .pollInterval(POLL_INTERVAL)
+            .failFast(() -> assertNotBlighted(groveId, getGrove(groveId)))
+            .untilAsserted(() -> {
+                GroveResponse resp = getGrove(groveId);
+                assertThat(resp).as("%s: grove must be found", step).isNotNull();
+                assertThat(resp.state())
+                    .as("%s: waiting for FLOURISHING, currently %s", step, resp.state())
+                    .isEqualTo(GroveState.FLOURISHING);
+            });
+
+        GroveResponse resp = getGrove(groveId);
+        assertThat(resp).as("%s: grove", step).isNotNull();
+        return resp;
+    }
+
+    private void uprootAndAssertNoOrphans(UUID groveId, UUID plotId) throws Exception {
+        ResponseEntity<Void> response = restTemplate.exchange(
+            baseUrl + "/api/groves/" + groveId, HttpMethod.DELETE, null, Void.class);
+        assertThat(response.getStatusCode()).as("uproot: status").isEqualTo(HttpStatus.NO_CONTENT);
+
+        // Await a terminal state rather than CLEARED alone: ORPHANED is terminal too (#228), and
+        // waiting only for CLEARED would burn the full timeout instead of failing with this message.
+        await()
+            .atMost(GROVE_CLEARED_TIMEOUT)
+            .pollInterval(POLL_INTERVAL)
+            .untilAsserted(() -> {
+                GroveResponse resp = getGrove(groveId);
+                assertThat(resp).isNotNull();
+                assertThat(resp.state())
+                    .as("Waiting for teardown to reach a terminal state, currently %s", resp.state())
+                    .isIn(GroveState.CLEARED, GroveState.ORPHANED);
+            });
+
+        assertThat(getGrove(groveId).state())
+            .as("uproot: teardown reached a terminal state but it was ORPHANED, not CLEARED")
+            .isEqualTo(GroveState.CLEARED);
+
+        Process pgrep = new ProcessBuilder("pgrep", "-f", "orchard-" + plotId.toString().substring(0, 8))
+            .redirectErrorStream(true)
+            .start();
+        boolean finished = pgrep.waitFor(10, TimeUnit.SECONDS);
+        assertThat(finished).as("uproot: pgrep should complete within 10 seconds").isTrue();
+        assertThat(pgrep.exitValue())
+            .as("uproot: no orphaned QEMU process should remain for plot %s", plotId)
+            .isNotZero();
+    }
+
+    private void clearQuietly(UUID groveId) {
+        try {
+            GroveResponse resp = getGrove(groveId);
+            if (resp == null || isTerminal(resp.state())) {
+                return;
+            }
+            restTemplate.delete(baseUrl + "/api/groves/" + groveId);
+            await()
+                .atMost(GROVE_CLEARED_TIMEOUT)
+                .pollInterval(POLL_INTERVAL)
+                .ignoreExceptions()
+                .until(() -> {
+                    GroveResponse r = getGrove(groveId);
+                    return r == null || isTerminal(r.state());
+                });
+        } catch (Exception e) {
+            // Best effort; @AfterEach kills any VM left behind
+        }
+    }
+
+    private static boolean isTerminal(GroveState state) {
+        return state == GroveState.CLEARED || state == GroveState.ORPHANED;
+    }
+
+    private static void assertNotBlighted(UUID groveId, GroveResponse resp) {
         assertThat(resp == null ? null : resp.state())
-            .as("Grove %s became BLIGHTED — provisioning failed: %s", groveId, resp)
+            .as("Grove %s blighted while waiting for FLOURISHING: %s", groveId, resp)
             .isNotEqualTo(GroveState.BLIGHTED);
     }
 
@@ -235,7 +223,7 @@ class GroveSurvivesRestartE2ETest {
         }
     }
 
-    private void verifySshConnection(int sshPort) throws Exception {
+    private void verifySshConnection(int sshPort, String step) throws Exception {
         Path privateKey = Path.of(System.getProperty("orchard.ssh.key-path",
             System.getProperty("user.home") + "/.ssh/orchard_ed25519"));
 
@@ -258,8 +246,8 @@ class GroveSurvivesRestartE2ETest {
         }
         boolean finished = process.waitFor(30, TimeUnit.SECONDS);
 
-        assertThat(finished).as("SSH command should complete within 30 seconds").isTrue();
-        assertThat(process.exitValue()).as("SSH exit code").isZero();
-        assertThat(output).as("SSH output should contain success marker").contains("orchard-e2e-restart-ok");
+        assertThat(finished).as("%s: SSH command should complete within 30 seconds", step).isTrue();
+        assertThat(process.exitValue()).as("%s: SSH exit code", step).isZero();
+        assertThat(output).as("%s: SSH output should contain success marker", step).contains("orchard-e2e-restart-ok");
     }
 }

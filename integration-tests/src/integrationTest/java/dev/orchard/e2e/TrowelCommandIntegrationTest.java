@@ -24,8 +24,6 @@ import static org.assertj.core.api.Assertions.assertThat;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
 )
 @ActiveProfiles({"devserver", "e2etest"})
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TrowelCommandIntegrationTest {
 
     @LocalServerPort
@@ -35,8 +33,6 @@ class TrowelCommandIntegrationTest {
     private ByteArrayOutputStream errContent;
     private PrintStream originalOut;
     private PrintStream originalErr;
-
-    private UUID groveId;
 
     @BeforeEach
     void setUp() {
@@ -63,7 +59,6 @@ class TrowelCommandIntegrationTest {
     }
 
     @Test
-    @Order(1)
     void rootCommand_showsHelp() {
         int exitCode = execute();
 
@@ -72,7 +67,6 @@ class TrowelCommandIntegrationTest {
     }
 
     @Test
-    @Order(2)
     void statusCommand_showsHealthyServer() {
         int exitCode = execute("status");
 
@@ -81,61 +75,45 @@ class TrowelCommandIntegrationTest {
     }
 
     @Test
-    @Order(3)
-    void groveList_emptyInitially() {
-        int exitCode = execute("grove", "list");
+    void grovePlantListShowClear() {
+        assertThat(execute("grove", "list")).as("list before plant: exit code").isZero();
+        assertThat(outContent.toString()).as("list before plant").contains("No groves found");
+        outContent.reset();
 
-        assertThat(exitCode).isZero();
-        assertThat(outContent.toString()).contains("No groves found");
+        UUID groveId = plantGrove();
+        boolean cleared = false;
+        try {
+            assertThat(execute("grove", "list")).as("list: exit code").isZero();
+            assertThat(outContent.toString()).as("list: output").contains(groveId.toString());
+            outContent.reset();
+
+            assertThat(execute("grove", "show", groveId.toString())).as("show: exit code").isZero();
+            assertThat(outContent.toString()).as("show: output")
+                .contains(groveId.toString())
+                .contains("Repository:")
+                .contains("Branch:");
+            outContent.reset();
+
+            assertThat(execute("grove", "clear", "-f", groveId.toString())).as("clear: exit code").isZero();
+            cleared = true;
+            assertThat(outContent.toString()).as("clear: output").contains("has been cleared");
+        } finally {
+            if (!cleared) {
+                execute("grove", "clear", "-f", groveId.toString());
+            }
+        }
     }
 
-    @Test
-    @Order(4)
-    void grovePlant_createsGrove() {
+    private UUID plantGrove() {
         int exitCode = execute("grove", "plant", "https://github.com/devcontainers/template-starter");
 
-        assertThat(exitCode).isZero();
+        assertThat(exitCode).as("plant: exit code").isZero();
         String output = outContent.toString();
-        assertThat(output).contains("Planting grove");
+        assertThat(output).as("plant: output").contains("Planting grove");
 
         Matcher matcher = Pattern.compile("ID:\\s+([0-9a-f-]{36})").matcher(output);
-        assertThat(matcher.find()).as("Expected UUID in output matching 'ID: <uuid>'").isTrue();
-        groveId = UUID.fromString(matcher.group(1));
-    }
-
-    @Test
-    @Order(5)
-    void groveList_showsPlantedGrove() {
-        assertThat(groveId).as("groveId must be set by grovePlant_createsGrove").isNotNull();
-
-        int exitCode = execute("grove", "list");
-
-        assertThat(exitCode).isZero();
-        assertThat(outContent.toString()).contains(groveId.toString());
-    }
-
-    @Test
-    @Order(6)
-    void groveShow_displaysGroveDetails() {
-        assertThat(groveId).as("groveId must be set by grovePlant_createsGrove").isNotNull();
-
-        int exitCode = execute("grove", "show", groveId.toString());
-
-        assertThat(exitCode).isZero();
-        String output = outContent.toString();
-        assertThat(output).contains(groveId.toString());
-        assertThat(output).contains("Repository:");
-        assertThat(output).contains("Branch:");
-    }
-
-    @Test
-    @Order(7)
-    void groveClear_deletesGrove() {
-        assertThat(groveId).as("groveId must be set by grovePlant_createsGrove").isNotNull();
-
-        int exitCode = execute("grove", "clear", "-f", groveId.toString());
-
-        assertThat(exitCode).isZero();
-        assertThat(outContent.toString()).contains("has been cleared");
+        assertThat(matcher.find()).as("plant: expected UUID in output matching 'ID: <uuid>'").isTrue();
+        outContent.reset();
+        return UUID.fromString(matcher.group(1));
     }
 }
