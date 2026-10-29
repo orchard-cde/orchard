@@ -1,0 +1,96 @@
+[
+  {
+    "name": "java.security.AlgorithmParameters",
+    "methods": [
+      {
+        "name": "getInstance",
+        "parameterTypes": [
+          "java.lang.String"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "java.security.AlgorithmParametersSpi"
+  },
+  {
+    "name": "java.security.KeyPairGenerator",
+    "methods": [
+      {
+        "name": "getInstance",
+        "parameterTypes": [
+          "java.lang.String"
+        ]
+      },
+      {
+        "name": "getInstance",
+        "parameterTypes": [
+          "java.lang.String",
+          "java.lang.String"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "java.security.KeyStoreSpi"
+  },
+  {
+    "name": "java.security.MessageDigest",
+    "methods": [
+      {
+        "name": "getInstance",
+        "parameterTypes": [
+          "java.lang.String"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "net.i2p.crypto.eddsa.EdDSAKey"
+  },
+  {
+    "name": "net.i2p.crypto.eddsa.EdDSASecurityProvider",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "net.i2p.crypto.eddsa.KeyPairGenerator",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "org.apache.sshd.common.util.security.SunJCESecurityProviderRegistrar",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "org.apache.sshd.common.util.security.bouncycastle.BouncyCastleSecurityProviderRegistrar",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "org.apache.sshd.common.util.security.eddsa.EdDSASecurityProviderRegistrar",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  }
+]
