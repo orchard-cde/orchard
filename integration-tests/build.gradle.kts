@@ -49,7 +49,6 @@ val qemuBaseImage = file("/tmp/orchard/images/ubuntu-22.04-base.qcow2")
 val prepareQemuBaseImage = tasks.register<Exec>("prepareQemuBaseImage") {
     description = "Downloads the QEMU base image used by the integration tests"
     commandLine(rootProject.file("scripts/setup-base-image.sh"), "--image-path", qemuBaseImage.parent)
-    isIgnoreExitValue = true
     onlyIf { !qemuBaseImage.exists() }
 }
 
