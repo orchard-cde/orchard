@@ -25,6 +25,7 @@ import software.amazon.awssdk.services.ec2.model.Reservation;
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest;
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse;
 import software.amazon.awssdk.services.ec2.model.StartInstancesRequest;
+import software.amazon.awssdk.services.ec2.model.StopInstancesRequest;
 import software.amazon.awssdk.services.ec2.model.TerminateInstancesRequest;
 
 import java.util.List;
@@ -197,6 +198,42 @@ class DefaultEc2OperationsTest {
         ops.startInstance("i-running");
 
         verify(client).startInstances(any(StartInstancesRequest.class));
+    }
+
+    @Test
+    void stopInstance_sendsCorrectRequest() {
+        ops.stopInstance("i-abc");
+
+        ArgumentCaptor<StopInstancesRequest> captor =
+            ArgumentCaptor.forClass(StopInstancesRequest.class);
+        verify(client).stopInstances(captor.capture());
+        assertThat(captor.getValue().instanceIds()).containsExactly("i-abc");
+    }
+
+    @Test
+    void stopInstance_incorrectInstanceState_swallowed() {
+        AwsServiceException already = (AwsServiceException) Ec2Exception.builder()
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("IncorrectInstanceState").build())
+            .message("already stopped")
+            .build();
+        when(client.stopInstances(any(StopInstancesRequest.class))).thenThrow(already);
+
+        ops.stopInstance("i-stopped");
+
+        verify(client).stopInstances(any(StopInstancesRequest.class));
+    }
+
+    @Test
+    void stopInstance_otherAwsError_propagates() {
+        AwsServiceException authFailure = (AwsServiceException) Ec2Exception.builder()
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("AuthFailure").build())
+            .message("not authorized")
+            .build();
+        when(client.stopInstances(any(StopInstancesRequest.class))).thenThrow(authFailure);
+
+        assertThatThrownBy(() -> ops.stopInstance("i-anything"))
+            .isInstanceOf(AwsServiceException.class)
+            .hasMessageContaining("not authorized");
     }
 
     @Test

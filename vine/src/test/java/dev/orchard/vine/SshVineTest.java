@@ -17,7 +17,7 @@ class SshVineTest {
     void commands_isAnSshRunnerAddressedFromThePlot() {
         UUID plotId = UUID.randomUUID();
         UUID groveId = UUID.randomUUID();
-        VmPlot plot = new VmPlot(plotId, groveId, "p", "i-1", PlotState.SAPLING, Instant.now(),
+        VmPlot plot = new VmPlot(plotId, groveId, "p", "i-1", PlotState.ROOTED, Instant.now(),
             Instant.now(), "10.0.0.1", 2222, List.of(), VmSpec.small());
 
         CommandRunner runner = new SshVine(plot).commands();

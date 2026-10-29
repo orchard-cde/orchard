@@ -15,7 +15,7 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * Shared {@link #plantSubstrate} orchestration for {@link GroveProvider}s: async dispatch, the
- * {@code SAPLING} transition, and failure classification to {@code BLIGHTED}. Subclasses supply
+ * {@code ROOTED} transition, and failure classification to {@code BLIGHTED}. Subclasses supply
  * the substrate-specific steps.
  *
  * <p>Also carries the behaviour every substrate shares — fruit is grown by the injected
@@ -70,10 +70,10 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
 
     /**
      * Runs the shared planting sequence. {@code final} on purpose: the async dispatch, the
-     * {@code SAPLING} transition, and the failure-to-{@code BLIGHTED} mapping are the contract this
+     * {@code ROOTED} transition, and the failure-to-{@code BLIGHTED} mapping are the contract this
      * class exists to guarantee, and an override would silently forfeit all three.
      *
-     * <p>A returned {@code SAPLING} means {@link #ready} completed, i.e. the substrate is usable.
+     * <p>A returned {@code ROOTED} means {@link #ready} completed, i.e. the substrate is usable.
      * It does not mean the devcontainer CLI is installed yet; a VM, for instance, may still be
      * running cloud-init. Verifying the CLI is the caller's responsibility — see
      * {@link GroveProvider#verifyDevcontainerCli}.
@@ -85,7 +85,7 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
             L launched = null;
             try {
                 launched = launch(plot);
-                return ready(plot, launched).withState(PlotState.SAPLING);
+                return ready(plot, launched).withState(PlotState.ROOTED);
             } catch (Exception e) {
                 log.error("Failed to plant plot {} via {}{}",
                     plot.id(), getProviderId(), failureContext(launched), e);
@@ -102,7 +102,7 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
 
     /**
      * Waits until the launched substrate is usable and returns the launched plot, carrying whatever
-     * identity later operations need. Its state is ignored; the base sets {@code SAPLING}.
+     * identity later operations need. Its state is ignored; the base sets {@code ROOTED}.
      */
     protected abstract P ready(P plot, L launched) throws Exception;
 
@@ -133,6 +133,16 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
     @Override
     public final CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit) {
         return fruitGrower.compost(execTarget(plot), fruit);
+    }
+
+    @Override
+    public final CompletableFuture<Fruit> pickFruit(Plot plot, Fruit fruit) {
+        return fruitGrower.pick(execTarget(plot), fruit);
+    }
+
+    @Override
+    public final CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit) {
+        return fruitGrower.ripen(execTarget(plot), fruit);
     }
 
     private ExecTarget execTarget(Plot plot) {

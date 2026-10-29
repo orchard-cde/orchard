@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+
 plugins {
     java
 }
@@ -42,11 +44,25 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
 }
 
-val integrationTest by tasks.registering(Test::class) {
+val qemuBaseImage = file("/tmp/orchard/images/ubuntu-22.04-base.qcow2")
+
+val prepareQemuBaseImage = tasks.register<Exec>("prepareQemuBaseImage") {
+    description = "Downloads the QEMU base image used by the integration tests"
+    commandLine(rootProject.file("scripts/setup-base-image.sh"), "--image-path", qemuBaseImage.parent)
+    onlyIf { !qemuBaseImage.exists() }
+}
+
+tasks.register<Test>("integrationTest") {
     description = "Runs integration tests with real QEMU VMs"
     group = "verification"
     testClassesDirs = sourceSets["integrationTest"].output.classesDirs
     classpath = sourceSets["integrationTest"].runtimeClasspath
     useJUnitPlatform()
+    dependsOn(prepareQemuBaseImage)
     systemProperty("junit.jupiter.execution.timeout.default", "15m")
+    systemProperty("orchard.e2e.require-qemu", providers.gradleProperty("orchard.e2e.require-qemu").getOrElse("false"))
+    testLogging {
+        events("skipped", "failed", "standard_error")
+        exceptionFormat = TestExceptionFormat.FULL
+    }
 }

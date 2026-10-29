@@ -24,7 +24,7 @@ class PlotSerializerTest {
     private final PlotSerializer serializer = new PlotSerializer();
 
     private static VmPlot vmPlot(List<String> keys) {
-        return new VmPlot(UUID.randomUUID(), UUID.randomUUID(), "qemu-local", "i-1", PlotState.SAPLING,
+        return new VmPlot(UUID.randomUUID(), UUID.randomUUID(), "qemu-local", "i-1", PlotState.ROOTED,
             Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:01:00Z"),
             "10.0.0.5", 2222, keys, new VmSpec(4, 8192, 40, "medium", "file"));
     }
@@ -47,7 +47,7 @@ class PlotSerializerTest {
     @Test
     void roundTrip_containerPlot() {
         ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local", "c-1",
-            PlotState.SAPLING, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:01:00Z"),
+            PlotState.ROOTED, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:01:00Z"),
             Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN, new ContainerSpec(2, 4096));
 
         Plot restored = serializer.deserialize(serializer.serialize(plot));
@@ -73,7 +73,7 @@ class PlotSerializerTest {
     @Test
     void deserialize_unknownRuntime_throws() {
         ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local", "c-1",
-            PlotState.SAPLING, Instant.now(), null, Path.of("/srv/g"), ContainerRuntime.DOCKER,
+            PlotState.ROOTED, Instant.now(), null, Path.of("/srv/g"), ContainerRuntime.DOCKER,
             new ContainerSpec(2, 4096));
         String json = serializer.serialize(plot).replace("\"DOCKER\"", "\"LXC\"");
 

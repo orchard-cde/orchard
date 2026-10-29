@@ -11,9 +11,15 @@ import java.util.List;
 
 /**
  * JUnit 5 extension that skips E2E tests when QEMU prerequisites are not available.
- * Checks for QEMU binaries, base VM image, and SSH keys.
+ * Checks for QEMU binaries, base VM image, and SSH keys. With
+ * {@code -Dorchard.e2e.require-qemu=true} a missing prerequisite fails the class instead.
+ * The diagnostics are printed to stderr with {@link #OUTPUT_PREFIX}, which the
+ * {@code integrationTest} task's test logging shows, so a skip names its reason.
  */
 public class QemuPrerequisiteExtension implements ExecutionCondition {
+
+    static final String REQUIRE_QEMU_PROPERTY = "orchard.e2e.require-qemu";
+    static final String OUTPUT_PREFIX = "[qemu-prerequisites] ";
 
     @Override
     public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext context) {
@@ -54,9 +60,14 @@ public class QemuPrerequisiteExtension implements ExecutionCondition {
             return ConditionEvaluationResult.enabled("All QEMU prerequisites are available");
         }
 
-        return ConditionEvaluationResult.disabled(
-            "QEMU prerequisites missing — skipping E2E tests:\n  - "
-                + String.join("\n  - ", missing));
+        boolean required = Boolean.getBoolean(REQUIRE_QEMU_PROPERTY);
+        String reason = "QEMU prerequisites missing — " + (required ? "failing " : "skipping ")
+            + context.getRequiredTestClass().getSimpleName() + ":\n  - " + String.join("\n  - ", missing);
+        reason.lines().forEach(line -> System.err.println(OUTPUT_PREFIX + line));
+        if (required) {
+            throw new IllegalStateException(reason + "\n(" + REQUIRE_QEMU_PROPERTY + "=true)");
+        }
+        return ConditionEvaluationResult.disabled(reason);
     }
 
     private Path resolveQemuBinary() {

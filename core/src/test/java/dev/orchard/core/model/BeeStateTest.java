@@ -47,6 +47,11 @@ class BeeStateTest {
     }
 
     @Test
+    void pollinating_canHibernate() {
+        assertThat(BeeState.POLLINATING.canTransitionTo(BeeState.HIBERNATING)).isTrue();
+    }
+
+    @Test
     void pollinating_toBuzzing() {
         assertThat(BeeState.POLLINATING.canTransitionTo(BeeState.BUZZING)).isTrue();
     }

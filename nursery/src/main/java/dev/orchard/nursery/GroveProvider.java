@@ -2,6 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
@@ -45,11 +46,22 @@ public interface GroveProvider {
      */
     Plot reserve(UUID groveId, SeedlingSpec seedlingSpec);
 
-    /** Acquires the substrate. Resolves to SAPLING on success, BLIGHTED on failure. */
+    /** Acquires the substrate. Resolves to ROOTED on success, BLIGHTED on failure. */
     CompletableFuture<Plot> plantSubstrate(Plot draft);
 
+    /**
+     * Powers a {@link PlotState#DORMANT} plot back on over its existing disk. Throws
+     * {@link IllegalStateException} on the calling thread for any other plot state. The future
+     * resolves to the plot {@link PlotState#ROOTED} with a refreshed endpoint once it is reachable,
+     * and completes exceptionally if it could not be started.
+     */
     CompletableFuture<Plot> water(Plot plot);
 
+    /**
+     * Powers a plot off, keeping its disk. The future resolves to the plot
+     * {@link PlotState#DORMANT} only once the substrate is confirmed powered off, and completes
+     * exceptionally otherwise; callers must then treat the plot as possibly still running.
+     */
     CompletableFuture<Plot> dormant(Plot plot);
 
     /**
@@ -76,6 +88,22 @@ public interface GroveProvider {
     CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit);
 
     /**
+     * Stops one fruit's containers without removing them, so {@link #ripenFruit} can start the
+     * same containers again.
+     *
+     * <p>The returned future completes exceptionally if any container could not be stopped.
+     */
+    CompletableFuture<Fruit> pickFruit(Plot plot, Fruit fruit);
+
+    /**
+     * Starts a picked fruit's containers again and re-runs its post-start hook.
+     *
+     * <p>The returned future completes exceptionally if any container could not be started. A
+     * failing post-start hook is logged and does not fail it.
+     */
+    CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit);
+
+    /**
      * How to reach into this grove. Available before the substrate is routable — provisioning and
      * diagnostic callers depend on that.
      */
@@ -93,9 +121,9 @@ public interface GroveProvider {
      * Verifies the devcontainer CLI is installed and matches the expected version on the plot.
      *
      * <p>Called by the orchestrating caller (e.g. {@code GroveService}) after the plot has
-     * already reached {@code SAPLING} and cloud-init has finished — not by the provider during
+     * already reached {@code ROOTED} and cloud-init has finished — not by the provider during
      * {@link #plantSubstrate}. Cloud-init may still be installing the CLI when
-     * {@code plantSubstrate()} returns a SAPLING, so verifying any earlier would race a legitimate
+     * {@code plantSubstrate()} returns a ROOTED, so verifying any earlier would race a legitimate
      * in-progress install. See issue #148.
      *
      * <p>{@link #verifyDevcontainerCli(Plot, String)} delegates here with an explicit

@@ -171,6 +171,29 @@ public class BeeService {
         });
     }
 
+    private static final Set<BeeState> RUNNING_STATES =
+        EnumSet.of(BeeState.HATCHING, BeeState.BUZZING, BeeState.POLLINATING);
+
+    /**
+     * Moves every running Bee in the Grove to HIBERNATING and clears its process id, because
+     * stopping the Grove's plot kills the process. Joins the caller's transaction; events are
+     * published only after it commits.
+     */
+    @Transactional
+    public void hibernateAll(UUID groveId) {
+        for (BeeEntity entity : beeRepository.findByGroveId(groveId)) {
+            BeeState previousState = entity.getState();
+            if (!RUNNING_STATES.contains(previousState)) {
+                continue;
+            }
+            entity.setState(BeeState.HIBERNATING);
+            entity.setProcessId(null);
+            beeRepository.save(entity);
+            publishAfterCommit(BeeStateChangedEvent.of(
+                entity.getId(), groveId, previousState, BeeState.HIBERNATING));
+        }
+    }
+
     private static final Set<BeeState> REMOVABLE_STATES =
         EnumSet.of(BeeState.HIBERNATING, BeeState.SMOKED);
 
@@ -303,7 +326,7 @@ public class BeeService {
             return null;
         }
         Plot plot = groveEntity.plot();
-        if (plot.state() != PlotState.SAPLING) {
+        if (plot.state() != PlotState.ROOTED) {
             return null;
         }
         return commandRunnerFor(plot);

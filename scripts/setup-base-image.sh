@@ -114,6 +114,8 @@ else
 fi
 
 # Download Ubuntu 22.04 cloud image (idempotent)
+# Each step writes to *.partial and renames, so an interrupted run never leaves a
+# file that a later run would mistake for a finished one.
 
 DOWNLOAD_PATH="$IMAGE_DIR/$DOWNLOAD_FILENAME"
 FINAL_IMAGE_PATH="$IMAGE_DIR/$IMAGE_FILENAME"
@@ -129,10 +131,13 @@ else
         info "  Destination: $DOWNLOAD_PATH"
 
         if [[ "$DOWNLOADER" == "wget" ]]; then
-            wget -q --show-progress -O "$DOWNLOAD_PATH" "$UBUNTU_IMAGE_URL"
+            progress="dot:giga"
+            [[ -t 1 ]] && progress="bar"
+            wget -q --show-progress --progress="$progress" -O "$DOWNLOAD_PATH.partial" "$UBUNTU_IMAGE_URL"
         else
-            curl -L --progress-bar -o "$DOWNLOAD_PATH" "$UBUNTU_IMAGE_URL"
+            curl -fL --progress-bar -o "$DOWNLOAD_PATH.partial" "$UBUNTU_IMAGE_URL"
         fi
+        mv "$DOWNLOAD_PATH.partial" "$DOWNLOAD_PATH"
 
         info "Download complete."
     fi
@@ -140,14 +145,15 @@ else
     # Convert to qcow2
 
     info "Converting image to qcow2 format..."
-    qemu-img convert -f qcow2 -O qcow2 "$DOWNLOAD_PATH" "$FINAL_IMAGE_PATH"
-    info "Conversion complete: $FINAL_IMAGE_PATH"
+    qemu-img convert -f qcow2 -O qcow2 "$DOWNLOAD_PATH" "$FINAL_IMAGE_PATH.partial"
+    info "Conversion complete."
 
     # Resize to RESIZE_TARGET
 
     info "Resizing image to $RESIZE_TARGET..."
-    qemu-img resize "$FINAL_IMAGE_PATH" "$RESIZE_TARGET"
-    info "Resize complete."
+    qemu-img resize "$FINAL_IMAGE_PATH.partial" "$RESIZE_TARGET"
+    mv "$FINAL_IMAGE_PATH.partial" "$FINAL_IMAGE_PATH"
+    info "Resize complete: $FINAL_IMAGE_PATH"
 
     if [[ "$DOWNLOAD_PATH" != "$FINAL_IMAGE_PATH" ]]; then
         info "Removing original download to save space..."

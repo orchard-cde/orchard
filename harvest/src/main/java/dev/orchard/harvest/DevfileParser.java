@@ -1,11 +1,11 @@
 package dev.orchard.harvest;
 
 import dev.orchard.core.model.DevfileSeed;
+import dev.orchard.core.model.DevfileYaml;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Consumer;
 
 /**
  * Parses {@code devfile.yaml} files into {@link DevfileSeed} objects.
@@ -39,7 +40,9 @@ public class DevfileParser {
     /** Only devfile 2.x is supported. */
     private static final String SUPPORTED_SCHEMA_PREFIX = "2.";
 
-    private static final ObjectMapper yamlMapper = YAMLMapper.builder().build();
+    private static final ObjectMapper yamlMapper = LenientBinding.configure(YAMLMapper.builder(), LenientBinding.Mode.LENIENT)
+        .addMixIn(DevfileYaml.Component.class, DevfileYamlBinding.Component.class)
+        .build();
 
     /**
      * Discovers and parses a devfile from a repository root.
@@ -92,10 +95,10 @@ public class DevfileParser {
     }
 
     private Optional<DevfileSeed> doParse(String yamlContent) {
-        JsonNode root = yamlMapper.readTree(yamlContent);
+        DevfileYaml devfile = yamlMapper.readValue(yamlContent, DevfileYaml.class);
 
         // schemaVersion is required; only 2.x is supported
-        String schemaVersion = root.path("schemaVersion").asText(null);
+        String schemaVersion = devfile != null ? devfile.schemaVersion() : null;
         if (schemaVersion == null || schemaVersion.isBlank()) {
             throw new DevfileParseException("Missing schemaVersion — not a valid devfile");
         }
@@ -104,30 +107,29 @@ public class DevfileParser {
                 "Unsupported devfile schemaVersion '%s'; only 2.x is supported".formatted(schemaVersion));
         }
 
-        String workspaceName = root.path("metadata").path("name").asText(null);
+        String workspaceName = devfile.metadata() != null ? devfile.metadata().name() : null;
 
         // Top-level commands/events → preStart/postStart LifecycleCommands (shared across
         // whichever container component is picked below; devfile events are workspace-wide,
         // not per-component).
-        Map<String, String> commandLineById = parseExecCommands(root);
-        JsonNode eventsNode = root.path("events");
-        LifecycleCommand preStartCommand = resolveEventCommand(eventsNode, "preStart", commandLineById);
-        LifecycleCommand postStartCommand = resolveEventCommand(eventsNode, "postStart", commandLineById);
+        Map<String, String> commandLineById = parseExecCommands(devfile.commands());
+        DevfileYaml.Events events = devfile.events();
+        LifecycleCommand preStartCommand =
+            resolveEventCommand("preStart", events != null ? events.preStart() : null, commandLineById);
+        LifecycleCommand postStartCommand =
+            resolveEventCommand("postStart", events != null ? events.postStart() : null, commandLineById);
 
-        JsonNode components = root.path("components");
-        if (!components.isArray() || components.isEmpty()) {
+        if (devfile.components() == null || devfile.components().isEmpty()) {
             log.debug("Devfile has no components array");
             return Optional.empty();
         }
 
-        for (JsonNode component : components) {
-            JsonNode container = component.path("container");
-            if (container.isMissingNode()) {
+        for (DevfileYaml.Component component : devfile.components()) {
+            if (component == null || component.container() == null) {
                 continue; // skip kubernetes/openshift/image/volume components
             }
-            String componentName = component.path("name").asText(null);
             return Optional.of(mapContainerComponent(
-                workspaceName, componentName, container, preStartCommand, postStartCommand));
+                workspaceName, component.name(), component.container(), preStartCommand, postStartCommand));
         }
 
         log.debug("Devfile has no container components");
@@ -139,21 +141,18 @@ public class DevfileParser {
      * Only {@code exec} commands are resolved; {@code apply}/{@code composite} commands are
      * skipped (unsupported — see {@link DevfileSeed} class Javadoc).
      */
-    private Map<String, String> parseExecCommands(JsonNode root) {
+    private Map<String, String> parseExecCommands(List<DevfileYaml.Command> commands) {
         Map<String, String> commandLineById = new LinkedHashMap<>();
-        JsonNode commands = root.path("commands");
-        if (!commands.isArray()) {
+        if (commands == null) {
             return commandLineById;
         }
-        for (JsonNode command : commands) {
-            String id = command.path("id").asText(null);
-            JsonNode exec = command.path("exec");
-            if (id == null || id.isBlank() || exec.isMissingNode()) {
+        for (DevfileYaml.Command command : commands) {
+            if (command == null || isBlank(command.id()) || command.exec() == null) {
                 continue;
             }
-            String commandLine = exec.path("commandLine").asText(null);
-            if (commandLine != null && !commandLine.isBlank()) {
-                commandLineById.put(id, commandLine);
+            String commandLine = command.exec().commandLine();
+            if (!isBlank(commandLine)) {
+                commandLineById.put(command.id(), commandLine);
             }
         }
         return commandLineById;
@@ -163,19 +162,17 @@ public class DevfileParser {
      * Resolves an {@code events.<eventName>} command-id list against {@code commandLineById}
      * into a single {@link LifecycleCommand.Sequential}. Multiple command IDs are composed with
      * {@code &&} into one shell line — matching {@link LifecycleCommand.Sequential}'s existing
-     * single-shell-line convention (see {@code DevcontainerParser#parseLifecycleCommand}'s
-     * textual-form handling). IDs with no matching {@code exec} command are skipped and logged.
+     * single-shell-line convention (see {@code DevcontainerParser}'s textual-form handling).
+     * IDs with no matching {@code exec} command are skipped and logged.
      * Returns {@code null} if the event is absent or resolves to no commands.
      */
     private LifecycleCommand resolveEventCommand(
-            JsonNode eventsNode, String eventName, Map<String, String> commandLineById) {
-        JsonNode eventCommandIds = eventsNode.path(eventName);
-        if (!eventCommandIds.isArray() || eventCommandIds.isEmpty()) {
+            String eventName, List<String> eventCommandIds, Map<String, String> commandLineById) {
+        if (eventCommandIds == null || eventCommandIds.isEmpty()) {
             return null;
         }
         List<String> commandLines = new ArrayList<>();
-        for (JsonNode idNode : eventCommandIds) {
-            String id = idNode.asText(null);
+        for (String id : eventCommandIds) {
             String commandLine = id != null ? commandLineById.get(id) : null;
             if (commandLine != null) {
                 commandLines.add(commandLine);
@@ -209,30 +206,19 @@ public class DevfileParser {
      * top-level {@code events} resolved against {@code commands}.
      */
     private DevfileSeed mapContainerComponent(
-            String workspaceName, String componentName, JsonNode container,
+            String workspaceName, String componentName, DevfileYaml.Container container,
             LifecycleCommand preStartCommand, LifecycleCommand postStartCommand) {
         DevfileSeed.Builder builder = Seed.devfile();
 
-        if (workspaceName != null && !workspaceName.isBlank()) {
-            builder.name(workspaceName);
-        }
-        if (componentName != null && !componentName.isBlank()) {
-            builder.componentName(componentName);
-        }
+        ifPresent(workspaceName, builder::name);
+        ifPresent(componentName, builder::componentName);
+        ifPresent(container.image(), builder::image);
 
-        String image = container.path("image").asText(null);
-        if (image != null && !image.isBlank()) {
-            builder.image(image);
-        }
-
-        // env: [{name: X, value: Y}, ...]
-        JsonNode envArray = container.path("env");
-        if (envArray.isArray() && !envArray.isEmpty()) {
+        if (container.env() != null) {
             Map<String, String> env = new LinkedHashMap<>();
-            for (JsonNode entry : envArray) {
-                String envName = entry.path("name").asText(null);
-                if (envName != null && !envName.isBlank()) {
-                    env.put(envName, entry.path("value").asText(""));
+            for (DevfileYaml.Env entry : container.env()) {
+                if (entry != null && !isBlank(entry.name())) {
+                    env.put(entry.name(), entry.value() != null ? entry.value() : "");
                 }
             }
             if (!env.isEmpty()) {
@@ -240,14 +226,11 @@ public class DevfileParser {
             }
         }
 
-        // endpoints → forwardPorts via targetPort
-        JsonNode endpoints = container.path("endpoints");
-        if (endpoints.isArray() && !endpoints.isEmpty()) {
+        if (container.endpoints() != null) {
             List<String> ports = new ArrayList<>();
-            for (JsonNode endpoint : endpoints) {
-                int targetPort = endpoint.path("targetPort").asInt(0);
-                if (targetPort > 0) {
-                    ports.add(String.valueOf(targetPort));
+            for (DevfileYaml.Endpoint endpoint : container.endpoints()) {
+                if (endpoint != null && endpoint.targetPort() != null && endpoint.targetPort() > 0) {
+                    ports.add(String.valueOf(endpoint.targetPort()));
                 }
             }
             if (!ports.isEmpty()) {
@@ -255,11 +238,10 @@ public class DevfileParser {
             }
         }
 
-        // Resource limits / requests — all optional
-        nullableText(container, "memoryLimit").ifPresent(builder::memoryLimit);
-        nullableText(container, "memoryRequest").ifPresent(builder::memoryRequest);
-        nullableText(container, "cpuLimit").ifPresent(builder::cpuLimit);
-        nullableText(container, "cpuRequest").ifPresent(builder::cpuRequest);
+        ifPresent(container.memoryLimit(), builder::memoryLimit);
+        ifPresent(container.memoryRequest(), builder::memoryRequest);
+        ifPresent(container.cpuLimit(), builder::cpuLimit);
+        ifPresent(container.cpuRequest(), builder::cpuRequest);
 
         builder.preStartCommand(preStartCommand);
         builder.postStartCommand(postStartCommand);
@@ -267,9 +249,14 @@ public class DevfileParser {
         return builder.build();
     }
 
-    private static Optional<String> nullableText(JsonNode node, String field) {
-        String value = node.path(field).asText(null);
-        return value != null && !value.isBlank() ? Optional.of(value) : Optional.empty();
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static void ifPresent(String value, Consumer<String> setter) {
+        if (!isBlank(value)) {
+            setter.accept(value);
+        }
     }
 
     /**

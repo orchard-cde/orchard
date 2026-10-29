@@ -238,7 +238,7 @@ public class GroveCommand implements Callable<Integer> {
                 );
 
                 GroveResponse grove = client.stopGrove(groveId);
-                System.out.println("Grove " + grove.name() + " has been stopped.");
+                System.out.println("Grove " + grove.name() + " is stopping.");
                 printGrove(grove);
 
                 return 0;

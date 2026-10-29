@@ -46,7 +46,7 @@ class GatewayGroveServiceTest {
 
     private static Grove routableGrove(UUID groveId, UUID cultivatorId) {
         VmPlot plot = new VmPlot(
-            UUID.randomUUID(), groveId, "qemu", "inst-1", PlotState.SAPLING, Instant.now(), Instant.now(),
+            UUID.randomUUID(), groveId, "qemu", "inst-1", PlotState.ROOTED, Instant.now(), Instant.now(),
             "127.0.0.1", 22, List.of(), VmSpec.small()
         );
         // Grove.plant() always mints its own random id, which would leave this grove's id
@@ -107,20 +107,20 @@ class GatewayGroveServiceTest {
     @Test
     void isRoutable_containerPlot_false() {
         ContainerPlot container = new ContainerPlot(
-            UUID.randomUUID(), UUID.randomUUID(), "docker", "c-1", PlotState.SAPLING, Instant.now(), Instant.now(),
+            UUID.randomUUID(), UUID.randomUUID(), "docker", "c-1", PlotState.ROOTED, Instant.now(), Instant.now(),
             null, ContainerRuntime.DOCKER, new ContainerSpec(2, 2048)
         );
         assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, container))).isFalse();
     }
 
     @Test
-    void isRoutable_dormantGroveWithSaplingVmPlot_false() {
-        assertThat(service.isRoutable(groveWith(GroveState.DORMANT, vmPlot(PlotState.SAPLING, "127.0.0.1")))).isFalse();
+    void isRoutable_dormantGroveWithRootedVmPlot_false() {
+        assertThat(service.isRoutable(groveWith(GroveState.DORMANT, vmPlot(PlotState.ROOTED, "127.0.0.1")))).isFalse();
     }
 
     @Test
-    void isRoutable_flourishingSaplingVmPlotWithHost_true() {
-        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, vmPlot(PlotState.SAPLING, "127.0.0.1")))).isTrue();
+    void isRoutable_flourishingRootedVmPlotWithHost_true() {
+        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, vmPlot(PlotState.ROOTED, "127.0.0.1")))).isTrue();
     }
 
     @Test
@@ -130,7 +130,7 @@ class GatewayGroveServiceTest {
 
     @Test
     void isRoutable_flourishingNullHost_false() {
-        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, vmPlot(PlotState.SAPLING, null)))).isFalse();
+        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, vmPlot(PlotState.ROOTED, null)))).isFalse();
     }
 
     @Test
@@ -152,7 +152,7 @@ class GatewayGroveServiceTest {
     }
 
     @Test
-    void resolveRoute_emptyWhenPlotNotSapling() {
+    void resolveRoute_emptyWhenPlotNotRooted() {
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
         VmPlot germinating = VmPlot.germinate(groveId, "qemu", SeedlingSpec.from(VmSpec.small()));

@@ -4,6 +4,7 @@ import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.CloudInitTemplate;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.vine.SshCommandBuilder;
+import dev.orchard.vine.SshVine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -280,5 +281,16 @@ class DefaultQemuCommands implements QemuCommands {
             }
         }
         throw new IOException("Timeout waiting for SSH authentication at " + host + ":" + port);
+    }
+
+    @Override
+    public void requestPoweroff(VmPlot plot) {
+        try {
+            new SshVine(plot).commands().execute("sudo poweroff");
+        } catch (IOException e) {
+            log.debug("poweroff on plot {} ended with {}", plot.id(), e.toString());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

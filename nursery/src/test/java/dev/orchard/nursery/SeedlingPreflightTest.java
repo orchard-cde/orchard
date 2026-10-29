@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Validates the provisioning preflight contract: before declaring a VM plot READY
- * (SAPLING), the caller must confirm {@code devcontainer --version} matches the pinned
+ * (ROOTED), the caller must confirm {@code devcontainer --version} matches the pinned
  * {@link DevcontainerCliConfig#version()}.
  *
  * <p>Exercises {@link GroveProvider#verifyDevcontainerCli(Plot, String, CommandRunner)},

@@ -193,6 +193,8 @@ public interface GroveProvider {
     CompletableFuture<Plot> inspect(Plot plot);                     // Check status
     CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit);
     CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit);
+    CompletableFuture<Fruit> pickFruit(Plot plot, Fruit fruit);     // Stop containers, keep them
+    CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit);    // Start them again, rerun post-start
     Vine vine(Plot plot);                                           // How to reach in
     void verifyDevcontainerCli(Plot plot, String expectedVersion);
 }
@@ -201,7 +203,7 @@ public interface GroveProvider {
 All operations return `CompletableFuture` for non-blocking async provisioning.
 
 `AbstractGroveProvider<P extends Plot, L>` is the substrate-agnostic base: the `plantSubstrate`
-template (`launch` → `ready`, mapped to `SAPLING` or `BLIGHTED`), `reserve` via `draft`, fruit
+template (`launch` → `ready`, mapped to `ROOTED` or `BLIGHTED`), `reserve` via `draft`, fruit
 forwarding to the shared `FruitGrower`, and `vine`/`verifyDevcontainerCli`. A substrate supplies
 `draft`, `launch`, `ready`, `vineFor` and `workspacePath`; the guarantee-bearing methods are `final`,
 so container and other non-VM substrates extend the base rather than implementing `GroveProvider`
@@ -225,7 +227,7 @@ The grove stores its whole `Plot` as JSON; that is the only record of the plot. 
 
 - **Dispatch by provenance.** Every operation on an existing grove (teardown, stop/start, bee command runner, reconciler liveness) resolves its provider with `ProviderRegistry.require(plot.providerId())`. A grove therefore keeps using the provider that created its plot even if `orchard.nursery.provider` changes. `getDefault()` is used only where no plot exists yet: `plantGrove` (to size and `reserve` the first plot) and `HealthController`.
 - **Unregistered provider.** Reachable only if config changes between restarts. `require` throws `IllegalStateException`; async teardown catches it and ends the grove `ORPHANED`, the reconciler marks the grove `BLIGHTED`, and request paths surface the existing 409. No dedicated exception type exists and `GlobalExceptionHandler` is unchanged; a bare `Optional.orElseThrow()` would map to 404 and is not used.
-- **Stale-route guards.** QEMU reuses ports from a fixed range, so a stopped or cleared grove's `host:sshPort` can belong to another cultivator's VM. Two independent guards: (1) after a successful `uproot`, teardown Phase 2 writes the plot back as `WITHERED`, compare-and-set on the persisted plot id so a concurrent `startGrove` that installed a new plot is not overwritten; (2) `GatewayGroveService.isRoutable` requires grove `FLOURISHING`, a `VmPlot` with non-null `host`, and plot state `SAPLING`. Container plots are never routable. The gateway route carries `host` and `sshPort`.
+- **Stale-route guards.** QEMU reuses ports from a fixed range, so a stopped or cleared grove's `host:sshPort` can belong to another cultivator's VM. Two independent guards: (1) a cleared grove's plot is persisted `WITHERED` and a stopped grove's plot `DORMANT`; watering a `DORMANT` plot returns it `ROOTED` with a refreshed endpoint (QEMU allocates a fresh port); (2) `GatewayGroveService.isRoutable` requires grove `FLOURISHING`, a `VmPlot` with non-null `host`, and plot state `ROOTED`. Container plots are never routable. The gateway route carries `host` and `sshPort`.
 
 ### 2.3 Available Providers
 
@@ -257,7 +259,7 @@ sequenceDiagram
     QP->>VM: Start QEMU process
     QP->>VM: Wait for SSH port open (TCP probe)
     QP->>VM: Wait for SSH auth ready
-    QP-->>GS: Plot (SAPLING, host + port)
+    QP-->>GS: Plot (ROOTED, host + port)
 ```
 
 **Cloud-init provisions the VM with**:
@@ -299,7 +301,7 @@ sequenceDiagram
     GS->>PR: require(plot.providerId())
     PR-->>GS: GroveProvider
     GS->>SP: plantSubstrate(plot)
-    SP-->>GS: Plot (SAPLING)
+    SP-->>GS: Plot (ROOTED)
     GS->>DB: updateGroveState(GROWING)
     GS->>EP: GroveStateChangedEvent
 
@@ -348,6 +350,14 @@ stateDiagram-v2
     FLOURISHING --> CLEARING : User requests clear
     CLEARING --> CLEARED : Teardown complete
 
+    FLOURISHING --> DORMANT : stop
+    GROWING --> DORMANT : stop
+    BLIGHTED --> DORMANT : stop (plot ROOTED)
+    DORMANT --> BLIGHTED : stop failed
+    DORMANT --> PLANTING : start (plot DORMANT)
+    BLIGHTED --> PLANTING : start (plot DORMANT)
+    DORMANT --> CLEARING : User requests clear
+
     FLOURISHING --> BLIGHTED : Reconciler detects unreachable
 ```
 
@@ -357,12 +367,13 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> GERMINATING
     GERMINATING --> SPROUTING : VM starting
-    SPROUTING --> SAPLING : SSH ready
+    SPROUTING --> ROOTED : SSH ready
 
-    SAPLING --> WILTING : Suspend (dormant)
-    WILTING --> SAPLING : Resume (water)
-
-    SAPLING --> WITHERED : Terminated
+    ROOTED --> WILTING : dormant
+    WILTING --> DORMANT : powered off
+    DORMANT --> ROOTED : water
+    DORMANT --> WITHERED : uproot (clear)
+    WILTING --> WITHERED : terminated
     GERMINATING --> BLIGHTED : Failed
     SPROUTING --> BLIGHTED : Failed
 ```
@@ -382,14 +393,32 @@ stateDiagram-v2
 
 ### 3.3 Grove Teardown
 
-`GroveService.clearGrove()` (and `stopGrove`, with `DORMANT` as the success state) end in `tearDownAndRecord`:
+`GroveService.clearGrove()` is the only path that deletes a plot's disk. It ends in `tearDownAndRecord`:
 
-1. The grove is already persisted in its transitional state: `CLEARING` for `clearGrove`, `DORMANT` for `stopGrove`. Register the async callback
+1. The grove is already persisted `CLEARING`. Register the async callback
 2. **After commit, Phase 1 (substrate):** resolve the provider with `require(plot.providerId())`
-3. Best-effort composting, only if some fruit has a `containerId`: `provider.inspect(plot)` must return `SAPLING`, otherwise (or if `inspect` throws) composting is skipped. Each `compostFruit` failure is logged at WARN and skipped
+3. Best-effort composting, only if some fruit has a `containerId`: `provider.inspect(plot)` must return `ROOTED`, otherwise (or if `inspect` throws) composting is skipped. Each `compostFruit` failure is logged at WARN and skipped
 4. `provider.uproot(plot)`. An unregistered provider or an `uproot` failure keeps every record and sets `ORPHANED`
-5. **Phase 2 (bookkeeping):** save the success state (`CLEARED`, or `DORMANT` on stop) unless the entity already holds it, then delete the fruit rows captured when teardown began
-6. Re-read the grove and, only if the persisted plot id still equals the torn-down plot's id, save the plot as `WITHERED`. Failures in this phase are logged, not escalated to `ORPHANED`, since the substrate is already gone
+5. **Phase 2 (bookkeeping):** save `CLEARED` with the plot `WITHERED` in one write, then delete the fruit rows captured when teardown began. Failures in this phase are logged, not escalated to `ORPHANED`, since the substrate is already gone
+
+### 3.4 Grove Stop and Start
+
+Stop powers the plot off and keeps its disk, containers and every record; start brings the same plot and containers back. Neither re-plants, clones, or runs `devcontainer up`. A refused stop or start throws `IllegalStateException`, which `GlobalExceptionHandler` answers with 409 naming the grove and plot states.
+
+| Operation | Allowed when | Synchronous (request transaction) | Async, after commit |
+|---|---|---|---|
+| `stopGrove` | grove `GROWING`/`FLOURISHING`, or `BLIGHTED` with plot `ROOTED` | grove `DORMANT`; `BeeService.hibernateAll` marks `HATCHING`/`BUZZING`/`POLLINATING` bees `HIBERNATING` | `inspect(plot)`: already `DORMANT` → persist it and stop there; otherwise `pickFruit` each fruit with a container → fruits `PICKED`, then `dormant(plot)` → plot `DORMANT` |
+| `startGrove` | plot `DORMANT` and grove `DORMANT` or `BLIGHTED` | grove `PLANTING` | `water(plot)` → plot `ROOTED`, grove `GROWING`; `ripenFruit` each fruit → fruits `RIPE`, grove `FLOURISHING`; zero fruits or a fruit without a container fails the start |
+
+The synchronous transition is itself a `transitionIfState` from the state the request read, so of two concurrent stops or starts only one proceeds; the other is refused with 409. QEMU's `water` also refuses a plot whose VM it still tracks as running.
+
+`ripenFruit` reruns the post-start hook the way it ran at plant time: for a devcontainer grown through the devcontainer CLI, `devcontainer run-user-commands --container-id … --skip-post-attach` (the CLI's markers skip create-time hooks and rerun `postStartCommand` once per container start); for devfile and legacy-docker fruit, `docker exec`. A failing post-start hook is logged at WARN and the fruit is still `RIPE`; only containers that do not start fail the ripen.
+
+Start does not wake bees; the cultivator wakes each with `POST /api/bees/{id}/actions/wake`.
+
+Every async write goes through `advance`: one transaction runs `GroveRepository.transitionIfState` (`UPDATE … WHERE id = ? AND state = ?`) and, only if it updated a row, saves the fruit rows and publishes `GroveStateChangedEvent`. Zero rows means the grove moved on, so the stop or start abandons without further provider calls or writes; a `clear` committed mid-stop or mid-start therefore wins.
+
+Any async failure sets the grove `BLIGHTED` (through `advance`, expecting the state the step left) with the plot as last known. A failed stop or a failed ripen leaves the plot `ROOTED`, so the grove can be stopped again; a failed water leaves it `DORMANT`, so it can be started again.
 
 ---
 
@@ -432,8 +461,12 @@ Runs on application startup via `ApplicationRunner`:
 
 | Previous State | Action | New State |
 |---------------|--------|-----------|
-| `FLOURISHING` + `inspect` returns `SAPLING` | Leave as-is | `FLOURISHING` |
+| `FLOURISHING` + `inspect` returns `ROOTED` | Leave as-is | `FLOURISHING` |
+| `FLOURISHING` + `inspect` returns `DORMANT` (powered off outside Orchard) | Persist the `DORMANT` plot | `BLIGHTED` (startable) |
 | `FLOURISHING` + `inspect` returns another state or throws | Mark failed | `BLIGHTED` |
+| `DORMANT` + `inspect` returns `ROOTED` or `WILTING` (restart mid-stop) | Re-run `dormant`, persist the plot | `DORMANT` |
+| `DORMANT` + `inspect` returns `DORMANT` | Persist the plot | `DORMANT` |
+| `DORMANT` + `dormant` or `inspect` fails or returns another state | Mark failed | `BLIGHTED` |
 | `PREPARING`, `PLANTING`, `GROWING` | Stuck from previous run | `BLIGHTED` |
 | `CLEARING` | Interrupted teardown, not re-attempted | `ORPHANED` |
 

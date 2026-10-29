@@ -16,14 +16,14 @@ public final class TestPlots {
 
     private TestPlots() {}
 
-    /** A SAPLING with random ids, a small spec, and an unroutable address on the default SSH port. */
+    /** A ROOTED with random ids, a small spec, and an unroutable address on the default SSH port. */
     public static VmPlot fake() {
         return fake(22);
     }
 
     public static VmPlot fake(int sshPort) {
         return new VmPlot(UUID.randomUUID(), UUID.randomUUID(), "fake", "i-fake",
-            PlotState.SAPLING, Instant.now(), Instant.now(), "10.0.0.1", sshPort, List.of(),
+            PlotState.ROOTED, Instant.now(), Instant.now(), "10.0.0.1", sshPort, List.of(),
             VmSpec.small());
     }
 

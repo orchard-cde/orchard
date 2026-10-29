@@ -106,30 +106,27 @@ public class Ec2GroveProvider extends AbstractVmGroveProvider<String> implements
     @Override
     public CompletableFuture<Plot> water(Plot plot) {
         VmPlot vm = narrow(plot);
+        requireDormant(vm);
         return CompletableFuture.supplyAsync(() -> {
-            try {
-                operations.startInstance(vm.providerInstanceId());
-                waiter.awaitRunning(vm.providerInstanceId());
-                InstanceDescription desc = operations.describeInstance(vm.providerInstanceId());
-                return vm.withEndpoint(new VmEndpoint(
-                        new ProviderHandle(vm.providerInstanceId()), new Host(selectIp(desc)), vm.sshPort()))
-                    .withState(PlotState.SAPLING);
-            // InterruptedException paths are wrapped by Ec2InstanceWaiter.sleepQuietly
-            // and surface as RuntimeException, caught below.
-            } catch (Exception e) {
-                log.error("Failed to water plot {} (instance={}): {}",
-                    vm.id(), vm.providerInstanceId(), e.getMessage(), e);
-                return vm.withState(PlotState.BLIGHTED);
-            }
+            String instanceId = vm.providerInstanceId();
+            operations.startInstance(instanceId);
+            waiter.awaitRunning(instanceId);
+            InstanceDescription desc = operations.describeInstance(instanceId);
+            String host = selectIp(desc);
+            waiter.awaitSshReady(host, vm.sshPort());
+            return vm.withEndpoint(new VmEndpoint(new ProviderHandle(instanceId), new Host(host), vm.sshPort()))
+                .withState(PlotState.ROOTED);
         }, executor);
     }
 
     @Override
     public CompletableFuture<Plot> dormant(Plot plot) {
         VmPlot vm = narrow(plot);
-        // TODO: implement real StopInstances (matches current QemuGroveProvider stub).
-        log.info("dormant() requested for plot {} — returning WILTING without calling AWS", vm.id());
-        return CompletableFuture.completedFuture(vm.withState(PlotState.WILTING));
+        return CompletableFuture.supplyAsync(() -> {
+            operations.stopInstance(vm.providerInstanceId());
+            waiter.awaitStopped(vm.providerInstanceId());
+            return vm.withState(PlotState.DORMANT);
+        }, executor);
     }
 
     @Override
@@ -156,9 +153,10 @@ public class Ec2GroveProvider extends AbstractVmGroveProvider<String> implements
             try {
                 InstanceDescription desc = operations.describeInstance(vm.providerInstanceId());
                 PlotState mapped = switch (desc.state()) {
-                    case RUNNING -> PlotState.SAPLING;
-                    case STOPPED, STOPPING -> PlotState.WILTING;
-                    case TERMINATED, SHUTTING_DOWN -> PlotState.WITHERED;
+                    case RUNNING -> PlotState.ROOTED;
+                    case STOPPING, SHUTTING_DOWN -> PlotState.WILTING;
+                    case STOPPED -> PlotState.DORMANT;
+                    case TERMINATED -> PlotState.WITHERED;
                     case PENDING -> PlotState.SPROUTING;
                     case UNKNOWN -> vm.state();
                 };

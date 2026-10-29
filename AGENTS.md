@@ -15,7 +15,7 @@ Everything in this project uses orchard/gardening terminology:
 | **Cultivator** | A user/developer | Who tends the groves |
 | **Plot** | The substrate a grove is planted in: a VM, or later a container host | `Plot` — sealed: `VmPlot`, `ContainerPlot`; holds one or more fruit |
 | **Seedling** | What is planted into a plot | Described by `SeedlingSpec` (plot configuration plus metadata) |
-| **Sapling** | Ready state of a plot | `PlotState.SAPLING` — the provider has an operational substrate |
+| **Sapling** | A `ROOTED` plot, ready to grow fruit | `PlotState.ROOTED` — the provider has an operational substrate |
 | **Fruit** | A devcontainer instance | Running development environment, grown on a plot |
 | **Seed** | A devcontainer.json spec | Blueprint for growing fruit |
 | **Trowel** | The CLI tool | Hand tool for planting |
@@ -72,8 +72,8 @@ All domain objects are Java records with factory methods:
 
 ### State Machines
 Each entity has a state enum with gardening-themed states:
-- `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED)
-- `PlotState`: GERMINATING → SPROUTING → SAPLING → WILTING → WITHERED (or BLIGHTED on provisioning failure).
+- `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED); stop → DORMANT, start → PLANTING; clear → CLEARING → CLEARED (or ORPHANED)
+- `PlotState`: GERMINATING → SPROUTING → ROOTED → WILTING → DORMANT | WITHERED (or BLIGHTED on provisioning failure); water → DORMANT back to ROOTED.
 - `FruitState`: BUDDING → RIPENING → RIPE (or ROTTED)
 
 ### Async Provisioning
@@ -93,6 +93,26 @@ docker compose up -d postgres
 # Use CLI
 java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar status
 ```
+
+## Verifying a Feature
+
+CI runs `./gradlew build compileIntegrationTestJava`: it compiles the integration tests but never
+runs them. Before declaring a feature complete, run both of these and report the results:
+
+```bash
+./gradlew build
+./gradlew :integration-tests:integrationTest -Porchard.e2e.require-qemu=true
+```
+
+The integration suite boots real QEMU VMs and plants this repository (its `.devcontainer`, from
+`main`) as the grove fixture; it takes several minutes. `-Porchard.e2e.require-qemu=true` makes a
+missing QEMU prerequisite fail instead of silently skipping the VM tests. `prepareQemuBaseImage`
+downloads the base image on first run. Prerequisites: `qemu-system-*` and `qemu-img`, `mkisofs` or
+`genisoimage`, an `~/.ssh/orchard_ed25519` key pair, and a container runtime for Testcontainers
+(with podman, set `DOCKER_HOST` to the podman socket, `TESTCONTAINERS_RYUK_DISABLED=true`, and
+`TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` — LocalStack bind-mounts the socket,
+and the path must be the one inside the podman machine, not the host-side `DOCKER_HOST` path).
+Every test must pass; any failure is a regression.
 
 ## Database
 

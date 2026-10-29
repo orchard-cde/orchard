@@ -178,4 +178,84 @@ class DevcontainerCliTest {
 
         assertThat(calls).anyMatch(c -> c.contains("--workspace-folder /srv/custom-workspace"));
     }
+
+    @Test
+    void runUserCommands_targetsExistingContainerWithoutPostAttach() throws Exception {
+        var calls = new ArrayList<String>();
+        CommandRunner runner = new CannedRunner(List.of(), 0) {
+            @Override
+            public String execute(String c, long timeoutSeconds) {
+                calls.add(c);
+                return "{\"outcome\":\"success\",\"result\":\"done\"}\n";
+            }
+        };
+
+        cliFor().runUserCommands(runner, "/srv/ws", "abc123");
+
+        assertThat(calls).containsExactly(
+            "devcontainer run-user-commands --workspace-folder /srv/ws --container-id abc123"
+                + " --log-format json --skip-post-attach");
+    }
+
+    @Test
+    void runUserCommands_errorOutcome_throws() {
+        CommandRunner runner = new CannedRunner(List.of(), 0) {
+            @Override
+            public String execute(String c, long timeoutSeconds) {
+                return "{\"outcome\":\"error\",\"message\":\"postStartCommand failed\"}\n";
+            }
+        };
+
+        assertThatThrownBy(() -> cliFor().runUserCommands(runner, "/srv/ws", "abc123"))
+            .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
+            .hasMessageContaining("postStartCommand failed");
+    }
+    @Test
+    void runUserCommands_noOutcomeLine_throws() {
+        CommandRunner runner = new CannedRunner(List.of(), 0) {
+            @Override
+            public String execute(String c, long timeoutSeconds) {
+                return "{\"type\":\"progress\",\"name\":\"Running postStartCommand\"}\n";
+            }
+        };
+
+        assertThatThrownBy(() -> cliFor().runUserCommands(runner, "/srv/ws", "abc123"))
+            .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
+            .satisfies(t -> {
+                DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
+                assertThat(ex.error().message()).isEqualTo("no outcome line");
+                assertThat(ex.error().containerId()).isEqualTo("abc123");
+            });
+    }
+
+    @Test
+    void runUserCommands_errorOutcomeWithoutContainerId_fillsInTargetContainer() {
+        CommandRunner runner = new CannedRunner(List.of(), 0) {
+            @Override
+            public String execute(String c, long timeoutSeconds) {
+                return "{\"outcome\":\"error\",\"message\":\"m\",\"description\":\"d\"}\n";
+            }
+        };
+
+        assertThatThrownBy(() -> cliFor().runUserCommands(runner, "/srv/ws", "abc123"))
+            .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
+            .satisfies(t -> {
+                CliError error = ((DevcontainerCli.DevcontainerCliException) t).error();
+                assertThat(error.containerId()).isEqualTo("abc123");
+                assertThat(error.description()).isEqualTo("d");
+            });
+    }
+
+    @Test
+    void outcomeLinesWithUnknownFieldsStillBind() throws Exception {
+        CannedRunner runner = new CannedRunner(List.of(
+            "{\"outcome\":\"success\",\"containerId\":\"abc123\",\"remoteUser\":\"vscode\","
+                + "\"remoteWorkspaceFolder\":\"/workspace\",\"addedInSomeLaterCli\":{\"x\":1}}"
+        ), 0);
+
+        DevcontainerCliResult result = cliFor().up(
+            runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {});
+
+        assertThat(result).isEqualTo(new DevcontainerCliResult("abc123", null, "vscode", "/workspace"));
+    }
 }

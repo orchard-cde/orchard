@@ -122,7 +122,7 @@ class BeeServiceTest {
         GroveEntity groveEntity = mock(GroveEntity.class);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
-        VmPlot persisted = new VmPlot(UUID.randomUUID(), groveId, "owner", "vm-1", PlotState.SAPLING,
+        VmPlot persisted = new VmPlot(UUID.randomUUID(), groveId, "owner", "vm-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), "10.0.0.5", 2222, List.of(), VmSpec.small());
         when(groveEntity.plot()).thenReturn(persisted);
         setupRegisteredKeeper(BeeType.CLAUDE_CODE);
@@ -362,6 +362,50 @@ class BeeServiceTest {
 
         verifyNoInteractions(providerRegistry);
         verify(keeper, never()).smoke(any(), any());
+    }
+
+    @Test
+    void hibernateAll_movesActiveBees_leavesSmoked() {
+        BeeEntity hatching = beeEntityIn(BeeState.HATCHING);
+        BeeEntity buzzing = beeEntityIn(BeeState.BUZZING);
+        BeeEntity pollinating = beeEntityIn(BeeState.POLLINATING);
+        BeeEntity hibernating = beeEntityIn(BeeState.HIBERNATING);
+        BeeEntity smoked = beeEntityIn(BeeState.SMOKED);
+        when(beeRepository.findByGroveId(groveId))
+            .thenReturn(List.of(hatching, buzzing, pollinating, hibernating, smoked));
+
+        beeService.hibernateAll(groveId);
+
+        assertThat(hatching.getState()).isEqualTo(BeeState.HIBERNATING);
+        assertThat(buzzing.getState()).isEqualTo(BeeState.HIBERNATING);
+        assertThat(pollinating.getState()).isEqualTo(BeeState.HIBERNATING);
+        assertThat(hibernating.getState()).isEqualTo(BeeState.HIBERNATING);
+        assertThat(smoked.getState()).isEqualTo(BeeState.SMOKED);
+        assertThat(List.of(hatching, buzzing, pollinating))
+            .allSatisfy(e -> assertThat(e.getProcessId()).isNull());
+        assertThat(hibernating.getProcessId()).isEqualTo("pid-HIBERNATING");
+        assertThat(smoked.getProcessId()).isEqualTo("pid-SMOKED");
+
+        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, times(3)).publishEvent(events.capture());
+        assertThat(events.getAllValues()).allSatisfy(e -> {
+            BeeStateChangedEvent event = (BeeStateChangedEvent) e;
+            assertThat(event.groveId()).isEqualTo(groveId);
+            assertThat(event.newState()).isEqualTo(BeeState.HIBERNATING);
+        });
+        assertThat(events.getAllValues())
+            .extracting(e -> ((BeeStateChangedEvent) e).beeId())
+            .containsExactlyInAnyOrder(hatching.getId(), buzzing.getId(), pollinating.getId());
+        assertThat(events.getAllValues())
+            .extracting(e -> ((BeeStateChangedEvent) e).previousState())
+            .containsExactlyInAnyOrder(BeeState.HATCHING, BeeState.BUZZING, BeeState.POLLINATING);
+        verify(beeRepository, times(3)).save(any());
+    }
+
+    private BeeEntity beeEntityIn(BeeState state) {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE))
+            .withState(state).withProcessId("pid-" + state);
+        return BeeEntity.fromModel(bee);
     }
 
     @Test
@@ -687,7 +731,7 @@ class BeeServiceTest {
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
         when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
         when(groveEntity.plot()).thenReturn(new VmPlot(UUID.randomUUID(), groveId, "owner", "vm-1",
-            PlotState.SAPLING, Instant.now(), Instant.now(), "10.0.0.5", 2222, List.of(), VmSpec.small()));
+            PlotState.ROOTED, Instant.now(), Instant.now(), "10.0.0.5", 2222, List.of(), VmSpec.small()));
         setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         GroveProvider owner = mock(GroveProvider.class);
         Vine vine = mock(Vine.class);
@@ -706,7 +750,7 @@ class BeeServiceTest {
     }
 
     private VmPlot plotOwnedBy(String providerId) {
-        return new VmPlot(UUID.randomUUID(), groveId, providerId, "vm-1", PlotState.SAPLING,
+        return new VmPlot(UUID.randomUUID(), groveId, providerId, "vm-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), "10.0.0.5", 22, List.of(), VmSpec.small());
     }
 

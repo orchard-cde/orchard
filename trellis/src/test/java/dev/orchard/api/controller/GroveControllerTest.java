@@ -43,7 +43,7 @@ class GroveControllerTest {
     void sshConfig_containerPlot_returns409() throws Exception {
         Grove grove = grove();
         when(groveService.getGrove(grove.id())).thenReturn(Optional.of(grove.withPlot(
-            new ContainerPlot(UUID.randomUUID(), grove.id(), "docker", "c-1", PlotState.SAPLING,
+            new ContainerPlot(UUID.randomUUID(), grove.id(), "docker", "c-1", PlotState.ROOTED,
                 Instant.now(), Instant.now(), Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
                 new ContainerSpec(2, 4096)))));
 
@@ -96,7 +96,7 @@ class GroveControllerTest {
     }
 
     private static VmPlot vmPlot(UUID groveId, String host) {
-        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "vm-1", PlotState.SAPLING,
+        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "vm-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), host, 2222, List.of(), VmSpec.small());
     }
 }

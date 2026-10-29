@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /**
  * Internal API consumed by the SSH gateway (dev.orchard.gateway). A grove is
- * routable only when it is FLOURISHING and its VM plot is running (SAPLING) with a host.
+ * routable only when it is FLOURISHING and its VM plot is running (ROOTED) with a host.
  */
 @Service
 public class GatewayGroveService {

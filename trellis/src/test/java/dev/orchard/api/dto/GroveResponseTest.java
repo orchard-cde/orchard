@@ -51,7 +51,7 @@ class GroveResponseTest {
         PlotInfo plot = GroveResponse.fromModel(grove).plot();
 
         assertThat(plot.kind()).isEqualTo(PlotKind.VM);
-        assertThat(plot.state()).isEqualTo(PlotState.SAPLING);
+        assertThat(plot.state()).isEqualTo(PlotState.ROOTED);
         assertThat(plot.providerId()).isEqualTo("qemu");
         assertThat(plot.host()).isEqualTo("192.168.1.1");
         assertThat(plot.sshPort()).isEqualTo(2222);
@@ -147,12 +147,12 @@ class GroveResponseTest {
     }
 
     private static VmPlot vmPlot(UUID groveId) {
-        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "inst-1", PlotState.SAPLING,
+        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "inst-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), "192.168.1.1", 2222, List.of(), VmSpec.small());
     }
 
     private static ContainerPlot containerPlot(UUID groveId) {
-        return new ContainerPlot(UUID.randomUUID(), groveId, "docker", "c-1", PlotState.SAPLING,
+        return new ContainerPlot(UUID.randomUUID(), groveId, "docker", "c-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
             new ContainerSpec(2, 4096));
     }

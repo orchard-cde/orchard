@@ -20,4 +20,10 @@ public interface QemuCommands {
     Process startQemu(VmPlot plot, Path diskImage, Path cloudInitIso, int sshPort) throws IOException;
 
     void awaitReachable(String host, int sshPort) throws IOException;
+
+    /**
+     * Asks the guest to power itself off over a fresh SSH connection. Best effort: the connection
+     * drops as the guest goes down, so failures are swallowed and the caller confirms exit itself.
+     */
+    void requestPoweroff(VmPlot plot);
 }

@@ -37,8 +37,11 @@ import java.util.concurrent.Executors;
  *       over the runner. Retained for one release cycle behind the feature flag. {@code seed.features()} is silently ignored on this path.</li>
  * </ul>
  *
- * <p>{@link #pick} and {@link #compost} both run raw {@code docker stop}/{@code docker rm -f}
- * over the runner on either path — the CLI doesn't ship a {@code down} subcommand.
+ * <p>{@link #pick}, {@link #ripen} and {@link #compost} run raw docker commands over the runner on
+ * either path — the CLI doesn't ship a {@code down} subcommand. {@code pick} and {@code ripen} stop
+ * and start the whole compose project ({@code docker compose -p <project> stop|start}) for compose
+ * fruit and the single container otherwise; {@code compost} runs {@code docker rm -f} on the
+ * fruit's container.
  */
 public class FruitGrower {
 
@@ -92,7 +95,7 @@ public class FruitGrower {
                     yield growDevfileViaDocker(target.runner(), fruit);
                 }
                 case DevcontainerSeed ignored -> {
-                    boolean useCli = useDevcontainerCli && devcontainerCli != null;
+                    boolean useCli = cliEnabled();
                     log.info("Growing fruit {} on target {} (path={})", fruit.id(), target.targetId(),
                         useCli ? "devcontainer-cli" : "legacy-docker");
                     yield useCli ? growViaCli(target, fruit)
@@ -153,7 +156,8 @@ public class FruitGrower {
             }
 
             Fruit grown = rebuildWithRealName(fruit, realName)
-                .withContainerDetails(result.containerId(), ports);
+                .withContainerDetails(result.containerId(), ports)
+                .withComposeProjectName(result.composeProjectName());
 
             // CLI ran every lifecycle command up to waitFor; if the user asked to wait for
             // postAttach, FruitGrower.attach() will flip to RIPE later.
@@ -188,7 +192,7 @@ public class FruitGrower {
         }
         return new Fruit(
             fruit.id(), fruit.groveId(), fruit.plotId(),
-            fruit.containerId(), newName, fruit.serviceName(), fruit.seed(),
+            fruit.containerId(), newName, fruit.serviceName(), fruit.composeProjectName(), fruit.seed(),
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt());
     }
 
@@ -484,15 +488,16 @@ public class FruitGrower {
     }
 
     /**
-     * Picks a fruit (stops the container). Same SSH semantics on both paths — the CLI has no
-     * {@code down} subcommand.
+     * Picks a fruit (stops its containers without removing them). A compose fruit stops the whole
+     * project. Completes exceptionally if the stop fails.
      */
     public CompletableFuture<Fruit> pick(ExecTarget target, Fruit fruit) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Picking fruit {}", fruit.id());
-                if (fruit.containerId() != null) {
-                    executeSsh(target.runner(), "docker stop " + fruit.containerId());
+                String command = lifecycleCommand(fruit, "stop");
+                if (command != null) {
+                    executeSsh(target.runner(), command);
                 }
                 return fruit.withState(FruitState.PICKED);
             } catch (Exception e) {
@@ -500,9 +505,67 @@ public class FruitGrower {
                 if (e instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                return fruit;
+                throw new CompletionException(e);
             }
         }, executor);
+    }
+
+    /**
+     * Ripens a picked fruit: starts the same containers again, then re-runs the post-start hook the
+     * way it ran when the fruit was grown — through the devcontainer CLI for CLI-grown devcontainers,
+     * via {@code docker exec} otherwise. Completes exceptionally if the containers do not start; a
+     * failing post-start hook is logged and the fruit is still returned {@link FruitState#RIPE}.
+     */
+    public CompletableFuture<Fruit> ripen(ExecTarget target, Fruit fruit) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                log.info("Ripening fruit {}", fruit.id());
+                String command = lifecycleCommand(fruit, "start");
+                if (command != null) {
+                    executeSsh(target.runner(), command);
+                }
+                runPostStart(target, fruit);
+                return fruit.withState(FruitState.RIPE);
+            } catch (Exception e) {
+                log.error("Failed to ripen fruit {}", fruit.id(), e);
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                throw new CompletionException(e);
+            }
+        }, executor);
+    }
+
+    private static String lifecycleCommand(Fruit fruit, String verb) {
+        if (fruit.composeProjectName() != null) {
+            return "docker compose -p " + shellQuote(fruit.composeProjectName()) + " " + verb;
+        }
+        return fruit.containerId() != null ? "docker " + verb + " " + fruit.containerId() : null;
+    }
+
+    private boolean cliEnabled() {
+        return useDevcontainerCli && devcontainerCli != null;
+    }
+
+    private void runPostStart(ExecTarget target, Fruit fruit) throws InterruptedException {
+        try {
+            if (fruit.seed() instanceof DevcontainerSeed && cliEnabled()) {
+                devcontainerCli.runUserCommands(target.runner(), target.workspacePath(), fruit.containerId());
+                return;
+            }
+            LifecycleCommand postStart = switch (fruit.seed()) {
+                case DevcontainerSeed s -> s.postStartCommand();
+                case DevfileSeed s -> s.postStartCommand();
+                default -> null;
+            };
+            if (postStart != null) {
+                runLifecycleCommand(postStart, cmd -> inContainer(target.runner(), fruit.containerId(), cmd));
+            }
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("postStartCommand for fruit {} failed; its container is running", fruit.id(), e);
+        }
     }
 
     /**
@@ -530,7 +593,7 @@ public class FruitGrower {
             try {
                 DevcontainerSeed seed = devcontainerSeed(fruit);
                 if (seed.postAttachCommand() != null) {
-                    if (useDevcontainerCli && devcontainerCli != null) {
+                    if (cliEnabled()) {
                         runLifecycleCommand(seed.postAttachCommand(),
                             cmd -> devcontainerCli.exec(target.runner(), target.workspacePath(), cmd));
                     } else {
@@ -681,7 +744,7 @@ public class FruitGrower {
 
         Fruit imageFruit = new Fruit(
             fruit.id(), fruit.groveId(), fruit.plotId(),
-            null, fruit.containerName(), fruit.serviceName(), imageOnlySeed,
+            null, fruit.containerName(), fruit.serviceName(), fruit.composeProjectName(), imageOnlySeed,
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt()
         );
 

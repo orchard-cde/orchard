@@ -1,5 +1,6 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.DevfileSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
@@ -18,9 +19,12 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.util.List;
+import java.io.IOException;
 import java.util.UUID;
+import java.util.concurrent.CompletionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -28,6 +32,7 @@ import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -122,6 +127,25 @@ class FruitGrowerTest {
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         assertThat(result.containerId()).isEqualTo("c123");
         assertThat(result.containerName()).isEqualTo("real-container-name");
+    }
+
+    @Test
+    void growViaCli_capturesComposeProjectName() throws Exception {
+        DevcontainerCli cli = mock(DevcontainerCli.class);
+        CommandRunner runner = runner();
+        Fruit withProject = buddedFruit(defaultSeed());
+        Fruit withoutProject = buddedFruit(defaultSeed());
+
+        when(cli.up(any(), eq(WORKSPACE_PATH), eq(withProject.id()), any(), any()))
+            .thenReturn(new DevcontainerCliResult("c1", "proj", "vscode", WORKSPACE_PATH));
+        when(cli.up(any(), eq(WORKSPACE_PATH), eq(withoutProject.id()), any(), any()))
+            .thenReturn(new DevcontainerCliResult("c2", null, "vscode", WORKSPACE_PATH));
+        when(cli.inspectContainerName(any(), any())).thenReturn("real-name");
+
+        FruitGrower grower = new FruitGrower(cli, true, mock(ApplicationEventPublisher.class));
+
+        assertThat(grower.grow(execTarget(runner), withProject).get().composeProjectName()).isEqualTo("proj");
+        assertThat(grower.grow(execTarget(runner), withoutProject).get().composeProjectName()).isNull();
     }
 
     @Test
@@ -282,6 +306,229 @@ class FruitGrowerTest {
     }
 
 
+    private static final LifecycleCommand POST_START = new LifecycleCommand.Sequential(List.of("echo", "up"));
+
+    private static FruitGrower plainGrower() {
+        return new FruitGrower(mock(DevcontainerCli.class), false, mock(ApplicationEventPublisher.class));
+    }
+
+    private static Fruit runningFruit(Seed seed) {
+        return buddedFruit(seed).withContainerDetails("cid1", List.of());
+    }
+
+    private static Seed seedWithPostStart() {
+        return Seed.devcontainer()
+            .name("orchard-fruit")
+            .image("img")
+            .postStartCommand(POST_START)
+            .build();
+    }
+
+    @Test
+    void pick_singleContainer_runsDockerStop() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+
+        Fruit result = plainGrower().pick(execTarget(runner), runningFruit(defaultSeed())).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.PICKED);
+        verify(runner).execute("docker stop cid1");
+    }
+
+    @Test
+    void pick_compose_stopsWholeProject() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        Fruit fruit = runningFruit(defaultSeed()).withComposeProjectName("proj");
+
+        Fruit result = plainGrower().pick(execTarget(runner), fruit).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.PICKED);
+        verify(runner).execute("docker compose -p 'proj' stop");
+        verify(runner, never()).execute("docker stop cid1");
+    }
+
+    @Test
+    void pick_commandFails_completesExceptionally() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(anyString())).thenThrow(new IOException("boom"));
+
+        assertThatThrownBy(() -> plainGrower().pick(execTarget(runner), runningFruit(defaultSeed())).join())
+            .isInstanceOf(CompletionException.class);
+    }
+
+    @Test
+    void ripen_singleContainer_runsDockerStart_thenPostStart() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+
+        Fruit result = plainGrower().ripen(execTarget(runner), runningFruit(seedWithPostStart())).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        var order = inOrder(runner);
+        order.verify(runner).execute("docker start cid1");
+        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void ripen_devfileSeed_runsPostStart() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        Seed seed = DevfileSeed.builder().name("n").image("img").postStartCommand(POST_START).build();
+
+        Fruit result = plainGrower().ripen(execTarget(runner), runningFruit(seed)).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        var order = inOrder(runner);
+        order.verify(runner).execute("docker start cid1");
+        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void ripen_compose_startsWholeProject() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        Fruit fruit = runningFruit(seedWithPostStart()).withComposeProjectName("proj");
+
+        Fruit result = plainGrower().ripen(execTarget(runner), fruit).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        var order = inOrder(runner);
+        order.verify(runner).execute("docker compose -p 'proj' start");
+        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void ripen_noPostStart_runsOnlyStart() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+
+        plainGrower().ripen(execTarget(runner), runningFruit(defaultSeed())).join();
+
+        verify(runner).execute("docker start cid1");
+        org.mockito.Mockito.verifyNoMoreInteractions(runner);
+    }
+
+    @Test
+    void ripen_startOk_postStartFails_stillRipe_logsWarning() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute("docker exec cid1 /bin/sh -c 'echo up'")).thenThrow(new IOException("exit 128"));
+        Fruit fruit = runningFruit(seedWithPostStart());
+
+        java.io.PrintStream originalErr = System.err;
+        var captured = new java.io.ByteArrayOutputStream();
+        Fruit result;
+        try {
+            System.setErr(new java.io.PrintStream(captured, true));
+            result = plainGrower().ripen(execTarget(runner), fruit).join();
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        verify(runner).execute("docker start cid1");
+        assertThat(captured.toString())
+            .contains("WARN")
+            .contains("postStartCommand")
+            .contains(fruit.id().toString());
+    }
+
+    @Test
+    void ripen_containerStartFails_completesExceptionally_withoutPostStart() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute("docker start cid1")).thenThrow(new IOException("no such container"));
+
+        assertThatThrownBy(() -> plainGrower().ripen(execTarget(runner), runningFruit(seedWithPostStart())).join())
+            .isInstanceOf(CompletionException.class);
+        verify(runner, never()).execute("docker exec cid1 /bin/sh -c 'echo up'");
+    }
+
+    @Test
+    void ripen_cliGrownDevcontainer_runsUserCommandsViaCli() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(org.mockito.ArgumentMatchers.startsWith("devcontainer run-user-commands"),
+                org.mockito.ArgumentMatchers.anyLong()))
+            .thenReturn("{\"outcome\":\"success\"}\n");
+        FruitGrower grower = new FruitGrower(
+            new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 600, 60)), true, null);
+
+        Fruit result = grower.ripen(execTarget(runner), runningFruit(seedWithPostStart())).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        var order = inOrder(runner);
+        order.verify(runner).execute("docker start cid1");
+        order.verify(runner).execute(
+            "devcontainer run-user-commands --workspace-folder " + WORKSPACE_PATH
+                + " --container-id cid1 --log-format json --skip-post-attach",
+            600L);
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void ripen_cliGrownDevcontainer_userCommandsFail_stillRipe() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(org.mockito.ArgumentMatchers.startsWith("devcontainer run-user-commands"),
+                org.mockito.ArgumentMatchers.anyLong()))
+            .thenThrow(new IOException("exit 1"));
+        FruitGrower grower = new FruitGrower(
+            new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 600, 60)), true, null);
+
+        Fruit result = grower.ripen(execTarget(runner), runningFruit(seedWithPostStart())).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+    }
+
+    @Test
+    void ripen_cliGrownDevcontainer_noOutcomeLine_stillRipe_logsWarning() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(org.mockito.ArgumentMatchers.startsWith("devcontainer run-user-commands"),
+                org.mockito.ArgumentMatchers.anyLong()))
+            .thenReturn("");
+        FruitGrower grower = new FruitGrower(
+            new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 600, 60)), true, null);
+        Fruit fruit = runningFruit(seedWithPostStart());
+
+        java.io.PrintStream originalErr = System.err;
+        var captured = new java.io.ByteArrayOutputStream();
+        Fruit result;
+        try {
+            System.setErr(new java.io.PrintStream(captured, true));
+            result = grower.ripen(execTarget(runner), fruit).join();
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        assertThat(captured.toString())
+            .contains("WARN")
+            .contains("postStartCommand")
+            .contains(fruit.id().toString())
+            .contains("no result JSON");
+    }
+
+    @Test
+    void ripen_devfileSeed_cliEnabled_stillRunsPostStartViaDockerExec() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        DevcontainerCli cli = mock(DevcontainerCli.class);
+        Seed seed = DevfileSeed.builder().name("n").image("img").postStartCommand(POST_START).build();
+
+        Fruit result = new FruitGrower(cli, true, null).ripen(execTarget(runner), runningFruit(seed)).join();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        var order = inOrder(runner);
+        order.verify(runner).execute("docker start cid1");
+        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verifyNoMoreInteractions();
+        org.mockito.Mockito.verifyNoInteractions(cli);
+    }
+
+    @Test
+    void ripen_commandFails_completesExceptionally() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(anyString())).thenThrow(new IOException("boom"));
+
+        assertThatThrownBy(() -> plainGrower().ripen(execTarget(runner), runningFruit(defaultSeed())).join())
+            .isInstanceOf(CompletionException.class);
+    }
+
+
     private static Seed defaultSeed() {
         return Seed.devcontainer()
             .name("orchard-fruit")
@@ -295,7 +542,7 @@ class FruitGrowerTest {
 
     private static CommandRunner runner() {
         // 127.0.0.255 / port 1 — guaranteed to refuse on any host the test runs on.
-        return new SshVine(new VmPlot(SEEDLING_ID, UUID.randomUUID(), "test", null, PlotState.SAPLING, Instant.now(), null, "127.0.0.255", 1, List.of(), VmSpec.small())).commands();
+        return new SshVine(new VmPlot(SEEDLING_ID, UUID.randomUUID(), "test", null, PlotState.ROOTED, Instant.now(), null, "127.0.0.255", 1, List.of(), VmSpec.small())).commands();
     }
 
     private static ExecTarget execTarget(CommandRunner runner) {

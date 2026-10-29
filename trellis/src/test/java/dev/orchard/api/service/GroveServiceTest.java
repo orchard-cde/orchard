@@ -3,6 +3,7 @@ package dev.orchard.api.service;
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.event.GroveStateChangedEvent;
 import dev.orchard.core.model.*;
+import dev.orchard.harvest.PlotSerializer;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
@@ -21,8 +22,10 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.List;
@@ -46,6 +49,8 @@ class GroveServiceTest {
     @Mock private SshPublicKeyService sshPublicKeyService;
     @Mock private GroveProvider defaultProvider;
     @Mock private GroveProvider ownerProvider;
+    @Mock private BeeService beeService;
+    @Mock private PlatformTransactionManager transactionManager;
 
     private GroveService groveService;
 
@@ -54,7 +59,8 @@ class GroveServiceTest {
         groveService = new GroveService(
             groveRepository, fruitRepository, providerRegistry,
             new DevcontainerCliConfig("0.87.0", 0, 0),
-            cultivatorService, eventPublisher, sshPublicKeyService
+            cultivatorService, eventPublisher, sshPublicKeyService,
+            beeService, new TransactionTemplate(transactionManager)
         );
         lenient().when(providerRegistry.getDefault()).thenReturn(defaultProvider);
         lenient().when(providerRegistry.require("test-default")).thenReturn(defaultProvider);
@@ -63,6 +69,8 @@ class GroveServiceTest {
         lenient().when(defaultProvider.sizes()).thenReturn(PlotSizes.DEFAULT);
         lenient().when(defaultProvider.reserve(any(), any())).thenAnswer(inv ->
             VmPlot.germinate(inv.getArgument(0), "test-default", inv.getArgument(1)));
+        lenient().when(ownerProvider.inspect(any())).thenAnswer(inv ->
+            CompletableFuture.completedFuture(inv.getArgument(0)));
     }
 
     @Test
@@ -397,7 +405,7 @@ class GroveServiceTest {
         when(ownerProvider.vine(any())).thenReturn(vine);
         when(vine.commands()).thenReturn(runner);
         when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
-            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.SAPLING)));
+            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
         when(ownerProvider.growFruit(any(), any())).thenAnswer(inv ->
             CompletableFuture.completedFuture(((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
         when(runner.execute(any())).thenReturn("status: done", "abc123", "yes");
@@ -467,99 +475,130 @@ class GroveServiceTest {
         }
     }
 
-    @Test
-    void startGrove_unregisteredOwner_throwsIllegalState() {
-        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
-            Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
-                .withState(GroveState.DORMANT)
-                .withPlot(new VmPlot(UUID.randomUUID(), null, "gone", null, PlotState.WITHERED,
-                    null, null, null, 22, List.of(), VmSpec.small()));
-            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(GroveEntity.fromModel(grove)));
-            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
-            when(providerRegistry.require("gone"))
-                .thenThrow(new IllegalStateException("Provider 'gone' is not registered"));
+    private static final PlotSerializer PLOTS = new PlotSerializer();
+    private static final Seed SEED = Seed.devcontainer().name("test").image("ubuntu").build();
 
-            assertThatThrownBy(() -> groveService.startGrove(grove.id()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Provider 'gone' is not registered");
-            verify(groveRepository, never()).save(any());
-        }
+    private record Transition(GroveState expected, GroveState next, Plot plot) {}
+
+    private List<Transition> recordTransitions(int rows) {
+        List<Transition> transitions = new java.util.concurrent.CopyOnWriteArrayList<>();
+        lenient().when(groveRepository.transitionIfState(any(), any(), any(), any())).thenAnswer(inv -> {
+            String plotJson = inv.getArgument(3);
+            transitions.add(new Transition(inv.getArgument(1), inv.getArgument(2),
+                plotJson == null ? null : PLOTS.deserialize(plotJson)));
+            return rows;
+        });
+        return transitions;
+    }
+
+    private static VmPlot ownerPlot(PlotState state, String host) {
+        return new VmPlot(UUID.randomUUID(), null, "owner", "vm-1", state,
+            Instant.now(), null, host, 22, List.of(), VmSpec.small());
+    }
+
+    private Grove ownerGrove(GroveState state, PlotState plotState, FruitState fruitState) {
+        Grove grove = Grove.plant(UUID.randomUUID(), "g", "https://example.invalid/r.git", "main")
+            .withState(state)
+            .withPlot(ownerPlot(plotState, "127.0.0.1"));
+        return grove.withFruit(Fruit.bud(grove.id(), grove.plot().id(), SEED)
+            .withContainerDetails("c1", List.of())
+            .withState(fruitState));
+    }
+
+    /** Stubs the rows {@code entityToModel} reads, so the grove round-trips through the service. */
+    private GroveEntity stubStored(Grove grove) {
+        GroveEntity entity = GroveEntity.fromModel(grove);
+        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+        lenient().when(fruitRepository.findByGroveId(grove.id()))
+            .thenReturn(grove.fruits().stream().map(FruitEntity::fromModel).toList());
+        return entity;
+    }
+
+    private static Grove storedAs(Grove grove, Transition last) {
+        return grove.withState(last.next()).withPlot(last.plot());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Fruit> lastSavedFruits() {
+        ArgumentCaptor<List<FruitEntity>> saved = ArgumentCaptor.forClass(List.class);
+        verify(fruitRepository, atLeastOnce()).saveAll(saved.capture());
+        return saved.getValue().stream().map(FruitEntity::toModel).toList();
     }
 
     @Test
-    void startGrove_witheredPlot_reservesSameSizeOnOwningProvider() {
-        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
-            Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
-                .withState(GroveState.DORMANT)
-                .withPlot(new VmPlot(UUID.randomUUID(), null, "owner", null, PlotState.WITHERED,
-                    null, null, null, 22, List.of(), new VmSpec(4, 8192, 40, "medium", null)));
-            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(GroveEntity.fromModel(grove)));
-            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
-            when(ownerProvider.reserve(any(), any())).thenAnswer(inv ->
-                VmPlot.germinate(inv.getArgument(0), "owner", inv.getArgument(1)));
+    void startGrove_unregisteredOwner_throwsIllegalState() {
+        Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
+            .withState(GroveState.DORMANT)
+            .withPlot(new VmPlot(UUID.randomUUID(), null, "gone", null, PlotState.DORMANT,
+                null, null, null, 22, List.of(), VmSpec.small()));
+        stubStored(grove);
+        when(providerRegistry.require("gone"))
+            .thenThrow(new IllegalStateException("Provider 'gone' is not registered"));
 
-            groveService.startGrove(grove.id());
+        assertThatThrownBy(() -> groveService.startGrove(grove.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("Provider 'gone' is not registered");
+        verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
+    }
 
-            verify(ownerProvider).reserve(grove.id(), new SeedlingSpec("medium", 4, 8192, 40, null));
-            verifyNoInteractions(defaultProvider);
-        }
+    /** A WITHERED plot has no disk to power on: start is refused and nothing is re-planted. */
+    @Test
+    void startGrove_witheredPlot_refusedWithoutReserving() {
+        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.WITHERED, FruitState.PICKED);
+        stubStored(grove);
+
+        assertThatThrownBy(() -> groveService.startGrove(grove.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("WITHERED");
+        verify(ownerProvider, never()).reserve(any(), any());
+        verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
     }
 
     @Test
     void stopGrove_growingGrove_transitionsToDormant() {
-        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
-            UUID cultivatorId = UUID.randomUUID();
-            Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-                .withState(GroveState.GROWING)
-                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.SAPLING,
-                    null, null, "127.0.0.1", 22, List.of(), VmSpec.small()));
-            GroveEntity entity = GroveEntity.fromModel(grove);
-            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
-            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+        Grove grove = ownerGrove(GroveState.GROWING, PlotState.ROOTED, FruitState.RIPENING);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
 
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             Optional<Grove> result = groveService.stopGrove(grove.id());
 
             assertThat(result).isPresent();
             assertThat(result.get().state()).isEqualTo(GroveState.DORMANT);
-            ArgumentCaptor<GroveEntity> captor = ArgumentCaptor.forClass(GroveEntity.class);
-            verify(groveRepository).save(captor.capture());
-            assertThat(captor.getValue().getState()).isEqualTo(GroveState.DORMANT);
+            assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
+                org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.DORMANT));
+            assertThat(transitions.getFirst().plot()).isEqualTo(grove.plot());
         }
     }
 
     @Test
     void stopGrove_flourishingGrove_transitionsToDormant() {
-        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
-            UUID cultivatorId = UUID.randomUUID();
-            Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-                .withState(GroveState.FLOURISHING)
-                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.SAPLING,
-                    null, null, "127.0.0.1", 22, List.of(), VmSpec.small()));
-            GroveEntity entity = GroveEntity.fromModel(grove);
-            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
-            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+        Grove grove = ownerGrove(GroveState.FLOURISHING, PlotState.ROOTED, FruitState.RIPE);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
 
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
             Optional<Grove> result = groveService.stopGrove(grove.id());
 
             assertThat(result).isPresent();
             assertThat(result.get().state()).isEqualTo(GroveState.DORMANT);
+            assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
+                org.assertj.core.groups.Tuple.tuple(GroveState.FLOURISHING, GroveState.DORMANT));
+            assertThat(transitions.getFirst().plot()).isEqualTo(grove.plot());
         }
     }
 
     @Test
-    void stopGrove_plantingGrove_returnsUnchanged() {
-        UUID cultivatorId = UUID.randomUUID();
-        Grove grove = withGerminatingPlot(Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main"))
+    void stopGrove_plantingGrove_throws409() {
+        Grove grove = withGerminatingPlot(Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main"))
             .withState(GroveState.PLANTING);
-        GroveEntity entity = GroveEntity.fromModel(grove);
-        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
-        when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+        stubStored(grove);
 
-        Optional<Grove> result = groveService.stopGrove(grove.id());
-
-        assertThat(result).isPresent();
-        assertThat(result.get().state()).isEqualTo(GroveState.PLANTING);
-        verify(groveRepository, never()).save(any());
+        assertThatThrownBy(() -> groveService.stopGrove(grove.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("PLANTING")
+            .hasMessageContaining("GERMINATING");
+        verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
     }
 
     @Test
@@ -570,40 +609,209 @@ class GroveServiceTest {
     }
 
     @Test
-    void startGrove_dormantGrove_transitionsToPlanting() {
+    void stopGrove_neverUproots_keepsFruitRows_persistsDormantPlot() {
+        Grove grove = ownerGrove(GroveState.FLOURISHING, PlotState.ROOTED, FruitState.RIPE);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.pickFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.PICKED)));
+        when(ownerProvider.dormant(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Plot) inv.getArgument(0)).withState(PlotState.DORMANT)));
+
+        Grove accepted;
         try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
-            UUID cultivatorId = UUID.randomUUID();
-            Grove grove = Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main")
-                .withState(GroveState.DORMANT)
-                .withPlot(new VmPlot(UUID.randomUUID(), null, "test-default", null, PlotState.WITHERED,
-                    null, null, null, 22, List.of(), VmSpec.small()));
-            GroveEntity entity = GroveEntity.fromModel(grove);
-            when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
-            when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+            accepted = groveService.stopGrove(grove.id()).orElseThrow();
+        }
+        groveService.completeStop(accepted, ownerProvider);
 
-            Optional<Grove> result = groveService.startGrove(grove.id());
+        InOrder order = inOrder(ownerProvider);
+        order.verify(ownerProvider).pickFruit(any(), any());
+        order.verify(ownerProvider).dormant(any());
+        verify(ownerProvider, never()).uproot(any());
+        verify(ownerProvider, never()).compostFruit(any(), any());
+        verify(fruitRepository, never()).deleteAllById(any());
+        verify(fruitRepository, never()).deleteAll(any());
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.DORMANT);
+        assertThat(last.next()).isEqualTo(GroveState.DORMANT);
+        assertThat(last.plot().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(last.plot().id()).isEqualTo(grove.plot().id());
+        assertThat(lastSavedFruits()).singleElement().satisfies(fruit -> {
+            assertThat(fruit.id()).isEqualTo(grove.primaryFruit().id());
+            assertThat(fruit.state()).isEqualTo(FruitState.PICKED);
+        });
+    }
 
-            assertThat(result).isPresent();
-            assertThat(result.get().state()).isEqualTo(GroveState.PLANTING);
-            assertThat(result.get().plot()).isNotNull();
-            assertThat(result.get().plot().state()).isEqualTo(PlotState.GERMINATING);
+    @Test
+    void stopGrove_hibernatesBees() {
+        Grove grove = ownerGrove(GroveState.FLOURISHING, PlotState.ROOTED, FruitState.RIPE);
+        stubStored(grove);
+        recordTransitions(1);
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            groveService.stopGrove(grove.id());
+
+            InOrder order = inOrder(groveRepository, beeService);
+            order.verify(groveRepository).transitionIfState(
+                grove.id(), GroveState.FLOURISHING, GroveState.DORMANT, GroveEntity.serializePlot(grove.plot()));
+            order.verify(beeService).hibernateAll(grove.id());
+            tsm.verify(() -> TransactionSynchronizationManager.registerSynchronization(any()));
+            verifyNoInteractions(ownerProvider);
         }
     }
 
     @Test
-    void startGrove_growingGrove_returnsUnchanged() {
-        UUID cultivatorId = UUID.randomUUID();
-        Grove grove = withGerminatingPlot(Grove.plant(cultivatorId, "test", "https://github.com/user/repo", "main"))
-            .withState(GroveState.GROWING);
-        GroveEntity entity = GroveEntity.fromModel(grove);
-        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
-        when(fruitRepository.findByGroveId(grove.id())).thenReturn(List.of());
+    void stopGrove_fromBlightedWithRootedPlot_accepted() {
+        Grove grove = ownerGrove(GroveState.BLIGHTED, PlotState.ROOTED, FruitState.RIPE);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
 
-        Optional<Grove> result = groveService.startGrove(grove.id());
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            assertThat(groveService.stopGrove(grove.id())).get()
+                .extracting(Grove::state).isEqualTo(GroveState.DORMANT);
+            assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
+                org.assertj.core.groups.Tuple.tuple(GroveState.BLIGHTED, GroveState.DORMANT));
+        }
+    }
 
-        assertThat(result).isPresent();
-        assertThat(result.get().state()).isEqualTo(GroveState.GROWING);
-        verify(groveRepository, never()).save(any());
+    @Test
+    void stopGrove_fromBlightedWithDormantPlot_throws409() {
+        Grove grove = ownerGrove(GroveState.BLIGHTED, PlotState.DORMANT, FruitState.PICKED);
+        stubStored(grove);
+
+        assertThatThrownBy(() -> groveService.stopGrove(grove.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("BLIGHTED")
+            .hasMessageContaining("DORMANT");
+        verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
+        verifyNoInteractions(beeService);
+    }
+
+    @Test
+    void stopGrove_fromCleared_throws409() {
+        Grove grove = ownerGrove(GroveState.CLEARED, PlotState.WITHERED, FruitState.PICKED);
+        stubStored(grove);
+
+        assertThatThrownBy(() -> groveService.stopGrove(grove.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("CLEARED");
+        verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
+        verifyNoInteractions(beeService);
+    }
+
+    @Test
+    void stopGrove_dormantFails_blightsWithRootedPlot() {
+        Grove grove = ownerGrove(GroveState.FLOURISHING, PlotState.ROOTED, FruitState.RIPE);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.pickFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.PICKED)));
+        when(ownerProvider.dormant(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("poweroff timed out")));
+
+        Grove accepted;
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            accepted = groveService.stopGrove(grove.id()).orElseThrow();
+        }
+        groveService.completeStop(accepted, ownerProvider);
+
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.DORMANT);
+        assertThat(last.next()).isEqualTo(GroveState.BLIGHTED);
+        assertThat(last.plot().state()).isEqualTo(PlotState.ROOTED);
+        verify(ownerProvider, never()).uproot(any());
+
+        stubStored(storedAs(accepted, last));
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            assertThat(groveService.stopGrove(grove.id())).get()
+                .extracting(Grove::state).isEqualTo(GroveState.DORMANT);
+        }
+    }
+
+    @Test
+    void stopGrove_plotAlreadyDormant_skipsPickAndDormant_endsDormant() {
+        Grove grove = ownerGrove(GroveState.BLIGHTED, PlotState.ROOTED, FruitState.RIPE);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.inspect(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Plot) inv.getArgument(0)).withState(PlotState.DORMANT)));
+        lenient().when(ownerProvider.pickFruit(any(), any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("ssh: connection refused")));
+
+        Grove accepted;
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            accepted = groveService.stopGrove(grove.id()).orElseThrow();
+        }
+        groveService.completeStop(accepted, ownerProvider);
+
+        verify(ownerProvider, never()).pickFruit(any(), any());
+        verify(ownerProvider, never()).dormant(any());
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.DORMANT);
+        assertThat(last.next()).isEqualTo(GroveState.DORMANT);
+        assertThat(last.plot().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(last.plot().id()).isEqualTo(grove.plot().id());
+    }
+
+    @Test
+    void stopGrove_lostRace_transitionReturnsZero_throws409() {
+        Grove grove = ownerGrove(GroveState.FLOURISHING, PlotState.ROOTED, FruitState.RIPE);
+        stubStored(grove);
+        recordTransitions(0);
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            assertThatThrownBy(() -> groveService.stopGrove(grove.id()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("stop");
+            tsm.verify(() -> TransactionSynchronizationManager.registerSynchronization(any()), never());
+        }
+        verifyNoInteractions(beeService, ownerProvider, eventPublisher);
+    }
+
+    @Test
+    void startGrove_lostRace_transitionReturnsZero_throws409_noWater() {
+        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.DORMANT, FruitState.PICKED);
+        stubStored(grove);
+        recordTransitions(0);
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            assertThatThrownBy(() -> groveService.startGrove(grove.id()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("start");
+            tsm.verify(() -> TransactionSynchronizationManager.registerSynchronization(any()), never());
+        }
+        verify(ownerProvider, never()).water(any());
+        verifyNoInteractions(ownerProvider, eventPublisher);
+    }
+
+    @Test
+    void startGrove_dormantGrove_transitionsToPlantingKeepingPlot() {
+        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.DORMANT, FruitState.PICKED);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            Optional<Grove> result = groveService.startGrove(grove.id());
+
+            assertThat(result).isPresent();
+            assertThat(result.get().state()).isEqualTo(GroveState.PLANTING);
+            assertThat(result.get().plot().id()).isEqualTo(grove.plot().id());
+            assertThat(result.get().plot().state()).isEqualTo(PlotState.DORMANT);
+            assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
+                org.assertj.core.groups.Tuple.tuple(GroveState.DORMANT, GroveState.PLANTING));
+            verify(ownerProvider, never()).reserve(any(), any());
+        }
+    }
+
+    @Test
+    void startGrove_growingGrove_throws409() {
+        Grove grove = ownerGrove(GroveState.GROWING, PlotState.ROOTED, FruitState.RIPENING);
+        stubStored(grove);
+
+        assertThatThrownBy(() -> groveService.startGrove(grove.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("GROWING");
+        verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
     }
 
     @Test
@@ -613,6 +821,242 @@ class GroveServiceTest {
         assertThat(groveService.startGrove(UUID.randomUUID())).isEmpty();
     }
 
+    @Test
+    void startGrove_neverPlants_watersThenRipens() {
+        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.DORMANT, FruitState.PICKED);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        when(ownerProvider.ripenFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+
+        Grove accepted;
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            accepted = groveService.startGrove(grove.id()).orElseThrow();
+        }
+        groveService.completeStart(accepted, ownerProvider);
+
+        verifyNoInteractions(beeService);
+        InOrder order = inOrder(ownerProvider);
+        order.verify(ownerProvider).water(any());
+        order.verify(ownerProvider).ripenFruit(
+            org.mockito.ArgumentMatchers.argThat(p -> p.state() == PlotState.ROOTED), any());
+        verify(ownerProvider, never()).plantSubstrate(any());
+        verify(ownerProvider, never()).reserve(any(), any());
+        verify(ownerProvider, never()).growFruit(any(), any());
+        verify(ownerProvider, never()).vine(any());
+        verify(ownerProvider, never()).verifyDevcontainerCli(any(), any());
+        assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
+            org.assertj.core.groups.Tuple.tuple(GroveState.DORMANT, GroveState.PLANTING),
+            org.assertj.core.groups.Tuple.tuple(GroveState.PLANTING, GroveState.GROWING),
+            org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.FLOURISHING));
+        assertThat(transitions.getLast().plot().state()).isEqualTo(PlotState.ROOTED);
+        assertThat(lastSavedFruits()).singleElement()
+            .extracting(Fruit::state).isEqualTo(FruitState.RIPE);
+        ArgumentCaptor<Object> events = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, atLeastOnce()).publishEvent(events.capture());
+        assertThat(events.getAllValues()).map(e -> ((GroveStateChangedEvent) e).newState())
+            .containsExactly(GroveState.PLANTING, GroveState.GROWING, GroveState.FLOURISHING);
+    }
+
+    @Test
+    void startGrove_fromBlightedWithDormantPlot_walksPlantingGrowing() {
+        Grove grove = ownerGrove(GroveState.BLIGHTED, PlotState.DORMANT, FruitState.PICKED);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        when(ownerProvider.ripenFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+
+        Grove accepted;
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            accepted = groveService.startGrove(grove.id()).orElseThrow();
+        }
+        groveService.completeStart(accepted, ownerProvider);
+
+        assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
+            org.assertj.core.groups.Tuple.tuple(GroveState.BLIGHTED, GroveState.PLANTING),
+            org.assertj.core.groups.Tuple.tuple(GroveState.PLANTING, GroveState.GROWING),
+            org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.FLOURISHING));
+        verify(ownerProvider, never()).plantSubstrate(any());
+    }
+
+    @Test
+    void startGrove_refusedWhilePlotNotDormant() {
+        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.ROOTED, FruitState.RIPE);
+        stubStored(grove);
+
+        assertThatThrownBy(() -> groveService.startGrove(grove.id()))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("DORMANT")
+            .hasMessageContaining("ROOTED");
+        verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
+        verifyNoInteractions(ownerProvider);
+    }
+
+    @Test
+    void startGrove_ripenFailure_blightsWithRootedPlot_thenStopAccepted() {
+        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.DORMANT, FruitState.PICKED);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        when(ownerProvider.ripenFruit(any(), any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("container missing")));
+
+        Grove accepted;
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            accepted = groveService.startGrove(grove.id()).orElseThrow();
+        }
+        groveService.completeStart(accepted, ownerProvider);
+
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.GROWING);
+        assertThat(last.next()).isEqualTo(GroveState.BLIGHTED);
+        assertThat(last.plot().state()).isEqualTo(PlotState.ROOTED);
+
+        stubStored(storedAs(accepted, last));
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            assertThat(groveService.stopGrove(grove.id())).get()
+                .extracting(Grove::state).isEqualTo(GroveState.DORMANT);
+        }
+    }
+
+    @Test
+    void startGrove_waterFailure_blightsWithDormantPlot_thenStartAccepted() {
+        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.DORMANT, FruitState.PICKED);
+        stubStored(grove);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.water(any())).thenReturn(
+            CompletableFuture.failedFuture(new IllegalStateException("boot timed out")));
+
+        Grove accepted;
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            accepted = groveService.startGrove(grove.id()).orElseThrow();
+        }
+        groveService.completeStart(accepted, ownerProvider);
+
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.PLANTING);
+        assertThat(last.next()).isEqualTo(GroveState.BLIGHTED);
+        assertThat(last.plot().state()).isEqualTo(PlotState.DORMANT);
+        verify(ownerProvider, never()).ripenFruit(any(), any());
+
+        stubStored(storedAs(accepted, last));
+        try (MockedStatic<TransactionSynchronizationManager> tsm = mockStatic(TransactionSynchronizationManager.class)) {
+            assertThat(groveService.startGrove(grove.id())).get()
+                .extracting(Grove::state).isEqualTo(GroveState.PLANTING);
+        }
+    }
+
+    @Test
+    void startGrove_noFruit_blightsWithRootedPlot() {
+        Grove grove = ownerGrove(GroveState.PLANTING, PlotState.DORMANT, FruitState.PICKED).withFruits(List.of());
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+
+        groveService.completeStart(grove, ownerProvider);
+
+        assertThat(transitions).extracting(Transition::next)
+            .containsExactly(GroveState.GROWING, GroveState.BLIGHTED);
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.GROWING);
+        assertThat(last.plot().state()).isEqualTo(PlotState.ROOTED);
+        verify(ownerProvider, never()).ripenFruit(any(), any());
+    }
+
+    @Test
+    void startGrove_fruitWithoutContainer_blightsWithRootedPlot() {
+        Grove withContainer = ownerGrove(GroveState.PLANTING, PlotState.DORMANT, FruitState.PICKED);
+        Fruit containerless = Fruit.bud(withContainer.id(), withContainer.plot().id(), SEED);
+        Grove grove = withContainer.withFruit(containerless);
+        List<Transition> transitions = recordTransitions(1);
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        lenient().when(ownerProvider.ripenFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+
+        groveService.completeStart(grove, ownerProvider);
+
+        assertThat(transitions).extracting(Transition::next)
+            .containsExactly(GroveState.GROWING, GroveState.BLIGHTED);
+        Transition last = transitions.getLast();
+        assertThat(last.expected()).isEqualTo(GroveState.GROWING);
+        assertThat(last.plot().state()).isEqualTo(PlotState.ROOTED);
+        verify(ownerProvider, never()).ripenFruit(any(),
+            org.mockito.ArgumentMatchers.argThat(f -> f.id().equals(containerless.id())));
+    }
+
+    @Test
+    void asyncStep_abandonsWhenAdvanceReturnsFalse() {
+        Grove grove = ownerGrove(GroveState.PLANTING, PlotState.DORMANT, FruitState.PICKED);
+        List<Transition> transitions = recordTransitions(0);
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+
+        groveService.completeStart(grove, ownerProvider);
+
+        assertThat(transitions).singleElement().extracting(Transition::next).isEqualTo(GroveState.GROWING);
+        verify(fruitRepository, never()).saveAll(any());
+        verify(eventPublisher, never()).publishEvent(any());
+        verify(ownerProvider).water(any());
+        verifyNoMoreInteractions(ownerProvider);
+    }
+
+    @Test
+    void asyncStop_abandonsWhenAdvanceReturnsFalse() {
+        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.ROOTED, FruitState.RIPE);
+        List<Transition> transitions = recordTransitions(0);
+        when(ownerProvider.pickFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.PICKED)));
+
+        groveService.completeStop(grove, ownerProvider);
+
+        assertThat(transitions).singleElement().extracting(Transition::next).isEqualTo(GroveState.DORMANT);
+        verify(fruitRepository, never()).saveAll(any());
+        verify(eventPublisher, never()).publishEvent(any());
+        verify(ownerProvider).inspect(any());
+        verify(ownerProvider).pickFruit(any(), any());
+        verifyNoMoreInteractions(ownerProvider);
+    }
+
+    /** Gates the afterCommit wiring, which the direct completeStop/completeStart calls bypass. */
+    @Test
+    void stopAndStart_dispatchAsyncWorkAfterCommit() {
+        Grove running = ownerGrove(GroveState.FLOURISHING, PlotState.ROOTED, FruitState.RIPE);
+        Grove stopped = ownerGrove(GroveState.DORMANT, PlotState.DORMANT, FruitState.PICKED);
+        stubStored(running);
+        stubStored(stopped);
+        recordTransitions(1);
+        when(ownerProvider.pickFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.PICKED)));
+        when(ownerProvider.dormant(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Plot) inv.getArgument(0)).withState(PlotState.DORMANT)));
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        when(ownerProvider.ripenFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+                .thenAnswer(invocation -> {
+                    ((TransactionSynchronization) invocation.getArgument(0)).afterCommit();
+                    return null;
+                });
+
+            groveService.stopGrove(running.id());
+            groveService.startGrove(stopped.id());
+
+            verify(ownerProvider, timeout(2000)).dormant(
+                org.mockito.ArgumentMatchers.argThat(p -> p.id().equals(running.plot().id())));
+            verify(ownerProvider, timeout(2000)).ripenFruit(
+                org.mockito.ArgumentMatchers.argThat(p -> p.id().equals(stopped.plot().id())), any());
+        }
+    }
 
     @Test
     void clearGrove_clearingGrove_rejectedWithoutTeardown() {
@@ -654,7 +1098,7 @@ class GroveServiceTest {
         }
     }
 
-    /** A freshly germinated VM plot: not yet SAPLING and without a host. */
+    /** A freshly germinated VM plot: not yet ROOTED and without a host. */
     private Grove groveWithPlot() {
         Grove grove = Grove.plant(
             UUID.randomUUID(), "g", "https://example.invalid/r.git", "main");
@@ -679,7 +1123,7 @@ class GroveServiceTest {
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         // Prove the failure came from uproot, not from something incidental upstream.
         verify(provider).uproot(any());
@@ -710,7 +1154,7 @@ class GroveServiceTest {
             return inv.getArgument(0);
         });
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         verify(provider).uproot(any());
         verify(groveRepository, atLeastOnce()).save(any());
@@ -730,21 +1174,21 @@ class GroveServiceTest {
         when(provider.uproot(any())).thenReturn(
             CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         verify(provider).uproot(any());
         verify(fruitRepository, never()).deleteAllById(any());
     }
 
     @Test
-    void tearDownAndRecord_marksSuccessStateAndDeletesFruitWhenTeardownSucceeds() {
+    void tearDownAndRecord_marksClearedAndDeletesFruitWhenTeardownSucceeds() {
         Grove grove = groveWithPlot();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         GroveProvider provider = mock(GroveProvider.class);
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
         verify(groveRepository, atLeastOnce()).save(saved.capture());
@@ -768,7 +1212,7 @@ class GroveServiceTest {
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<UUID>> deletedIds = ArgumentCaptor.forClass(List.class);
@@ -790,7 +1234,7 @@ class GroveServiceTest {
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
         when(groveRepository.save(any())).thenThrow(new RuntimeException("db down"));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         verify(provider).uproot(any());
         assertThat(entity.getState()).isNotEqualTo(GroveState.ORPHANED);
@@ -808,74 +1252,11 @@ class GroveServiceTest {
         when(providerRegistry.require("test-default")).thenReturn(provider);
         when(provider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         InOrder order = inOrder(provider, fruitRepository);
         order.verify(provider).uproot(any());
         order.verify(fruitRepository).deleteAllById(any());
-    }
-
-    @Test
-    void tearDownAndRecord_marksOrphanedRatherThanDormantWhenStopTeardownFails() {
-        Grove grove = groveWithPlot();
-        GroveEntity entity = entityFor(grove, GroveState.DORMANT);
-        GroveProvider provider = mock(GroveProvider.class);
-        when(providerRegistry.require("test-default")).thenReturn(provider);
-        when(provider.uproot(any())).thenReturn(
-            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
-
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.DORMANT);
-
-        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
-        verify(groveRepository, atLeastOnce()).save(saved.capture());
-        assertThat(saved.getValue().getState()).isEqualTo(GroveState.ORPHANED);
-        verify(fruitRepository, never()).deleteAllById(any());
-    }
-
-    /**
-     * Gates the stopGrove wiring, which the direct-helper tests cannot: captures the
-     * TransactionSynchronization, invokes afterCommit(), and asserts the contract held. Pattern
-     * follows BeeServiceTest. Assertions use Mockito timeout() because afterCommit() dispatches
-     * to runAsync.
-     */
-    @Test
-    void stopGrove_marksOrphanedAndRetainsFruitWhenTeardownFails() {
-        Grove grove = groveWithPlot().withState(GroveState.FLOURISHING);
-        GroveEntity entity = entityFor(grove, GroveState.FLOURISHING);
-        GroveProvider provider = mock(GroveProvider.class);
-        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
-        when(providerRegistry.require("test-default")).thenReturn(provider);
-        when(provider.uproot(any())).thenReturn(
-            CompletableFuture.failedFuture(new IllegalStateException("provider gone")));
-
-        // The captor holds one mutable GroveEntity, so getAllValues() would return N aliases of
-        // the same final-state object. Record the state AT SAVE TIME instead.
-        List<GroveState> atSave = new java.util.concurrent.CopyOnWriteArrayList<>();
-        when(groveRepository.save(any())).thenAnswer(inv -> {
-            atSave.add(((GroveEntity) inv.getArgument(0)).getState());
-            return inv.getArgument(0);
-        });
-
-        try (MockedStatic<TransactionSynchronizationManager> tsm =
-                mockStatic(TransactionSynchronizationManager.class)) {
-            tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
-                .thenAnswer(invocation -> {
-                    TransactionSynchronization sync = invocation.getArgument(0);
-                    sync.afterCommit();
-                    return null;
-                });
-
-            groveService.stopGrove(grove.id());
-
-            verify(provider, timeout(2000)).uproot(any());
-            // atLeast(2), not atLeastOnce(): stopGrove's synchronous save(DORMANT) already
-            // satisfies atLeastOnce() before the async teardown runs, so the verify could return
-            // before Phase 1's save(ORPHANED). Requiring both forces the wait onto the async
-            // boundary. The failure path never reaches Phase 2, so it still saves exactly twice.
-            verify(groveRepository, timeout(2000).atLeast(2)).save(any());
-            assertThat(atSave).contains(GroveState.ORPHANED);
-            verify(fruitRepository, never()).deleteAllById(any());
-        }
     }
 
     private Grove ownerGroveWithContainerFruits(String... containerIds) {
@@ -890,7 +1271,7 @@ class GroveServiceTest {
     }
 
     private static Plot sapling(Plot plot) {
-        return plot.withState(PlotState.SAPLING);
+        return plot.withState(PlotState.ROOTED);
     }
 
     @Test
@@ -910,7 +1291,7 @@ class GroveServiceTest {
                 : CompletableFuture.completedFuture(null));
         when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         InOrder order = inOrder(ownerProvider);
         order.verify(ownerProvider).compostFruit(any(), org.mockito.ArgumentMatchers.argThat(f -> "c1".equals(f.containerId())));
@@ -927,7 +1308,7 @@ class GroveServiceTest {
             CompletableFuture.failedFuture(new IllegalStateException("gone")));
         when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         verify(ownerProvider, never()).compostFruit(any(), any());
         verify(ownerProvider).uproot(any());
@@ -940,7 +1321,7 @@ class GroveServiceTest {
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
         when(providerRegistry.require("owner")).thenThrow(new IllegalStateException("no provider"));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
         assertThat(entity.getState()).isEqualTo(GroveState.ORPHANED);
         verify(groveRepository).save(entity);
@@ -948,62 +1329,23 @@ class GroveServiceTest {
     }
 
     @Test
-    void tearDown_success_persistsWitheredPlot() {
+    void tearDown_success_persistsClearedWithWitheredPlotInOneSave() {
         Grove grove = ownerGroveWithContainerFruits();
         GroveEntity entity = entityFor(grove, GroveState.CLEARING);
-        GroveEntity fresh = entityFor(grove, GroveState.CLEARING);
-        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(fresh));
-        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
-
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
-
-        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
-        verify(groveRepository, atLeastOnce()).save(saved.capture());
-        assertThat(saved.getAllValues()).contains(fresh);
-        assertThat(fresh.plot().state()).isEqualTo(PlotState.WITHERED);
-        assertThat(fresh.plot().id()).isEqualTo(grove.plot().id());
-    }
-
-    @Test
-    void tearDown_witherReadFails_stillDeletesFruitAndDoesNotOrphan() {
-        Grove grove = ownerGroveWithContainerFruits("c1");
-        GroveEntity entity = entityFor(grove, GroveState.CLEARING);
-        when(ownerProvider.inspect(any())).thenReturn(
-            CompletableFuture.completedFuture(sapling(grove.plot())));
-        when(ownerProvider.compostFruit(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
-        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
-        when(groveRepository.findById(grove.id())).thenThrow(new RuntimeException("db blip"));
-
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.CLEARED);
-
-        verify(fruitRepository).deleteAllById(any());
-        assertThat(entity.getState()).isEqualTo(GroveState.CLEARED);
-    }
-
-    @Test
-    void tearDown_afterRestart_leavesNewPlotAlone() {
-        Grove grove = ownerGroveWithContainerFruits();
-        GroveEntity entity = entityFor(grove, GroveState.DORMANT);
-        Plot newPlot = VmPlot.germinate(grove.id(), "owner", SeedlingSpec.from(VmSpec.small()));
-        GroveEntity fresh = entityFor(grove.withPlot(newPlot), GroveState.PLANTING);
-        when(groveRepository.findById(grove.id())).thenReturn(Optional.of(fresh));
-        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
-        List<UUID> plotIdsAtSave = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<PlotState> plotStatesAtSave = new java.util.concurrent.CopyOnWriteArrayList<>();
-        lenient().when(groveRepository.save(any())).thenAnswer(inv -> {
-            GroveEntity e = inv.getArgument(0);
-            plotIdsAtSave.add(e.plot().id());
-            plotStatesAtSave.add(e.plot().state());
-            return e;
+        List<GroveState> statesAtSave = new java.util.concurrent.CopyOnWriteArrayList<>();
+        when(groveRepository.save(any())).thenAnswer(inv -> {
+            GroveEntity saved = inv.getArgument(0);
+            statesAtSave.add(saved.getState());
+            plotStatesAtSave.add(saved.plot().state());
+            return saved;
         });
+        when(ownerProvider.uproot(any())).thenReturn(CompletableFuture.completedFuture(null));
 
-        groveService.tearDownAndRecord(grove.id(), grove, entity, GroveState.DORMANT);
+        groveService.tearDownAndRecord(grove.id(), grove, entity);
 
-        assertThat(newPlot.id()).isNotEqualTo(grove.plot().id());
-        assertThat(plotIdsAtSave).doesNotContain(grove.plot().id());
-        assertThat(plotStatesAtSave).doesNotContain(PlotState.WITHERED);
-        assertThat(fresh.plot().id()).isEqualTo(newPlot.id());
-        assertThat(fresh.plot().state()).isEqualTo(PlotState.GERMINATING);
-        assertThat(fresh.getState()).isEqualTo(GroveState.PLANTING);
+        assertThat(statesAtSave).containsExactly(GroveState.CLEARED);
+        assertThat(plotStatesAtSave).containsExactly(PlotState.WITHERED);
+        assertThat(entity.plot().id()).isEqualTo(grove.plot().id());
     }
 }

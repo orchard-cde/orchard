@@ -217,12 +217,12 @@ class AbstractGroveProviderTest {
     }
 
     @Test
-    void plantSubstrate_happyPath_returnsSaplingWithResolvedEndpoint() {
+    void plantSubstrate_happyPath_returnsRootedWithResolvedEndpoint() {
         RecordingProvider provider = new RecordingProvider(executor);
 
         VmPlot result = (VmPlot) provider.plantSubstrate(germinated()).join();
 
-        assertThat(result.state()).isEqualTo(PlotState.SAPLING);
+        assertThat(result.state()).isEqualTo(PlotState.ROOTED);
         assertThat(result.providerInstanceId()).isEqualTo("fake-instance-1");
         assertThat(result.host()).isEqualTo("192.168.1.50");
         assertThat(result.sshPort()).isEqualTo(2200);
@@ -254,12 +254,12 @@ class AbstractGroveProviderTest {
     }
 
     @Test
-    void plantSubstrate_awaitRunningNotOverridden_defaultHookIsNoOpAndSeedlingStillReachesSapling() {
+    void plantSubstrate_awaitRunningNotOverridden_defaultHookIsNoOpAndSeedlingStillReachesRooted() {
         NoHookProvider provider = new NoHookProvider(executor);
 
         VmPlot result = (VmPlot) provider.plantSubstrate(germinated()).join();
 
-        assertThat(result.state()).isEqualTo(PlotState.SAPLING);
+        assertThat(result.state()).isEqualTo(PlotState.ROOTED);
         assertThat(result.providerInstanceId()).isEqualTo("no-hook-instance");
         assertThat(result.host()).isEqualTo("172.16.0.9");
         assertThat(result.sshPort()).isEqualTo(22);
@@ -297,6 +297,39 @@ class AbstractGroveProviderTest {
 
         assertThat(new NoHookProvider(executor, fruitGrower).growFruit(s, f).join()).isSameAs(f);
         verify(fruitGrower).grow(argThat(execTargetFor(s)), eq(f));
+    }
+
+    @Test
+    void pickFruit_delegatesWithPlotExecTarget() {
+        FruitGrower fruitGrower = mock(FruitGrower.class);
+        VmPlot s = TestPlots.fake();
+        Fruit f = TestPlots.budded(s);
+        when(fruitGrower.pick(argThat(execTargetFor(s)), eq(f)))
+            .thenReturn(CompletableFuture.completedFuture(f));
+
+        assertThat(new NoHookProvider(executor, fruitGrower).pickFruit(s, f).join()).isSameAs(f);
+        verify(fruitGrower).pick(argThat(execTargetFor(s)), eq(f));
+    }
+
+    @Test
+    void ripenFruit_delegatesWithPlotExecTarget() {
+        FruitGrower fruitGrower = mock(FruitGrower.class);
+        VmPlot s = TestPlots.fake();
+        Fruit f = TestPlots.budded(s);
+        when(fruitGrower.ripen(argThat(execTargetFor(s)), eq(f)))
+            .thenReturn(CompletableFuture.completedFuture(f));
+
+        assertThat(new NoHookProvider(executor, fruitGrower).ripenFruit(s, f).join()).isSameAs(f);
+        verify(fruitGrower).ripen(argThat(execTargetFor(s)), eq(f));
+    }
+
+    @Test
+    void pickFruit_wrongPlotType_throwsIllegalArgument() {
+        NoHookProvider provider = new NoHookProvider(executor);
+        Fruit f = TestPlots.budded(TestPlots.fake());
+
+        assertThatThrownBy(() -> provider.pickFruit(containerPlot(), f))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -549,7 +582,7 @@ class AbstractGroveProviderTest {
 
     private static ContainerPlot containerPlot() {
         return new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local", "c-1",
-            PlotState.SAPLING, Instant.now(), null, Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
+            PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
             new ContainerSpec(2, 2048));
     }
 
@@ -562,6 +595,10 @@ class AbstractGroveProviderTest {
                 (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.growFruit(c, fruit)),
             Arguments.of("compostFruit",
                 (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.compostFruit(c, fruit)),
+            Arguments.of("pickFruit",
+                (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.pickFruit(c, fruit)),
+            Arguments.of("ripenFruit",
+                (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.ripenFruit(c, fruit)),
             Arguments.of("vine",
                 (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.vine(c)),
             Arguments.of("verifyDevcontainerCli",

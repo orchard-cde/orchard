@@ -78,6 +78,11 @@ class QemuPlantTest {
             awaitReachableHostArg = host;
             awaitReachablePortArg = sshPort;
         }
+
+        @Override
+        public void requestPoweroff(VmPlot plot) {
+            order.add("requestPoweroff");
+        }
     }
 
     private static VmPlot germinated() {
@@ -87,7 +92,7 @@ class QemuPlantTest {
     private QemuGroveProvider provider(QemuCommands commands) {
         QemuConfig config = QemuConfig.builder().vmStoragePath(vmStorage).build();
         return new QemuGroveProvider(config, new DevcontainerCliConfig("0.80.0", 600, 60),
-            new FruitGrower(), commands);
+            new FruitGrower(), commands, java.time.Duration.ofSeconds(60));
     }
 
     @Test
@@ -191,7 +196,7 @@ class QemuPlantTest {
             assertThat(planted.providerInstanceId()).isEqualTo(reserved.id().toString());
             assertThat(provider.inspect(planted).join().state())
                 .as("inspect finds the live process only if runningVms is keyed on the plot id")
-                .isEqualTo(PlotState.SAPLING);
+                .isEqualTo(PlotState.ROOTED);
         } finally {
             started.forEach(Process::destroyForcibly);
         }
