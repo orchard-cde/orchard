@@ -97,12 +97,10 @@ class GroveLifecycleE2ETest {
         await()
             .atMost(GROVE_FLOURISHING_TIMEOUT)
             .pollInterval(POLL_INTERVAL)
+            .failFast(() -> assertNotBlighted(getGrove(groveId)))
             .untilAsserted(() -> {
                 GroveResponse resp = getGrove(groveId);
                 assertThat(resp).isNotNull();
-                assertThat(resp.state())
-                    .as("Grove became BLIGHTED — provisioning failed")
-                    .isNotEqualTo(GroveState.BLIGHTED);
                 assertThat(resp.state())
                     .as("Waiting for FLOURISHING, currently %s", resp.state())
                     .isEqualTo(GroveState.FLOURISHING);
@@ -123,7 +121,7 @@ class GroveLifecycleE2ETest {
     @Test
     @Order(4)
     void sshConfigIsAvailable() {
-        assertThat(groveId).as("groveId must be set").isNotNull();
+        assertThat(latestResponse).as("latestResponse must be set").isNotNull();
 
         ResponseEntity<String> response = restTemplate.getForEntity(
             "/api/groves/" + groveId + "/ssh-config", String.class);
@@ -274,6 +272,12 @@ class GroveLifecycleE2ETest {
         } catch (Exception e) {
             // Best effort
         }
+    }
+
+    private void assertNotBlighted(GroveResponse resp) {
+        assertThat(resp == null ? null : resp.state())
+            .as("Grove %s became BLIGHTED — provisioning failed: %s", groveId, resp)
+            .isNotEqualTo(GroveState.BLIGHTED);
     }
 
     private GroveResponse getGrove(UUID id) {

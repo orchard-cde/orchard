@@ -86,12 +86,10 @@ class GroveSurvivesRestartE2ETest {
         await()
             .atMost(GROVE_FLOURISHING_TIMEOUT)
             .pollInterval(POLL_INTERVAL)
+            .failFast(() -> assertNotBlighted(getGrove(groveId)))
             .untilAsserted(() -> {
                 GroveResponse resp = getGrove(groveId);
                 assertThat(resp).isNotNull();
-                assertThat(resp.state())
-                    .as("Grove became BLIGHTED — provisioning failed")
-                    .isNotEqualTo(GroveState.BLIGHTED);
                 assertThat(resp.state())
                     .as("Waiting for FLOURISHING, currently %s", resp.state())
                     .isEqualTo(GroveState.FLOURISHING);
@@ -131,12 +129,10 @@ class GroveSurvivesRestartE2ETest {
         await()
             .atMost(GROVE_FLOURISHING_TIMEOUT)
             .pollInterval(POLL_INTERVAL)
+            .failFast(() -> assertNotBlighted(getGrove(groveId)))
             .untilAsserted(() -> {
                 GroveResponse resp = getGrove(groveId);
                 assertThat(resp).as("Grove must be found after restart").isNotNull();
-                assertThat(resp.state())
-                    .as("Grove should be FLOURISHING after restart, not %s", resp.state())
-                    .isNotEqualTo(GroveState.BLIGHTED);
                 assertThat(resp.state())
                     .as("Grove must still be FLOURISHING after restart, currently %s", resp.state())
                     .isEqualTo(GroveState.FLOURISHING);
@@ -179,6 +175,7 @@ class GroveSurvivesRestartE2ETest {
             .as("Teardown reached a terminal state but it was ORPHANED, not CLEARED")
             .isEqualTo(GroveState.CLEARED);
 
+        assertThat(latestResponse).as("latestResponse must be set by a previous test").isNotNull();
         UUID plotId = latestResponse.plot().id();
         Process pgrep = new ProcessBuilder("pgrep", "-f", "orchard-" + plotId.toString().substring(0, 8))
             .redirectErrorStream(true)
@@ -217,6 +214,12 @@ class GroveSurvivesRestartE2ETest {
         } catch (Exception e) {
             // Best effort
         }
+    }
+
+    private void assertNotBlighted(GroveResponse resp) {
+        assertThat(resp == null ? null : resp.state())
+            .as("Grove %s became BLIGHTED — provisioning failed: %s", groveId, resp)
+            .isNotEqualTo(GroveState.BLIGHTED);
     }
 
     private GroveResponse getGrove(UUID id) {
