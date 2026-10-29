@@ -94,6 +94,25 @@ docker compose up -d postgres
 java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar status
 ```
 
+## Verifying a Feature
+
+CI runs `./gradlew build compileIntegrationTestJava`: it compiles the integration tests but never
+runs them. Before declaring a feature complete, run both of these and report the results:
+
+```bash
+./gradlew build
+./gradlew :integration-tests:integrationTest -Porchard.e2e.require-qemu=true
+```
+
+The integration suite boots real QEMU VMs and plants this repository (its `.devcontainer`, from
+`main`) as the grove fixture; it takes several minutes. `-Porchard.e2e.require-qemu=true` makes a
+missing QEMU prerequisite fail instead of silently skipping the VM tests. `prepareQemuBaseImage`
+downloads the base image on first run. Prerequisites: `qemu-system-*` and `qemu-img`, `mkisofs` or
+`genisoimage`, an `~/.ssh/orchard_ed25519` key pair, and a container runtime for Testcontainers
+(with podman, set `DOCKER_HOST` to the podman socket and `TESTCONTAINERS_RYUK_DISABLED=true`).
+`Ec2ProviderIntegrationTest` cannot run under podman (LocalStack needs the Docker socket); any
+other failure is a regression.
+
 ## Database
 
 Schema is in `roots/src/main/resources/db/migration/V1__initial_schema.sql`. Main tables:
