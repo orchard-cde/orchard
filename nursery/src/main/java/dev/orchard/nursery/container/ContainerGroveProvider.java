@@ -171,16 +171,38 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
         executor.shutdown();
     }
 
+    /**
+     * Prefers the podman CLI whenever a Podman engine is reachable, even through a {@code docker}
+     * CLI pointed at it: the Docker-compat API can pull the wrong architecture variant.
+     */
     private Optional<ContainerRuntime> resolveRuntime() throws InterruptedException {
-        for (ContainerRuntime candidate : ContainerRuntime.values()) {
-            try {
-                local.execute(candidate.cli() + " info", PROBE_TIMEOUT_SECONDS);
-                return Optional.of(candidate);
-            } catch (IOException e) {
-                log.debug("{} info failed: {}", candidate.cli(), e.getMessage());
-            }
+        boolean dockerUp = succeeds("docker info");
+        if (dockerUp && !dockerFrontsPodman()) {
+            return Optional.of(ContainerRuntime.DOCKER);
         }
-        return Optional.empty();
+        if (succeeds("podman info")) {
+            return Optional.of(ContainerRuntime.PODMAN);
+        }
+        return dockerUp ? Optional.of(ContainerRuntime.DOCKER) : Optional.empty();
+    }
+
+    private boolean dockerFrontsPodman() throws InterruptedException {
+        try {
+            return local.execute("docker version --format '{{json .Server.Components}}'", PROBE_TIMEOUT_SECONDS)
+                .contains("Podman Engine");
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private boolean succeeds(String command) throws InterruptedException {
+        try {
+            local.execute(command, PROBE_TIMEOUT_SECONDS);
+            return true;
+        } catch (IOException e) {
+            log.debug("{} failed: {}", command, e.getMessage());
+            return false;
+        }
     }
 
     private static Path checkedPlotDir(ContainerPlot plot) {

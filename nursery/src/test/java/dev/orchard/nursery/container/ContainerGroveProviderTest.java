@@ -90,6 +90,36 @@ class ContainerGroveProviderTest {
     }
 
     @Test
+    void launch_realDocker_isDocker() throws Exception {
+        local.on(c -> c.startsWith("docker version"), "null");
+
+        ContainerPlot planted = (ContainerPlot) provider.plantSubstrate(draft()).get();
+
+        assertThat(planted.runtime()).isEqualTo(ContainerRuntime.DOCKER);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("podman"));
+    }
+
+    @Test
+    void launch_dockerCliOverPodman_isPodman() throws Exception {
+        local.on(c -> c.startsWith("docker version"), "[{\"Name\":\"Podman Engine\"}]");
+
+        ContainerPlot planted = (ContainerPlot) provider.plantSubstrate(draft()).get();
+
+        assertThat(planted.state()).isEqualTo(PlotState.ROOTED);
+        assertThat(planted.runtime()).isEqualTo(ContainerRuntime.PODMAN);
+    }
+
+    @Test
+    void launch_dockerCliOverPodman_podmanCliMissing_isDocker() throws Exception {
+        local.on(c -> c.startsWith("docker version"), "[{\"Name\":\"Podman Engine\"}]");
+        local.fail(c -> c.equals("podman info"));
+
+        ContainerPlot planted = (ContainerPlot) provider.plantSubstrate(draft()).get();
+
+        assertThat(planted.runtime()).isEqualTo(ContainerRuntime.DOCKER);
+    }
+
+    @Test
     void launch_dockerFails_podmanOk_isPodman() throws Exception {
         local.fail(c -> c.equals("docker info"));
         local.on(c -> c.equals("podman info"), "ok");
