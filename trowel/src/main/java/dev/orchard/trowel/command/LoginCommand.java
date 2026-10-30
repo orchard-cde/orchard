@@ -21,18 +21,34 @@ import java.util.concurrent.TimeUnit;
 )
 public class LoginCommand implements Callable<Integer> {
 
-    @Option(names = {"--fence-server"}, description = "Fence server URL (default: ${FENCE_SERVER_URL:-https://fence.orchard.dev})")
+    @Option(names = {"--fence-server"}, description = "Fence server URL (default: $FENCE_SERVER_URL, else the active target's fence server)")
     private String fenceServerUrl;
 
     @Option(names = {"--no-browser"}, description = "Do not attempt to open browser")
     private boolean noBrowser;
 
+    static final String NO_FENCE_SERVER =
+        "no fence server configured; pass --fence-server, set FENCE_SERVER_URL, or start trowel dev-server";
+
+    static String resolveFenceServer(String flag, String env, OrchardConfig.Target target) {
+        if (flag != null) {
+            return flag;
+        }
+        if (env != null) {
+            return env;
+        }
+        return target != null ? target.fenceServer() : null;
+    }
+
     @Override
     public Integer call() {
         try {
-            String fenceUrl = fenceServerUrl != null ? fenceServerUrl : System.getenv("FENCE_SERVER_URL");
+            OrchardConfig loaded = ConfigLoader.load();
+            String fenceUrl = resolveFenceServer(
+                fenceServerUrl, System.getenv("FENCE_SERVER_URL"), loaded != null ? loaded.activeTarget() : null);
             if (fenceUrl == null) {
-                fenceUrl = Trowel.DEFAULT_FENCE_SERVER;
+                System.err.println(NO_FENCE_SERVER);
+                return 1;
             }
 
             String clientId = Trowel.CLIENT_ID;

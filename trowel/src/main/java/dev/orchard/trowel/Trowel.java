@@ -43,7 +43,6 @@ import java.util.concurrent.Callable;
 public class Trowel implements Callable<Integer> {
 
     public static final String CLIENT_ID = "trowel-cli";
-    public static final String DEFAULT_FENCE_SERVER = "https://fence.orchard.dev";
 
     @Option(names = {"-s", "--server"}, description = "Orchard server URL")
     private String serverUrl;

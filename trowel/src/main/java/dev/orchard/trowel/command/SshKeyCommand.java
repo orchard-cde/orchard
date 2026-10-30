@@ -96,7 +96,7 @@ public class SshKeyCommand implements Callable<Integer> {
         }
     }
 
-    static OrchardConfig planSshKey(String keyName, String explicitTarget, String serverUrl) {
+    static OrchardConfig loadOrDefault(String serverUrl) {
         OrchardConfig config = ConfigLoader.load();
         if (config == null) {
             OrchardConfig.Target local = OrchardConfig.withDefault().targets().get("local");
@@ -104,6 +104,11 @@ public class SshKeyCommand implements Callable<Integer> {
             targets.put("local", new OrchardConfig.Target(serverUrl, local.cultivator()));
             config = new OrchardConfig("local", targets);
         }
+        return config;
+    }
+
+    static OrchardConfig planSshKey(String keyName, String explicitTarget, String serverUrl) {
+        OrchardConfig config = loadOrDefault(serverUrl);
         String targetName = explicitTarget != null ? explicitTarget : config.active();
         OrchardConfig.Target existing = config.targets() == null ? null : config.targets().get(targetName);
         if (existing == null) {

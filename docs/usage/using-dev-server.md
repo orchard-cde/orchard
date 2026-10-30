@@ -82,6 +82,8 @@ Key settings:
 
 The container provider runs repository-controlled commands and mounts with the trellis user's rights on the host: a repo's `initializeCommand` or devfile `preStart` runs in the host shell, and `devcontainer up` honours its `runArgs` and `mounts`. Use it single-tenant, with trusted repositories only.
 
+With the fence enabled, `dev-server start` records `fenceServer = http://localhost:<fence-port>` on the active target when that target points at the dev-server's own core URL, so `trowel login` needs no flags. `trowel login` resolves the fence server from `--fence-server`, then `FENCE_SERVER_URL`, then the active target's `fenceServer`, and fails otherwise.
+
 `trowel grove connect <id>` goes through the gateway for every grove and authenticates with the target's provisioned key only (`IdentitiesOnly=yes`). `trowel ssh-key add` records that key. With the fence enabled, `dev-server start` (background or `-f`) registers a `dev-server` key once core and the gateway are healthy, when you have logged in; otherwise it prints `connect needs a registered key: run trowel login, then trowel ssh-key add`. It does nothing when the active target points at another server. `--no-auth` and `--no-gateway` disable connect. The gateway address comes from `orchard.gateway.ssh-host` and `orchard.gateway.ssh-port`; on any non-local deployment set `orchard.gateway.ssh-host` to the gateway's public host.
 
 Container groves currently have an interim shell: no sftp, no port forwarding and no window-resize, and on docker the shell has no TTY (no line editing), while podman gets one. A future Orchard relay agent removes these limits.

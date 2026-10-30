@@ -201,6 +201,27 @@ class LoginCommandTest {
         assertThat(outContent.toString()).contains("Success User");
     }
 
+    @Test
+    void login_usesFlagThenEnvThenTargetFenceServer() {
+        var target = new OrchardConfig.Target("http://s", "c", "http://target-fence", null, null, null, null);
+
+        assertThat(LoginCommand.resolveFenceServer("http://flag", "http://env", target)).isEqualTo("http://flag");
+        assertThat(LoginCommand.resolveFenceServer(null, "http://env", target)).isEqualTo("http://env");
+        assertThat(LoginCommand.resolveFenceServer(null, null, target)).isEqualTo("http://target-fence");
+        assertThat(LoginCommand.resolveFenceServer(null, null, null)).isNull();
+    }
+
+    @Test
+    void login_noFenceServerConfigured_failsWithMessage() {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+
+        int exitCode = execute("login", "--no-browser");
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(errContent.toString().trim()).isEqualTo(
+            "no fence server configured; pass --fence-server, set FENCE_SERVER_URL, or start trowel dev-server");
+    }
+
     private int execute(String... args) {
         return Trowel.createCommandLine().execute(args);
     }
