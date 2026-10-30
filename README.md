@@ -16,7 +16,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 ## Features
 
 - **devcontainer Support**: Full compatibility with the `.devcontainer` specification
-- **VM-based Isolation**: Each workspace runs in its own QEMU VM with Docker
+- **VM-based Isolation**: Each workspace runs in its own QEMU VM with Docker, or on the local docker/podman engine with the container provider
 - **VS Code Remote SSH**: Connect directly from your local VS Code
 - **Web UI (Canopy)**: Manage workspaces from your browser — [separate repo](https://github.com/orchard-cde/orchard-ui)
 - **CLI (Trowel)**: Plant and manage groves from the command line
@@ -28,7 +28,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 
 - Java 25+
 - Docker & Docker Compose
-- QEMU (for local VM provisioning)
+- QEMU (for local VM provisioning), or for the container provider a reachable docker or podman engine plus `npm install -g @devcontainers/cli@0.87.0`
 
 ### Start the Platform
 
@@ -46,6 +46,7 @@ docker compose up -d postgres
 # Start the dev server — runs orchard core (:17778) + the Canopy UI BFF (:17777)
 trowel dev-server start        # open http://localhost:17777
 trowel dev-server start --no-ui  # core only on :17778 (API only, no UI)
+trowel dev-server start --provider container  # groves on the local docker/podman engine (default: qemu)
 ```
 
 `trowel dev-server start` launches **two processes**:
@@ -231,7 +232,9 @@ spring:
 
 orchard:
   nursery:
-    provider: qemu  # qemu, aws, gcp, azure
+    provider: qemu  # qemu, container, aws, gcp, azure
+    container:
+      workspace-root: ${user.home}/.orchard/plots  # bind-mounted workspaces of container groves
   qemu:
     base-image-path: /tmp/orchard/images/base.qcow2
     vm-storage-path: ${user.home}/.orchard/data/vms

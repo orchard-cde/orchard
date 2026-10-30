@@ -67,6 +67,12 @@ final class GroveClient {
     }
 
     GroveResponse awaitFlourishing(UUID groveId, String step) {
+        GroveResponse resp = awaitRooted(groveId, step);
+        assertThat(resp.plot().sshPort()).as("%s: ssh port", step).isBetween(49200, 49299);
+        return resp;
+    }
+
+    GroveResponse awaitRooted(UUID groveId, String step) {
         await()
             .atMost(GROVE_FLOURISHING_TIMEOUT)
             .pollInterval(POLL_INTERVAL)
@@ -80,7 +86,6 @@ final class GroveClient {
         GroveResponse resp = get(groveId);
         assertThat(resp.plot()).as("%s: plot", step).isNotNull();
         assertThat(resp.plot().state()).as("%s: plot state", step).isEqualTo(PlotState.ROOTED);
-        assertThat(resp.plot().sshPort()).as("%s: ssh port", step).isBetween(49200, 49299);
         return resp;
     }
 

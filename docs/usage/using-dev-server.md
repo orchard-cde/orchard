@@ -1,6 +1,6 @@
 # Using the Dev Server
 
-This guide covers running Orchard locally on your machine to provision development environments using the local QEMU-based VM provider.
+This guide covers running Orchard locally on your machine to provision development environments using the local QEMU-based VM provider or the local container provider.
 
 For the themed naming glossary, see [README.md](../../README.md#themed-glossary).
 
@@ -11,6 +11,7 @@ The fastest way to run the full stack locally is the `trowel dev-server` command
 ```bash
 trowel dev-server start        # core API on :17778, Canopy UI on :17777
 trowel dev-server start --no-ui  # core API only on :17778
+trowel dev-server start --provider container  # groves on the local docker/podman engine (default: qemu)
 ```
 
 Open <http://localhost:17777> for the UI. The CLI's default `server` (written by `trowel config init`) is `http://localhost:17778`, so it talks to this core automatically. See the [README](../../README.md#start-the-platform) for details.
@@ -23,7 +24,9 @@ The rest of this guide covers the **manual contributor workflow** — running Tr
 |-------------|---------|---------|
 | Java | 25+ | Backend (Trellis) and CLI (Trowel) |
 | Docker & Docker Compose | Latest | PostgreSQL and devcontainer runtime |
-| QEMU | Latest | Local VM provisioning |
+| QEMU | Latest | Local VM provisioning (`--provider qemu`) |
+| docker or podman | Latest | Container provider (`--provider container`): the engine must be reachable (`docker info` or `podman info` succeeds) |
+| devcontainer CLI | 0.87.0 | Container provider: `npm install -g @devcontainers/cli@0.87.0` |
 | Node.js | 18+ | Web UI (Canopy) — optional |
 
 ## Starting the Backend
@@ -72,6 +75,14 @@ Key settings:
 - `orchard.qemu.base-image-path` — Path to the base QCOW2 VM image
 - `orchard.qemu.vm-storage-path` — Directory for VM disk images
 - `orchard.qemu.enable-kvm` — Enable KVM hardware acceleration (Linux only)
+
+## Container Provider
+
+`--provider container` (`orchard.nursery.provider: container`) plants groves on the local machine instead of in a VM. Each plot is a bind-mounted workspace directory under `orchard.nursery.container.workspace-root` (default `${user.home}/.orchard/plots`) and the fruit is a devcontainer started by the host's `devcontainer` CLI on the docker or podman engine. Git and the container CLIs run on the host; commands into the grove run through `<runtime> exec`.
+
+`trowel grove connect <id>` goes through the gateway for every grove and authenticates with the target's provisioned key only (`IdentitiesOnly=yes`). `trowel ssh-key add` records that key. On a background start with the fence enabled, the dev-server registers a `dev-server` key when you have logged in; otherwise it prints `connect needs a registered key: run trowel login, then trowel ssh-key add`. `--no-auth` and `--no-gateway` disable connect. The gateway address comes from `orchard.gateway.ssh-host` and `orchard.gateway.ssh-port`.
+
+Container groves currently have an interim shell: no sftp, no port forwarding and no window-resize, and on docker the shell has no TTY (no line editing), while podman gets one. A future Orchard relay agent removes these limits.
 
 ## Starting the Web UI (Optional)
 
@@ -125,6 +136,7 @@ The key path can also be set via the `ORCHARD_SSH_PUBLIC_KEY` environment variab
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
+| Container grove BLIGHTED at plant | No reachable engine or wrong devcontainer CLI version | Check `docker info`/`podman info` and `devcontainer --version` prints `0.87.0` |
 | VM stuck in SPROUTING | QEMU not installed or base image missing | Verify `qemu-system-x86_64` is on PATH and base image exists |
 | Connection refused on :8080 | Trellis not running | Run `./gradlew :trellis:bootRun` |
 | PostgreSQL connection error | Database not started | Run `docker compose up -d postgres` |
