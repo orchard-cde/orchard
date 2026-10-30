@@ -355,7 +355,7 @@ public class FruitGrower {
             }
             if (!seed.forwardPorts().isEmpty()) {
                 for (String port : seed.forwardPorts()) {
-                    cmd.append(" -p ").append(port).append(":").append(port);
+                    cmd.append(" -p ").append(ShellQuote.quote(port + ":" + port));
                 }
             }
             if (seed.memoryLimit() != null) {
@@ -676,7 +676,7 @@ public class FruitGrower {
         }
 
         for (String port : seed.forwardPorts()) {
-            cmd.append(" -p ").append(port).append(":").append(port);
+            cmd.append(" -p ").append(ShellQuote.quote(port + ":" + port));
         }
 
         // extra mounts (issue #29)
@@ -726,9 +726,9 @@ public class FruitGrower {
         for (String cache : seed.buildCacheFrom()) {
             buildCmd.append(" --cache-from ").append(ShellQuote.quote(cache));
         }
-        // build.options — verbatim flags (issue #31)
+        // build.options — one argument per element (issue #31)
         for (String opt : seed.buildOptions()) {
-            buildCmd.append(" ").append(opt);
+            buildCmd.append(" ").append(ShellQuote.quote(opt));
         }
 
         buildCmd.append(" -f ").append(ShellQuote.quote(workspace + "/" + seed.dockerfilePath()));

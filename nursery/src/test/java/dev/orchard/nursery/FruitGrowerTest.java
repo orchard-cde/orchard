@@ -728,6 +728,26 @@ class FruitGrowerTest {
     }
 
     @Test
+    void legacy_forwardPortsAndBuildOptions_eachQuotedAsOneArgument() throws Exception {
+        var runner = new RecordingRunner();
+        List<String> ports = List.of("8080", "1;touch /tmp/p");
+        Seed image = Seed.devcontainer().name("n").image("img").forwardPorts(ports).build();
+        Seed built = Seed.devcontainer().name("n").dockerfilePath("Dockerfile")
+            .buildOptions(List.of("--network=host", "--label=a b;id")).build();
+        Seed devfile = DevfileSeed.builder().name("n").image("img").forwardPorts(ports).build();
+
+        plainGrower().grow(target(runner, "/h/ws", ContainerRuntime.DOCKER), buddedFruit(image)).get();
+        plainGrower().grow(target(runner, "/h/ws", ContainerRuntime.DOCKER), buddedFruit(built)).get();
+        plainGrower().grow(target(runner, "/h/ws", ContainerRuntime.DOCKER), buddedFruit(devfile)).get();
+
+        assertThat(runner.commands).filteredOn(c -> c.startsWith("docker run")).hasSize(3)
+            .filteredOn(c -> !c.contains("orchard-fruit-"))
+            .allMatch(c -> c.contains(" -p '8080:8080' -p '1;touch /tmp/p:1;touch /tmp/p'"));
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("docker build")
+            && c.contains(" '--network=host' '--label=a b;id' "));
+    }
+
+    @Test
     void containers_areLabelledWithThePlotId() throws Exception {
         var runner = new RecordingRunner();
         Seed devfile = DevfileSeed.builder().name("n").image("img").build();
