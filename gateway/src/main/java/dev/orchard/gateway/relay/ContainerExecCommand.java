@@ -1,5 +1,6 @@
 package dev.orchard.gateway.relay;
 
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.gateway.api.GatewayRoute;
 import org.apache.sshd.server.Environment;
 import org.apache.sshd.server.channel.ChannelSession;
@@ -14,18 +15,19 @@ import java.util.List;
 
 /**
  * Shell/exec channel for a container grove: runs {@code <runtime> exec -i [-t] ... <containerId> /bin/sh}
- * on the gateway host and pumps stdin, stdout and stderr through it, exiting with the process's code.
- * The argv goes straight to the launcher, never through a host shell, so the client's command reaches
- * the container's {@code /bin/sh -c} unaltered. Closing the channel kills the process and its descendants.
+ * on the gateway host and pumps stdin, stdout and stderr through it, exiting with the process's code once
+ * all output has been delivered. The argv goes straight to the launcher, never through a host shell, so
+ * the client's command reaches the container's {@code /bin/sh -c} unaltered. Closing the channel kills the
+ * process and its descendants.
  *
  * <p>This is the interim relay: there is no window-change propagation, no sftp subsystem and no port
- * forwarding for container groves.
+ * forwarding for container groves. Docker refuses {@code -t} when its stdin is a pipe, so docker shells
+ * run {@code /bin/sh -il} without a TTY: no line editing or curses apps until the relay agent. Podman
+ * accepts {@code -t} and gets a real PTY.
  */
 public class ContainerExecCommand extends AbstractCommandSupport {
 
     static final String SFTP_REFUSED = "sftp is not available for container groves yet";
-
-    private static final int PUMP_JOIN_MILLIS = 2_000;
 
     private final GatewayRoute route;
     private final RelayCommand.Mode mode;
@@ -49,6 +51,11 @@ public class ContainerExecCommand extends AbstractCommandSupport {
         if (mode == RelayCommand.Mode.SUBSYSTEM) {
             writeError(SFTP_REFUSED);
             onExit(1);
+            return;
+        }
+        if (route.runtime() == null) {
+            writeError("container route for grove " + route.groveId() + " has no runtime");
+            onExit(255);
             return;
         }
         Process started;
@@ -75,8 +82,8 @@ public class ContainerExecCommand extends AbstractCommandSupport {
                 .start(() -> pump(started.getErrorStream(), getErrorStream()));
         try {
             int exit = started.waitFor();
-            outPump.join(PUMP_JOIN_MILLIS);
-            errPump.join(PUMP_JOIN_MILLIS);
+            outPump.join();
+            errPump.join();
             onExit(exit);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -98,9 +105,13 @@ public class ContainerExecCommand extends AbstractCommandSupport {
     }
 
     List<String> argv(String term) {
+        boolean podman = route.runtime() == ContainerRuntime.PODMAN;
         List<String> argv = new ArrayList<>(List.of(route.runtime().cli(), "exec", "-i"));
         if (term != null) {
-            argv.addAll(List.of("-t", "-e", "TERM=" + term));
+            if (podman) {
+                argv.add("-t");
+            }
+            argv.addAll(List.of("-e", "TERM=" + term));
         }
         if (route.user() != null) {
             argv.addAll(List.of("-u", route.user()));
@@ -112,7 +123,7 @@ public class ContainerExecCommand extends AbstractCommandSupport {
         if (mode == RelayCommand.Mode.EXEC) {
             argv.addAll(List.of("/bin/sh", "-c", command));
         } else {
-            argv.addAll(List.of("/bin/sh", "-l"));
+            argv.addAll(List.of("/bin/sh", podman ? "-l" : "-il"));
         }
         return argv;
     }

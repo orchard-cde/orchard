@@ -49,7 +49,7 @@ public class TrellisApiClient {
                 .exchange((request, response) -> {
                     int status = response.getStatusCode().value();
                     if (status == 200) {
-                        return Optional.of(objectMapper.readValue(response.getBody(), GatewayRoute.class));
+                        return Optional.of(requireKind(objectMapper.readValue(response.getBody(), GatewayRoute.class)));
                     }
                     if (status == 404 || status == 409) {
                         return Optional.<GatewayRoute>empty();
@@ -66,13 +66,21 @@ public class TrellisApiClient {
                 .exchange((request, response) -> {
                     int status = response.getStatusCode().value();
                     if (status == 200) {
-                        return Optional.of(objectMapper.readValue(response.getBody(), GatewayRoute.class));
+                        return Optional.of(requireKind(objectMapper.readValue(response.getBody(), GatewayRoute.class)));
                     }
                     if (status == 400 || status == 403 || status == 404) {
                         return Optional.<GatewayRoute>empty();
                     }
                     throw new IllegalStateException("Unexpected status " + status + " from trellis");
                 });
+    }
+
+    /** Trellis always sends a kind; a route without one is a trellis bug, refused rather than guessed. */
+    private static GatewayRoute requireKind(GatewayRoute route) {
+        if (route.kind() == null) {
+            throw new IllegalStateException("trellis returned a route without a kind for grove " + route.groveId());
+        }
+        return route;
     }
 
     public List<GatewayKey> listKeys(UUID cultivatorId) {

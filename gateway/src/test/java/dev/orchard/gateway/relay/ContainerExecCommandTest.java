@@ -53,6 +53,80 @@ class ContainerExecCommandTest {
 
     @Test
     @Timeout(10)
+    void argv_podmanShellWithPty_hasTtyFlag() throws Exception {
+        ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
+        Run run = Run.start(new ContainerExecCommand(podmanRoute(null, null),
+                RelayCommand.Mode.SHELL, null, launcher), "", "xterm");
+
+        run.awaitExit();
+
+        assertThat(launcher.argvs).containsExactly(List.of(
+                "podman", "exec", "-i", "-t", "-e", "TERM=xterm", "c0ffee", "/bin/sh", "-l"));
+    }
+
+    @Test
+    @Timeout(10)
+    void argv_dockerShellWithPty_noTtyFlag_interactiveShell() throws Exception {
+        ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
+        Run run = Run.start(new ContainerExecCommand(dockerRoute(),
+                RelayCommand.Mode.SHELL, null, launcher), "", "xterm-256color");
+
+        run.awaitExit();
+
+        assertThat(launcher.argvs).containsExactly(List.of(
+                "docker", "exec", "-i", "-e", "TERM=xterm-256color", "-u", "vscode",
+                "-w", "/workspaces/app", "abc123", "/bin/sh", "-il"));
+    }
+
+    @Test
+    @Timeout(10)
+    void argv_dockerShellWithoutPty_interactiveShell() throws Exception {
+        ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
+        Run run = Run.start(new ContainerExecCommand(dockerRoute(),
+                RelayCommand.Mode.SHELL, null, launcher), "", null);
+
+        run.awaitExit();
+
+        assertThat(launcher.argvs).containsExactly(List.of(
+                "docker", "exec", "-i", "-u", "vscode", "-w", "/workspaces/app", "abc123", "/bin/sh", "-il"));
+    }
+
+    @Test
+    @Timeout(10)
+    void nullRuntime_exits255WithMessage() throws Exception {
+        UUID groveId = UUID.randomUUID();
+        GatewayRoute route = new GatewayRoute(groveId, UUID.randomUUID(), "FLOURISHING", RouteKind.CONTAINER,
+                null, null, null, "c0ffee", null, null);
+        ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
+        Run run = Run.start(new ContainerExecCommand(route, RelayCommand.Mode.EXEC, "true", launcher), "", null);
+
+        assertThat(run.awaitExit()).isEqualTo(255);
+        assertThat(run.err()).isEqualTo("container route for grove " + groveId + " has no runtime\n");
+        assertThat(launcher.argvs).isEmpty();
+    }
+
+    @Test
+    @Timeout(30)
+    void exitStatus_sentOnlyAfterAllOutputDelivered() throws Exception {
+        String big = "x".repeat(80 * 1024);
+        ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, big, ""));
+        ContainerExecCommand command = new ContainerExecCommand(podmanRoute(null, null),
+                RelayCommand.Mode.EXEC, "cat big", launcher);
+        SlowStream slowClient = new SlowStream(300);
+        CompletableFuture<Integer> deliveredAtExit = new CompletableFuture<>();
+        command.setInputStream(new ByteArrayInputStream(new byte[0]));
+        command.setOutputStream(slowClient);
+        command.setErrorStream(new ByteArrayOutputStream());
+        command.setExitCallback((code, message, closeImmediately) -> deliveredAtExit.complete(slowClient.size()));
+        Environment env = mock(Environment.class);
+        when(env.getEnv()).thenReturn(Map.of());
+        command.start(mock(ChannelSession.class), env);
+
+        assertThat(deliveredAtExit.get(25, TimeUnit.SECONDS)).isEqualTo(big.length());
+    }
+
+    @Test
+    @Timeout(10)
     void argv_execWithoutPty_noUser() throws Exception {
         ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
         String command = "echo 'a b' && ls \"$HOME\"; rm -rf /tmp/x";
@@ -204,6 +278,45 @@ class ContainerExecCommandTest {
             Thread.sleep(10);
         }
         assertThat(process.forciblyDestroyed).isTrue();
+    }
+
+    private static GatewayRoute dockerRoute() {
+        return new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.CONTAINER,
+                null, null, ContainerRuntime.DOCKER, "abc123", "vscode", "/workspaces/app");
+    }
+
+    /** A client that drains slowly: each write takes {@code delayMillis}. */
+    private static final class SlowStream extends OutputStream {
+        private final ByteArrayOutputStream received = new ByteArrayOutputStream();
+        private final long delayMillis;
+
+        SlowStream(long delayMillis) {
+            this.delayMillis = delayMillis;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            write(new byte[] {(byte) b}, 0, 1);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            try {
+                Thread.sleep(delayMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            }
+            synchronized (received) {
+                received.write(b, off, len);
+            }
+        }
+
+        int size() {
+            synchronized (received) {
+                return received.size();
+            }
+        }
     }
 
     private record Run(ChannelSession channel, FlushRecordingStream stdout, FlushRecordingStream stderr,
