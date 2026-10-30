@@ -136,7 +136,7 @@ class ContainerGroveE2ETest {
     private static ContainerPlot containerPlot(GroveResponse grove, PlotState state) {
         var info = grove.plot();
         return new ContainerPlot(info.id(), grove.id(), info.providerId(), info.id().toString(), state,
-            null, null, WORKSPACE_ROOT.resolve(info.id().toString()).resolve("workspace"),
+            null, null, WORKSPACE_ROOT.resolve(info.id().toString()).resolve(info.id().toString()),
             info.runtime(), null);
     }
 

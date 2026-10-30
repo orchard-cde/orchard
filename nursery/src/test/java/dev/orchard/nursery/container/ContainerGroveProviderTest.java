@@ -71,11 +71,23 @@ class ContainerGroveProviderTest {
         ContainerPlot plot = draft();
 
         assertThat(plot.state()).isEqualTo(PlotState.GERMINATING);
-        assertThat(plot.workspacePath()).isEqualTo(root.resolve(plot.id().toString()).resolve("workspace"));
         assertThat(plot.runtime()).isNull();
         assertThat(plot.spec().cpuCores()).isEqualTo(2);
         assertThat(plot.spec().memoryMb()).isEqualTo(2048);
         assertThat(plot.providerId()).isEqualTo("container");
+    }
+
+    @Test
+    void draft_workspaceDirNamedAfterPlot() {
+        ContainerPlot plot = draft();
+
+        assertThat(plot.workspacePath())
+            .isEqualTo(root.resolve(plot.id().toString()).resolve(plot.id().toString()));
+    }
+
+    @Test
+    void twoPlots_distinctComposeProjectBasenames() {
+        assertThat(draft().workspacePath().getFileName()).isNotEqualTo(draft().workspacePath().getFileName());
     }
 
     @Test
@@ -243,7 +255,7 @@ class ContainerGroveProviderTest {
         ContainerPlot d = draft();
         ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
             PlotState.DORMANT, Instant.now(), Instant.now(),
-            otherRoot.resolve(d.id().toString()).resolve("workspace"), ContainerRuntime.DOCKER, d.spec());
+            otherRoot.resolve(d.id().toString()).resolve(d.id().toString()), ContainerRuntime.DOCKER, d.spec());
 
         provider.uproot(plot).get();
 
@@ -252,10 +264,13 @@ class ContainerGroveProviderTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/workspace", "/tmp/x/workspace", "REL"})
+    @ValueSource(strings = {"/workspace", "/tmp/x/workspace", "/tmp/x/ID", "/tmp/ID/workspace", "/tmp/OTHER/ID",
+        "/tmp/ID/OTHER", "REL"})
     void uproot_unexpectedPath_refusesAndDeletesNothing(String path) {
         ContainerPlot d = draft();
-        String workspace = path.equals("REL") ? "rel/" + d.id() + "/workspace" : path;
+        String id = d.id().toString();
+        String workspace = path.equals("REL") ? "rel/" + id + "/" + id
+            : path.replace("OTHER", UUID.randomUUID().toString()).replace("ID", id);
         ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
             PlotState.DORMANT, Instant.now(), Instant.now(), Path.of(workspace), ContainerRuntime.DOCKER, d.spec());
 

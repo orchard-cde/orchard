@@ -67,7 +67,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     protected ContainerPlot draft(UUID groveId, SeedlingSpec spec) {
         UUID id = UUID.randomUUID();
         return new ContainerPlot(id, groveId, getProviderId(), null, PlotState.GERMINATING,
-            Instant.now(), null, plotRoot(id).resolve("workspace"), null,
+            Instant.now(), null, plotRoot(id).resolve(id.toString()), null,
             new ContainerSpec(spec.cpuCores(), spec.memoryMb()));
     }
 
@@ -205,13 +205,17 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
         }
     }
 
+    /**
+     * The workspace is named after the plot, not a fixed {@code workspace}, because the devcontainer
+     * CLI names a Compose project after the workspace folder's basename.
+     */
     private static Path checkedPlotDir(ContainerPlot plot) {
         Path workspace = plot.workspacePath();
         Path dir = workspace.getParent();
+        String id = plot.id().toString();
         boolean valid = workspace.isAbsolute()
-            && workspace.getFileName() != null && workspace.getFileName().toString().equals("workspace")
-            && dir != null && dir.getFileName() != null
-            && dir.getFileName().toString().equals(plot.id().toString())
+            && workspace.getFileName() != null && workspace.getFileName().toString().equals(id)
+            && dir != null && dir.getFileName() != null && dir.getFileName().toString().equals(id)
             && dir.getParent() != null;
         if (!valid) {
             throw new IllegalStateException("refusing to delete unexpected plot directory: " + workspace);

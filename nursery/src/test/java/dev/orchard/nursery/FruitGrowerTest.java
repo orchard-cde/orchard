@@ -348,6 +348,25 @@ class FruitGrowerTest {
     }
 
     @Test
+    void compost_composeFruit_runsComposeDownWithVolumes() throws Exception {
+        var runner = new RecordingRunner();
+        Fruit fruit = runningFruit(defaultSeed()).withComposeProjectName("my proj");
+
+        plainGrower().compost(target(runner, "/h/ws", ContainerRuntime.PODMAN), fruit).join();
+
+        assertThat(runner.commands).containsExactly("podman compose -p 'my proj' down -v");
+    }
+
+    @Test
+    void compost_singleContainer_removesOnlyThatContainer() throws Exception {
+        var runner = new RecordingRunner();
+
+        plainGrower().compost(target(runner, "/h/ws", ContainerRuntime.DOCKER), runningFruit(defaultSeed())).join();
+
+        assertThat(runner.commands).containsExactly("docker rm -f 'cid1'");
+    }
+
+    @Test
     void pick_commandFails_completesExceptionally() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
         when(runner.execute(anyString())).thenThrow(new IOException("boom"));

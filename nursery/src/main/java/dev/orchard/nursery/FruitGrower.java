@@ -41,8 +41,9 @@ import java.util.concurrent.Executors;
  * <p>{@link #pick}, {@link #ripen} and {@link #compost} run raw docker commands over the runner on
  * either path — the CLI doesn't ship a {@code down} subcommand. {@code pick} and {@code ripen} stop
  * and start the whole compose project ({@code docker compose -p <project> stop|start}) for compose
- * fruit and the single container otherwise; {@code compost} runs {@code docker rm -f} on the
- * fruit's container.
+ * fruit and the single container otherwise; {@code compost} runs {@code docker compose -p <project>
+ * down -v} for compose fruit, so sidecars, networks and volumes go too, and {@code docker rm -f} on
+ * the fruit's container otherwise.
  */
 public class FruitGrower {
 
@@ -578,14 +579,19 @@ public class FruitGrower {
     }
 
     /**
-     * Composts a fruit (removes the container entirely).
+     * Composts a fruit: tears down its whole compose project with its volumes, or removes its
+     * single container.
      */
     public CompletableFuture<Void> compost(ExecTarget target, Fruit fruit) {
         return CompletableFuture.runAsync(() -> {
             try {
                 log.info("Composting fruit {}", fruit.id());
-                if (fruit.containerId() != null) {
-                    executeSsh(target.runner(), target.runtime().cli() + " rm -f " + ShellQuote.quote(fruit.containerId()));
+                String cli = target.runtime().cli();
+                if (fruit.composeProjectName() != null) {
+                    executeSsh(target.runner(), cli + " compose -p " + ShellQuote.quote(fruit.composeProjectName())
+                        + " down -v");
+                } else if (fruit.containerId() != null) {
+                    executeSsh(target.runner(), cli + " rm -f " + ShellQuote.quote(fruit.containerId()));
                 }
             } catch (Exception e) {
                 log.error("Failed to compost fruit {}", fruit.id(), e);
