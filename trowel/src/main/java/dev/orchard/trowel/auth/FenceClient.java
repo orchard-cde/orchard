@@ -139,8 +139,14 @@ public class FenceClient {
         String userCode,
         String verificationUri,
         int expiresIn,
-        int interval
-    ) {}
+        Integer interval
+    ) {
+        private static final int DEFAULT_POLL_INTERVAL_SECONDS = 5;
+
+        public int pollIntervalSeconds() {
+            return interval == null ? DEFAULT_POLL_INTERVAL_SECONDS : interval;
+        }
+    }
 
     public record TokenResponse(
         String accessToken,

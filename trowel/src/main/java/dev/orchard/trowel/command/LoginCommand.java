@@ -73,7 +73,7 @@ public class LoginCommand implements Callable<Integer> {
                 }
             }
 
-            var tokenResponse = pollForToken(fenceClient, deviceAuth.deviceCode(), deviceAuth.interval());
+            var tokenResponse = pollForToken(fenceClient, deviceAuth.deviceCode(), deviceAuth.pollIntervalSeconds());
 
             System.out.println();
             System.out.println("Authenticated! Fetching user info...");

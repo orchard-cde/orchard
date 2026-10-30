@@ -64,6 +64,37 @@ class FenceClientTest {
     }
 
     @Test
+    void deviceAuthorization_withoutInterval_defaultsToFiveSeconds() throws Exception {
+        server.createContext("/oauth2/device_authorization", exchange ->
+            respond(exchange, 200, mapper.writeValueAsString(Map.of(
+                "device_code", "dc-123",
+                "user_code", "ABCD-EFGH",
+                "verification_uri", "https://fence.example.com/device",
+                "expires_in", 600
+            ))));
+
+        var response = new FenceClient(baseUrl, "test-client-id").requestDeviceAuthorization();
+
+        assertThat(response.pollIntervalSeconds()).isEqualTo(5);
+    }
+
+    @Test
+    void deviceAuthorization_withInterval_usesIt() throws Exception {
+        server.createContext("/oauth2/device_authorization", exchange ->
+            respond(exchange, 200, mapper.writeValueAsString(Map.of(
+                "device_code", "dc-123",
+                "user_code", "ABCD-EFGH",
+                "verification_uri", "https://fence.example.com/device",
+                "expires_in", 600,
+                "interval", 7
+            ))));
+
+        var response = new FenceClient(baseUrl, "test-client-id").requestDeviceAuthorization();
+
+        assertThat(response.pollIntervalSeconds()).isEqualTo(7);
+    }
+
+    @Test
     void requestDeviceAuthorization_sendsCorrectBody() throws Exception {
         AtomicReference<String> capturedBody = new AtomicReference<>();
         server.createContext("/oauth2/device_authorization", exchange -> {
