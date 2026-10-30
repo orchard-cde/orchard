@@ -305,6 +305,29 @@ public class DevServerCommand implements Callable<Integer> {
             return command;
         }
 
+        /** Foreground counterpart of the background path's provisioning: needs core and the gateway up. */
+        void provisionKeyOnceHealthy(Process core, Process gateway) {
+            if (gateway == null) {
+                return;
+            }
+            System.out.print("  Waiting for server to start");
+            if (!waitForHealth(core, corePort, "/api/health", 30)) {
+                System.out.println(" not ready; connect key not provisioned.");
+                return;
+            }
+            System.out.println(" ready!");
+            provisionKey(coreClient());
+        }
+
+        private OrchardClient coreClient() {
+            return new OrchardClient(coreUrl(),
+                parent != null && parent.parent != null ? parent.parent.getAuthProvider() : new NoAuthProvider());
+        }
+
+        private String coreUrl() {
+            return "http://localhost:" + corePort;
+        }
+
         void provisionKey(OrchardClient client) {
             try {
                 String targetName = parent != null && parent.parent != null ? parent.parent.getTargetName() : null;
@@ -312,14 +335,16 @@ public class DevServerCommand implements Callable<Integer> {
                 if (config != null && config.targets() != null) {
                     String name = targetName != null ? targetName : config.active();
                     OrchardConfig.Target target = name == null ? null : config.targets().get(name);
+                    if (target != null && !isCoreUrl(target.server())) {
+                        return;
+                    }
                     if (target != null && target.sshKey() != null
                             && Files.exists(SshKeyPaths.privateKey(target.sshKey()))) {
                         return;
                     }
                 }
 
-                OrchardConfig planned = SshKeyCommand.planSshKey(
-                    DEV_SERVER_KEY, targetName, "http://localhost:" + corePort);
+                OrchardConfig planned = SshKeyCommand.planSshKey(DEV_SERVER_KEY, targetName, coreUrl());
                 SshKeyStore.loadOrCreate(DEV_SERVER_KEY);
                 String publicLine = Files.readString(SshKeyPaths.publicKey(DEV_SERVER_KEY)).trim();
                 boolean registered = client.listSshPublicKeys().stream()
@@ -338,6 +363,11 @@ public class DevServerCommand implements Callable<Integer> {
                     System.err.println("  could not provision the connect key: " + message);
                 }
             }
+        }
+
+        /** A target on another server must never get this dev-server's key or send its credentials here. */
+        private boolean isCoreUrl(String server) {
+            return server != null && server.replaceAll("/+$", "").equals(coreUrl());
         }
 
         ArrayList<String> buildUiCommand(Path uiBinary) {
@@ -364,8 +394,8 @@ public class DevServerCommand implements Callable<Integer> {
             pb.inheritIO();
             Process process = pb.start();
 
-            // Foreground mode has no health-check gate on core, so best-effort start the
-            // gateway right away (it lazily contacts fence/trellis on first SSH session).
+            // Best-effort start the gateway before core is healthy (it lazily contacts fence/trellis
+            // on first SSH session); only key provisioning waits for core.
             Process gatewayProcess = null;
             if (shouldStartGateway()) {
                 gatewayProcess = startGateway();
@@ -384,6 +414,8 @@ public class DevServerCommand implements Callable<Integer> {
                     gatewayFinal.destroy();
                 }
             }));
+
+            provisionKeyOnceHealthy(process, gatewayProcess);
 
             int exitCode = process.waitFor();
 
@@ -449,9 +481,7 @@ public class DevServerCommand implements Callable<Integer> {
                     }
                     return 1;
                 }
-                provisionKey(new OrchardClient(
-                    "http://localhost:" + corePort,
-                    parent != null && parent.parent != null ? parent.parent.getAuthProvider() : new NoAuthProvider()));
+                provisionKey(coreClient());
             }
 
             if (uiBinary != null) {
