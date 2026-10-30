@@ -38,6 +38,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 @Service
 public class GroveService {
@@ -305,12 +306,19 @@ public class GroveService {
         }
     }
 
+    /** Remote transports a container grove may clone over; its host is the trellis machine itself. */
+    private static final Pattern CONTAINER_REPO_URL = Pattern.compile(
+        "(?i)(https?|ssh)://.+|[A-Za-z0-9._-]+@[^/:\\s]+:.+");
+
     private String cloneRepository(GroveProvider provider, Plot plot, String repoUrl, String branch) {
+        if (plot instanceof ContainerPlot && !CONTAINER_REPO_URL.matcher(repoUrl).matches()) {
+            throw new IllegalArgumentException("unsupported repository URL for a container grove: " + repoUrl);
+        }
         log.info("Cloning {} branch {} to plot {}", repoUrl, branch, plot.id());
         try {
             CommandRunner host = provider.host(plot);
             String ws = ShellQuote.quote(provider.workspacePath(plot));
-            host.execute("git clone --branch %s --depth 1 %s %s".formatted(
+            host.execute("git clone --branch %s --depth 1 -- %s %s".formatted(
                 ShellQuote.quote(branch), ShellQuote.quote(repoUrl), ws));
             String commitSha = host.execute("git -C " + ws + " rev-parse HEAD").trim();
             log.info("Repository cloned, commit: {}", commitSha);

@@ -16,6 +16,8 @@ import dev.orchard.roots.repository.GroveRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -528,9 +530,45 @@ class GroveServiceTest {
             "https://github.com/user/repo", "main", "/h/ws", runner);
 
         assertThat(commands).contains(
-            "git clone --branch 'main' --depth 1 'https://github.com/user/repo' '/h/ws'",
+            "git clone --branch 'main' --depth 1 -- 'https://github.com/user/repo' '/h/ws'",
             "git -C '/h/ws' rev-parse HEAD");
         verify(ownerProvider, never()).vine(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"file:///etc", "/etc", "--upload-pack=touch /tmp/x", "ext::sh -c id"})
+    void clone_containerPlot_unsupportedUrl_blightsWithoutCloning(String url) throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        lenient().when(ownerProvider.host(any())).thenReturn(runner);
+        when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
+            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+
+        groveService.provisionGrove(
+            Grove.plant(UUID.randomUUID(), "test", url, "main").withPlot(containerPlot()), SeedSpec.AUTO);
+
+        verifyNoInteractions(runner);
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues().getLast().getState()).isEqualTo(GroveState.BLIGHTED);
+        verify(ownerProvider, never()).growFruit(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"https://github.com/u/r", "http://h/r.git",
+        "ssh://git@h/r.git", "git@github.com:u/r.git", "HTTPS://github.com/u/r"})
+    void clone_containerPlot_supportedUrl_clones(String url) throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(containerPlot(), url, "main", "/h/ws", runner);
+
+        assertThat(commands).contains("git clone --branch 'main' --depth 1 -- '" + url + "' '/h/ws'");
+    }
+
+    @Test
+    void clone_vmPlot_localPathStillAllowed() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(vmPlot(), "/srv/repo", "main", "/workspace", runner);
+
+        assertThat(commands).contains("git clone --branch 'main' --depth 1 -- '/srv/repo' '/workspace'");
     }
 
     @Test
