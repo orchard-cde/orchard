@@ -145,14 +145,16 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
         ContainerPlot container = narrow(plot);
         return CompletableFuture.runAsync(() -> {
             log.info("Uprooting plot {}", container.id());
-            String cli = container.runtime().cli();
             try {
-                String ids = local.execute(cli + " ps -aq --filter " + labelFilter(container),
-                    TEARDOWN_TIMEOUT_SECONDS);
-                for (String id : ids.lines().map(String::trim).filter(s -> !s.isEmpty()).toList()) {
-                    local.execute(cli + " rm -f " + ShellQuote.quote(id), TEARDOWN_TIMEOUT_SECONDS);
+                if (container.runtime() != null) {
+                    String cli = container.runtime().cli();
+                    String ids = local.execute(cli + " ps -aq --filter " + labelFilter(container),
+                        TEARDOWN_TIMEOUT_SECONDS);
+                    for (String id : ids.lines().map(String::trim).filter(s -> !s.isEmpty()).toList()) {
+                        local.execute(cli + " rm -f " + ShellQuote.quote(id), TEARDOWN_TIMEOUT_SECONDS);
+                    }
                 }
-                local.execute("rm -rf " + ShellQuote.quote(plotRoot(container.id()).toString()),
+                local.execute("rm -rf " + ShellQuote.quote(container.workspacePath().getParent().toString()),
                     TEARDOWN_TIMEOUT_SECONDS);
             } catch (IOException e) {
                 throw new CompletionException(e);

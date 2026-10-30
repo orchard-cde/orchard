@@ -197,6 +197,47 @@ class ContainerGroveProviderTest {
     }
 
     @Test
+    void uproot_nullRuntime_skipsContainersAndRemovesDir() throws Exception {
+        ContainerPlot d = draft();
+
+        provider.uproot(d).get();
+
+        assertThat(local.commands).containsExactly("rm -rf '" + root.resolve(d.id().toString()) + "'");
+    }
+
+    @Test
+    void uproot_usesPersistedPathNotCurrentConfig() throws Exception {
+        Path otherRoot = root.resolve("other");
+        ContainerPlot d = draft();
+        ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
+            PlotState.DORMANT, Instant.now(), Instant.now(),
+            otherRoot.resolve(d.id().toString()).resolve("workspace"), ContainerRuntime.DOCKER, d.spec());
+
+        provider.uproot(plot).get();
+
+        assertThat(local.commands).contains("rm -rf '" + otherRoot.resolve(d.id().toString()) + "'");
+        assertThat(local.commands).noneMatch(c -> c.startsWith("rm -rf") && c.contains(root + "/" + d.id()));
+    }
+
+    @Test
+    void uproot_rmFails_completesExceptionally() {
+        local.on(c -> c.startsWith("docker ps -aq"), "c1\n");
+        local.fail(c -> c.startsWith("docker rm -f"));
+
+        assertThatThrownBy(() -> provider.uproot(planted(PlotState.DORMANT)).get())
+            .isInstanceOf(ExecutionException.class);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("rm -rf"));
+    }
+
+    @Test
+    void uproot_rmRfFails_completesExceptionally() {
+        local.fail(c -> c.startsWith("rm -rf"));
+
+        assertThatThrownBy(() -> provider.uproot(planted(PlotState.DORMANT)).get())
+            .isInstanceOf(ExecutionException.class);
+    }
+
+    @Test
     void isAvailable_neverThrows() {
         local.throwRuntime = true;
         assertThat(provider.isAvailable()).isFalse();
