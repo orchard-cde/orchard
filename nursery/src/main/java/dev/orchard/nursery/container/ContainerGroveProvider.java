@@ -145,6 +145,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
         ContainerPlot container = narrow(plot);
         return CompletableFuture.runAsync(() -> {
             log.info("Uprooting plot {}", container.id());
+            Path plotDir = checkedPlotDir(container);
             try {
                 if (container.runtime() != null) {
                     String cli = container.runtime().cli();
@@ -154,7 +155,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
                         local.execute(cli + " rm -f " + ShellQuote.quote(id), TEARDOWN_TIMEOUT_SECONDS);
                     }
                 }
-                local.execute("rm -rf " + ShellQuote.quote(container.workspacePath().getParent().toString()),
+                local.execute("rm -rf " + ShellQuote.quote(plotDir.toString()),
                     TEARDOWN_TIMEOUT_SECONDS);
             } catch (IOException e) {
                 throw new CompletionException(e);
@@ -180,6 +181,20 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
             }
         }
         return Optional.empty();
+    }
+
+    private static Path checkedPlotDir(ContainerPlot plot) {
+        Path workspace = plot.workspacePath();
+        Path dir = workspace.getParent();
+        boolean valid = workspace.isAbsolute()
+            && workspace.getFileName() != null && workspace.getFileName().toString().equals("workspace")
+            && dir != null && dir.getFileName() != null
+            && dir.getFileName().toString().equals(plot.id().toString())
+            && dir.getParent() != null;
+        if (!valid) {
+            throw new IllegalStateException("refusing to delete unexpected plot directory: " + workspace);
+        }
+        return dir;
     }
 
     private Path plotRoot(UUID id) {

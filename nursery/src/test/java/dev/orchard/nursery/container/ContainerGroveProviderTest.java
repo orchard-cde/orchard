@@ -13,6 +13,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -217,6 +219,21 @@ class ContainerGroveProviderTest {
 
         assertThat(local.commands).contains("rm -rf '" + otherRoot.resolve(d.id().toString()) + "'");
         assertThat(local.commands).noneMatch(c -> c.startsWith("rm -rf") && c.contains(root + "/" + d.id()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/workspace", "/tmp/x/workspace", "REL"})
+    void uproot_unexpectedPath_refusesAndDeletesNothing(String path) {
+        ContainerPlot d = draft();
+        String workspace = path.equals("REL") ? "rel/" + d.id() + "/workspace" : path;
+        ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
+            PlotState.DORMANT, Instant.now(), Instant.now(), Path.of(workspace), ContainerRuntime.DOCKER, d.spec());
+
+        assertThatThrownBy(() -> provider.uproot(plot).get())
+            .isInstanceOf(ExecutionException.class)
+            .hasRootCauseInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("refusing to delete unexpected plot directory");
+        assertThat(local.commands).noneMatch(c -> c.startsWith("rm -rf"));
     }
 
     @Test
