@@ -765,6 +765,7 @@ class BeeServiceTest {
         attachRunningCallbacks();
 
         verify(keeper, timeout(500)).install(any(), any(), any(), eq("/workspace"));
+        verify(keeper, timeout(2000)).release(any(), any(), eq("/workspace"));
         verify(fruitRepository, never()).findByGroveId(any());
     }
 
@@ -795,6 +796,7 @@ class BeeServiceTest {
         attachRunningCallbacks();
 
         verify(keeper, timeout(500)).install(any(), any(), same(vineRunner), eq("/workspaces/repo"));
+        verify(keeper, timeout(2000)).release(any(), same(vineRunner), eq("/workspaces/repo"));
     }
 
     @Test
