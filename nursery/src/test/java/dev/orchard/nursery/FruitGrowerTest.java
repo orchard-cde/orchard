@@ -332,7 +332,7 @@ class FruitGrowerTest {
         Fruit result = plainGrower().pick(execTarget(runner), runningFruit(defaultSeed())).join();
 
         assertThat(result.state()).isEqualTo(FruitState.PICKED);
-        verify(runner).execute("docker stop cid1");
+        verify(runner).execute("docker stop 'cid1'");
     }
 
     @Test
@@ -344,7 +344,7 @@ class FruitGrowerTest {
 
         assertThat(result.state()).isEqualTo(FruitState.PICKED);
         verify(runner).execute("docker compose -p 'proj' stop");
-        verify(runner, never()).execute("docker stop cid1");
+        verify(runner, never()).execute("docker stop 'cid1'");
     }
 
     @Test
@@ -364,8 +364,8 @@ class FruitGrowerTest {
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
-        order.verify(runner).execute("docker start cid1");
-        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verify(runner).execute("docker start 'cid1'");
+        order.verify(runner).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
         order.verifyNoMoreInteractions();
     }
 
@@ -378,8 +378,8 @@ class FruitGrowerTest {
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
-        order.verify(runner).execute("docker start cid1");
-        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verify(runner).execute("docker start 'cid1'");
+        order.verify(runner).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
         order.verifyNoMoreInteractions();
     }
 
@@ -393,7 +393,7 @@ class FruitGrowerTest {
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
         order.verify(runner).execute("docker compose -p 'proj' start");
-        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verify(runner).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
         order.verifyNoMoreInteractions();
     }
 
@@ -403,14 +403,14 @@ class FruitGrowerTest {
 
         plainGrower().ripen(execTarget(runner), runningFruit(defaultSeed())).join();
 
-        verify(runner).execute("docker start cid1");
+        verify(runner).execute("docker start 'cid1'");
         org.mockito.Mockito.verifyNoMoreInteractions(runner);
     }
 
     @Test
     void ripen_startOk_postStartFails_stillRipe_logsWarning() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
-        when(runner.execute("docker exec cid1 /bin/sh -c 'echo up'")).thenThrow(new IOException("exit 128"));
+        when(runner.execute("docker exec 'cid1' /bin/sh -c 'echo up'")).thenThrow(new IOException("exit 128"));
         Fruit fruit = runningFruit(seedWithPostStart());
 
         java.io.PrintStream originalErr = System.err;
@@ -424,7 +424,7 @@ class FruitGrowerTest {
         }
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
-        verify(runner).execute("docker start cid1");
+        verify(runner).execute("docker start 'cid1'");
         assertThat(captured.toString())
             .contains("WARN")
             .contains("postStartCommand")
@@ -434,11 +434,11 @@ class FruitGrowerTest {
     @Test
     void ripen_containerStartFails_completesExceptionally_withoutPostStart() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
-        when(runner.execute("docker start cid1")).thenThrow(new IOException("no such container"));
+        when(runner.execute("docker start 'cid1'")).thenThrow(new IOException("no such container"));
 
         assertThatThrownBy(() -> plainGrower().ripen(execTarget(runner), runningFruit(seedWithPostStart())).join())
             .isInstanceOf(CompletionException.class);
-        verify(runner, never()).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        verify(runner, never()).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
     }
 
     @Test
@@ -454,10 +454,10 @@ class FruitGrowerTest {
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
-        order.verify(runner).execute("docker start cid1");
+        order.verify(runner).execute("docker start 'cid1'");
         order.verify(runner).execute(
             "devcontainer run-user-commands --workspace-folder '" + WORKSPACE_PATH + "'"
-                + " --container-id cid1 --log-format json --skip-post-attach",
+                + " --container-id 'cid1' --log-format json --skip-post-attach",
             600L);
         order.verifyNoMoreInteractions();
     }
@@ -514,8 +514,8 @@ class FruitGrowerTest {
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
-        order.verify(runner).execute("docker start cid1");
-        order.verify(runner).execute("docker exec cid1 /bin/sh -c 'echo up'");
+        order.verify(runner).execute("docker start 'cid1'");
+        order.verify(runner).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
         order.verifyNoMoreInteractions();
         org.mockito.Mockito.verifyNoInteractions(cli);
     }
@@ -672,7 +672,20 @@ class FruitGrowerTest {
 
         assertThat(runner.commands).filteredOn(c -> c.startsWith("docker run"))
             .hasSize(2)
-            .allMatch(c -> c.contains(" --label orchard.plot.id=" + SEEDLING_ID));
+            .allMatch(c -> c.contains(" --label 'orchard.plot.id=" + SEEDLING_ID + "'"));
+    }
+
+    @Test
+    void inContainer_commandWithSingleQuote_staysOneArgument() throws Exception {
+        var runner = new RecordingRunner();
+        var seed = Seed.devcontainer().name("n").image("img")
+            .postStartCommand(new LifecycleCommand.Sequential(List.of("echo", "'hi';", "touch", "/tmp/x")))
+            .build();
+
+        plainGrower().ripen(target(runner, "/h/ws", ContainerRuntime.DOCKER), runningFruit(seed)).join();
+
+        assertThat(runner.commands).contains(
+            "docker exec 'cid1' /bin/sh -c 'echo '\\''hi'\\''; touch /tmp/x'");
     }
 
     private static ExecTarget atWorkspace(String workspacePath) {

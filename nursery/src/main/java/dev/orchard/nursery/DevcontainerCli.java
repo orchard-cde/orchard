@@ -64,9 +64,9 @@ public class DevcontainerCli {
             + " --remove-existing-container"
             + dockerPathArgs(target)
             + composePathArg(target)
-            + " --id-label orchard.fruit.id=" + fruitId
-            + " --id-label orchard.fruit.name=" + ShellQuote.quote(containerName)
-            + " --id-label orchard.plot.id=" + target.targetId();
+            + " --id-label " + ShellQuote.quote("orchard.fruit.id=" + fruitId)
+            + " --id-label " + ShellQuote.quote("orchard.fruit.name=" + containerName)
+            + " --id-label " + ShellQuote.quote("orchard.plot.id=" + target.targetId());
 
         AtomicReference<String> outcomeLine = new AtomicReference<>();
         runner.executeStreaming(cmd, line -> {
@@ -101,7 +101,7 @@ public class DevcontainerCli {
             throws IOException, InterruptedException {
         String cmd = "devcontainer run-user-commands"
             + " --workspace-folder " + ShellQuote.quote(target.workspacePath())
-            + " --container-id " + containerId
+            + " --container-id " + ShellQuote.quote(containerId)
             + " --log-format json"
             + " --skip-post-attach"
             + dockerPathArgs(target);
@@ -135,7 +135,7 @@ public class DevcontainerCli {
     /** Fetch the actual container name post-up so {@code Fruit.containerName()} reflects reality. */
     public String inspectContainerName(ExecTarget target, String containerId) throws IOException, InterruptedException {
         String name = target.runner()
-            .execute(target.runtime().cli() + " inspect " + containerId + " --format '{{.Name}}'")
+            .execute(target.runtime().cli() + " inspect " + ShellQuote.quote(containerId) + " --format '{{.Name}}'")
             .trim();
         // inspect returns "/name" with a leading slash; strip it.
         return name.startsWith("/") ? name.substring(1) : name;

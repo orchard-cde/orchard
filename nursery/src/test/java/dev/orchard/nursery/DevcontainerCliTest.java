@@ -152,7 +152,7 @@ class DevcontainerCliTest {
         var calls = new ArrayList<String>();
         cliFor().up(target(stubRunnerCapturing(calls), "/ws"), UUID.randomUUID(), "my-fruit", line -> {});
 
-        assertThat(calls).anyMatch(c -> c.contains(" --id-label orchard.plot.id=" + PLOT_ID));
+        assertThat(calls).anyMatch(c -> c.contains(" --id-label 'orchard.plot.id=" + PLOT_ID + "'"));
     }
 
     @Test
@@ -168,7 +168,7 @@ class DevcontainerCliTest {
         var calls = new ArrayList<String>();
         cliFor().inspectContainerName(target(stubRunnerCapturing(calls), "/ws", ContainerRuntime.PODMAN), "abc123");
 
-        assertThat(calls).singleElement().satisfies(c -> assertThat(c).startsWith("podman inspect abc123"));
+        assertThat(calls).singleElement().satisfies(c -> assertThat(c).startsWith("podman inspect 'abc123'"));
     }
 
     @Test
@@ -286,7 +286,7 @@ class DevcontainerCliTest {
         cliFor().runUserCommands(target(runner, "/srv/ws"), "abc123");
 
         assertThat(calls).containsExactly(
-            "devcontainer run-user-commands --workspace-folder '/srv/ws' --container-id abc123"
+            "devcontainer run-user-commands --workspace-folder '/srv/ws' --container-id 'abc123'"
                 + " --log-format json --skip-post-attach");
     }
 

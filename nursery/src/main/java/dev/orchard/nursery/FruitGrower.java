@@ -342,7 +342,7 @@ public class FruitGrower {
 
             StringBuilder cmd = new StringBuilder(cli + " run -d");
             cmd.append(" --name ").append(ShellQuote.quote(fruit.containerName()));
-            cmd.append(" --label orchard.plot.id=").append(target.targetId());
+            cmd.append(" --label ").append(ShellQuote.quote("orchard.plot.id=" + target.targetId()));
 
             if (!seed.containerEnv().isEmpty()) {
                 for (var entry : seed.containerEnv().entrySet()) {
@@ -546,7 +546,7 @@ public class FruitGrower {
         if (fruit.composeProjectName() != null) {
             return cli + " compose -p " + ShellQuote.quote(fruit.composeProjectName()) + " " + verb;
         }
-        return fruit.containerId() != null ? cli + " " + verb + " " + fruit.containerId() : null;
+        return fruit.containerId() != null ? cli + " " + verb + " " + ShellQuote.quote(fruit.containerId()) : null;
     }
 
     private boolean cliEnabled() {
@@ -582,7 +582,7 @@ public class FruitGrower {
             try {
                 log.info("Composting fruit {}", fruit.id());
                 if (fruit.containerId() != null) {
-                    executeSsh(target.runner(), target.runtime().cli() + " rm -f " + fruit.containerId());
+                    executeSsh(target.runner(), target.runtime().cli() + " rm -f " + ShellQuote.quote(fruit.containerId()));
                 }
             } catch (Exception e) {
                 log.error("Failed to compost fruit {}", fruit.id(), e);
@@ -646,7 +646,7 @@ public class FruitGrower {
 
         StringBuilder cmd = new StringBuilder(cli + " run -d");
         cmd.append(" --name ").append(ShellQuote.quote(fruit.containerName()));
-        cmd.append(" --label orchard.plot.id=").append(target.targetId());
+        cmd.append(" --label ").append(ShellQuote.quote("orchard.plot.id=" + target.targetId()));
 
         // Runtime flags (issue #29)
         if (Boolean.TRUE.equals(seed.privileged())) {
@@ -777,13 +777,14 @@ public class FruitGrower {
 
     private List<Fruit.PortMapping> getPortMappings(ExecTarget target, String containerId)
             throws IOException, InterruptedException {
-        String output = executeSsh(target.runner(), target.runtime().cli() + " port " + containerId + " 2>/dev/null || echo ''");
+        String output = executeSsh(target.runner(), target.runtime().cli() + " port " + ShellQuote.quote(containerId) + " 2>/dev/null || echo ''");
         return parsePortOutput(output);
     }
 
     private void inContainer(ExecTarget target, String containerId, String command)
             throws IOException, InterruptedException {
-        executeSsh(target.runner(), target.runtime().cli() + " exec " + containerId + " /bin/sh -c '" + command + "'");
+        executeSsh(target.runner(), target.runtime().cli() + " exec " + ShellQuote.quote(containerId)
+            + " /bin/sh -c " + ShellQuote.quote(command));
     }
 
     private String executeSsh(CommandRunner runner, String command)
