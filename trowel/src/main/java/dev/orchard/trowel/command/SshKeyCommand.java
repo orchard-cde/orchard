@@ -50,16 +50,27 @@ public class SshKeyCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 String publicLine;
+                OrchardConfig planned = null;
+                boolean configCreated = false;
+                if (path == null) {
+                    configCreated = ConfigLoader.load() == null;
+                    planned = planSshKey(name, parent.parent.getTargetName(), parent.parent.getServerUrl());
+                }
                 if (path != null) {
                     publicLine = Files.readString(Path.of(path)).trim();
                 } else {
                     SshKeyStore.loadOrCreate(name);
-                    saveActiveTargetSshKey(name, parent.parent.getTargetName());
                     publicLine = Files.readString(SshKeyPaths.publicKey(name)).trim();
                 }
 
                 OrchardClient client = new OrchardClient(parent.parent.getServerUrl(), parent.parent.getAuthProvider());
                 SshPublicKeyResponse created = client.registerSshPublicKey(name, publicLine);
+                if (planned != null) {
+                    ConfigLoader.save(planned);
+                    if (configCreated) {
+                        System.out.println("Created trowel config at " + ConfigLoader.tomlFile());
+                    }
+                }
 
                 System.out.println("Registered SSH key '" + created.name() + "'");
                 System.out.println("  fingerprint: " + created.fingerprint());
@@ -69,7 +80,7 @@ public class SshKeyCommand implements Callable<Integer> {
                     System.out.println("  key file:    " + SshKeyPaths.privateKey(name));
                 }
                 return 0;
-            } catch (IllegalStateException e) {
+            } catch (TargetNotFoundException e) {
                 System.err.println(e.getMessage());
                 return 1;
             } catch (Exception e) {
@@ -79,27 +90,31 @@ public class SshKeyCommand implements Callable<Integer> {
         }
     }
 
-    private static void saveActiveTargetSshKey(String keyName, String explicitTarget) throws IOException {
+    static final class TargetNotFoundException extends RuntimeException {
+        TargetNotFoundException(String message) {
+            super(message);
+        }
+    }
+
+    static OrchardConfig planSshKey(String keyName, String explicitTarget, String serverUrl) {
         OrchardConfig config = ConfigLoader.load();
-        boolean created = false;
         if (config == null) {
-            config = OrchardConfig.withDefault();
-            created = true;
+            OrchardConfig.Target local = OrchardConfig.withDefault().targets().get("local");
+            var targets = new LinkedHashMap<String, OrchardConfig.Target>();
+            targets.put("local", new OrchardConfig.Target(serverUrl, local.cultivator()));
+            config = new OrchardConfig("local", targets);
         }
         String targetName = explicitTarget != null ? explicitTarget : config.active();
         OrchardConfig.Target existing = config.targets() == null ? null : config.targets().get(targetName);
         if (existing == null) {
-            throw new IllegalStateException("could not record SSH key '" + keyName + "': target '" + targetName
+            throw new TargetNotFoundException("could not record SSH key '" + keyName + "': target '" + targetName
                 + "' not found in config; run: trowel config target add " + targetName + " --server <url> --cultivator <id>");
         }
         var targets = new LinkedHashMap<>(config.targets());
         targets.put(targetName, new OrchardConfig.Target(
             existing.server(), existing.cultivator(), existing.fenceServer(), existing.accessToken(),
             existing.refreshToken(), existing.expiresAt(), keyName));
-        ConfigLoader.save(new OrchardConfig(config.active(), targets));
-        if (created) {
-            System.out.println("Created trowel config at " + ConfigLoader.tomlFile());
-        }
+        return new OrchardConfig(config.active(), targets);
     }
 
     @CommandLine.Command(name = "list", aliases = {"ls"}, description = "List registered SSH keys")

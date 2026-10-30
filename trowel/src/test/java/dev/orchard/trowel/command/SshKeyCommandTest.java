@@ -138,6 +138,16 @@ class SshKeyCommandTest {
         var config = dev.orchard.trowel.config.ConfigLoader.load();
         assertThat(config.active()).isEqualTo("local");
         assertThat(config.targets().get("local").sshKey()).isEqualTo("dev-server");
+        assertThat(config.targets().get("local").server()).isEqualTo(serverUrl());
+    }
+
+    @Test
+    void sshKeyAdd_noConfig_defaultServer_recordsLocalhost() {
+        var planned = SshKeyCommand.planSshKey("dev-server", null, new Trowel().getServerUrl());
+
+        var target = planned.targets().get("local");
+        assertThat(target.server()).isEqualTo("http://localhost:17778");
+        assertThat(target.sshKey()).isEqualTo("dev-server");
     }
 
     @Test
@@ -148,6 +158,7 @@ class SshKeyCommandTest {
 
         assertThat(exit).isNotZero();
         assertThat(savedSshKey()).isNull();
+        assertThat(hits).isEmpty();
     }
 
     @Test
