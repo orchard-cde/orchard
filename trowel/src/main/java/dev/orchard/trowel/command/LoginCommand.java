@@ -8,6 +8,7 @@ import dev.orchard.trowel.client.OrchardClient;
 import dev.orchard.trowel.config.ConfigLoader;
 import dev.orchard.trowel.config.OrchardConfig;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Option;
 
 import java.io.IOException;
@@ -20,6 +21,9 @@ import java.util.concurrent.TimeUnit;
     description = "Authenticate with Fence using device authorization grant"
 )
 public class LoginCommand implements Callable<Integer> {
+
+    @ParentCommand
+    Trowel parent;
 
     @Option(names = {"--fence-server"}, description = "Fence server URL (default: $FENCE_SERVER_URL, else the active target's fence server)")
     private String fenceServerUrl;
@@ -43,9 +47,8 @@ public class LoginCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            OrchardConfig loaded = ConfigLoader.load();
             String fenceUrl = resolveFenceServer(
-                fenceServerUrl, System.getenv("FENCE_SERVER_URL"), loaded != null ? loaded.activeTarget() : null);
+                fenceServerUrl, System.getenv("FENCE_SERVER_URL"), parent.resolveConfigTarget());
             if (fenceUrl == null) {
                 System.err.println(NO_FENCE_SERVER);
                 return 1;
@@ -94,7 +97,7 @@ public class LoginCommand implements Callable<Integer> {
             System.out.println();
             System.out.println("Authenticated! Fetching user info...");
 
-            var orchardClient = new OrchardClient(getOrchardServerUrl(), () -> "Bearer " + tokenResponse.accessToken());
+            var orchardClient = new OrchardClient(parent.getServerUrl(), () -> "Bearer " + tokenResponse.accessToken());
             var cultivator = orchardClient.getCurrentCultivator();
 
             persistLoginResult(tokenResponse, fenceUrl, cultivator.id());
@@ -135,7 +138,8 @@ public class LoginCommand implements Callable<Integer> {
     private void persistLoginResult(FenceClient.TokenResponse tokenResponse, String fenceUrl, String cultivatorId)
             throws IOException {
         OrchardConfig config = ConfigLoader.load();
-        String activeName = config != null ? config.active() : "local";
+        String explicitName = parent.getTargetName();
+        String activeName = explicitName != null ? explicitName : config != null ? config.active() : "local";
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
 
         if (config != null && config.targets() != null) {
@@ -158,22 +162,5 @@ public class LoginCommand implements Callable<Integer> {
         ));
 
         ConfigLoader.save(new OrchardConfig(activeName, targets));
-    }
-
-    private String getOrchardServerUrl() {
-        String env = System.getenv("ORCHARD_SERVER_URL");
-        if (env != null) {
-            return env;
-        }
-
-        OrchardConfig config = ConfigLoader.load();
-        if (config != null) {
-            OrchardConfig.Target target = config.activeTarget();
-            if (target != null && target.server() != null) {
-                return target.server();
-            }
-        }
-
-        return "http://localhost:17778";
     }
 }

@@ -344,9 +344,11 @@ public class DevServerCommand implements Callable<Integer> {
                 }
                 var targets = new java.util.LinkedHashMap<>(config.targets());
                 targets.put(name, new OrchardConfig.Target(
-                    target.server(), target.cultivator(), fenceUrl, target.accessToken(),
-                    target.refreshToken(), target.expiresAt(), target.sshKey()));
+                    target.server(), target.cultivator(), fenceUrl, null, null, null, target.sshKey()));
                 ConfigLoader.save(new OrchardConfig(config.active(), targets));
+                if (target.refreshToken() != null || target.accessToken() != null) {
+                    System.out.println("  fence server changed to " + fenceUrl + "; run trowel login");
+                }
             } catch (Exception e) {
                 System.err.println("  could not record the fence server: " + e.getMessage());
             }

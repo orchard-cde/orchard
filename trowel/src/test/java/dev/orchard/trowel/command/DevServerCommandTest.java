@@ -896,10 +896,40 @@ class DevServerCommandTest {
         assertThat(target.fenceServer()).isEqualTo("http://localhost:18888");
         assertThat(target.server()).isEqualTo("http://localhost:17778/");
         assertThat(target.cultivator()).isEqualTo("cult-1");
+        assertThat(target.sshKey()).isEqualTo("mine");
+    }
+
+    @Test
+    void start_fenceServerChanged_clearsTokensAndSaysSo() throws Exception {
+        saveTarget("local", "http://localhost:17778", "http://localhost:9999", "mine");
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setFencePortForTest(18888);
+
+        start.recordFenceServer();
+
+        var target = dev.orchard.trowel.config.ConfigLoader.load().targets().get("local");
+        assertThat(target.fenceServer()).isEqualTo("http://localhost:18888");
+        assertThat(target.accessToken()).isNull();
+        assertThat(target.refreshToken()).isNull();
+        assertThat(target.expiresAt()).isNull();
+        assertThat(target.cultivator()).isEqualTo("cult-1");
+        assertThat(target.sshKey()).isEqualTo("mine");
+        assertThat(outContent.toString()).contains("fence server changed to http://localhost:18888; run trowel login");
+    }
+
+    @Test
+    void start_fenceServerUnchanged_keepsTokens() throws Exception {
+        saveTarget("local", "http://localhost:17778", "http://localhost:18888", "mine");
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setFencePortForTest(18888);
+
+        start.recordFenceServer();
+
+        var target = dev.orchard.trowel.config.ConfigLoader.load().targets().get("local");
         assertThat(target.accessToken()).isEqualTo("at");
         assertThat(target.refreshToken()).isEqualTo("rt");
         assertThat(target.expiresAt()).isEqualTo(123L);
-        assertThat(target.sshKey()).isEqualTo("mine");
+        assertThat(outContent.toString()).doesNotContain("run trowel login");
     }
 
     @Test

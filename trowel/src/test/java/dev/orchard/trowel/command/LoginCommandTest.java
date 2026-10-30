@@ -222,6 +222,69 @@ class LoginCommandTest {
             "no fence server configured; pass --fence-server, set FENCE_SERVER_URL, or start trowel dev-server");
     }
 
+    private void stubFullLoginFlow(AtomicInteger deviceRequests) {
+        fenceServer.createContext("/oauth2/device_authorization", exchange -> {
+            deviceRequests.incrementAndGet();
+            respond(exchange, 200, """
+                {"device_code": "dc", "user_code": "UC-1", "verification_uri": "https://fence.example.com/device", "expires_in": 600, "interval": 1}
+                """);
+        });
+        fenceServer.createContext("/oauth2/token", exchange ->
+            respond(exchange, 200, """
+                {"access_token": "at-target", "refresh_token": "rt-target", "token_type": "Bearer", "expires_in": 3600}
+                """));
+        fenceServer.createContext("/api/me", exchange ->
+            respond(exchange, 200, "{\"id\": \"cult-t\", \"displayName\": \"T\", \"email\": \"t@example.com\"}"));
+    }
+
+    @Test
+    void login_noFlagNoEnv_usesActiveTargetsFenceServer() throws Exception {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        Files.writeString(ConfigLoader.tomlFile(), """
+                active = "local"
+
+                [targets.local]
+                server = "http://localhost:%1$d"
+                cultivator = "initial-uuid"
+                fence_server = "http://localhost:%1$d"
+                """.formatted(fencePort));
+        var deviceRequests = new AtomicInteger();
+        stubFullLoginFlow(deviceRequests);
+
+        int exitCode = execute("login", "--no-browser");
+
+        assertThat(exitCode).as(errContent.toString()).isZero();
+        assertThat(deviceRequests.get()).isEqualTo(1);
+    }
+
+    @Test
+    void login_explicitTarget_readsThatTargetsFenceServer() throws Exception {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        Files.writeString(ConfigLoader.tomlFile(), """
+                active = "other"
+
+                [targets.other]
+                server = "http://localhost:%1$d"
+                cultivator = "other-uuid"
+                fence_server = "http://localhost:1"
+
+                [targets.picked]
+                server = "http://localhost:%1$d"
+                cultivator = "picked-uuid"
+                fence_server = "http://localhost:%1$d"
+                """.formatted(fencePort));
+        var deviceRequests = new AtomicInteger();
+        stubFullLoginFlow(deviceRequests);
+
+        int exitCode = execute("--target", "picked", "login", "--no-browser");
+
+        assertThat(exitCode).isZero();
+        assertThat(deviceRequests.get()).isEqualTo(1);
+        OrchardConfig config = ConfigLoader.load();
+        assertThat(config.targets().get("picked").accessToken()).isEqualTo("at-target");
+        assertThat(config.targets().get("other").accessToken()).isNull();
+    }
+
     private int execute(String... args) {
         return Trowel.createCommandLine().execute(args);
     }

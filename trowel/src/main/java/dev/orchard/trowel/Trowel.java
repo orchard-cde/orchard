@@ -137,7 +137,7 @@ public class Trowel implements Callable<Integer> {
         return System.getenv("ORCHARD_TARGET");
     }
 
-    OrchardConfig.Target resolveConfigTarget() {
+    public OrchardConfig.Target resolveConfigTarget() {
         OrchardConfig config = ConfigLoader.load();
         if (config == null || config.targets() == null) {
             return null;
