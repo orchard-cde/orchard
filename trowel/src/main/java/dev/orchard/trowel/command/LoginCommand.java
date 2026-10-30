@@ -137,7 +137,8 @@ public class LoginCommand implements Callable<Integer> {
             fenceUrl,
             tokenResponse.accessToken(),
             tokenResponse.refreshToken(),
-            expiresAt
+            expiresAt,
+            existing != null ? existing.sshKey() : null
         ));
 
         ConfigLoader.save(new OrchardConfig(activeName, targets));

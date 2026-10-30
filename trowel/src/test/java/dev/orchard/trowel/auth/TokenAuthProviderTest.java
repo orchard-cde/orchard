@@ -172,7 +172,8 @@ class TokenAuthProviderTest {
             fenceServer,
             accessToken,
             refreshToken,
-            expiresAt
+            expiresAt,
+            null
         ));
         ConfigLoader.save(new OrchardConfig("local", targets));
     }

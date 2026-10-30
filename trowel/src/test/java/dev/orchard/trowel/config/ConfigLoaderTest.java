@@ -154,6 +154,16 @@ class ConfigLoaderTest {
     }
 
     @Test
+    void config_roundTripsSshKey() throws IOException {
+        var targets = new LinkedHashMap<String, OrchardConfig.Target>();
+        targets.put("local", new OrchardConfig.Target(
+            "http://localhost:17778", "some-uuid", null, null, null, null, "dev-server"));
+        ConfigLoader.save(new OrchardConfig("local", targets));
+
+        assertThat(ConfigLoader.load().targets().get("local").sshKey()).isEqualTo("dev-server");
+    }
+
+    @Test
     void save_and_load_roundTripsTokenFields() throws IOException {
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
         targets.put("local", new OrchardConfig.Target(
@@ -162,7 +172,8 @@ class ConfigLoaderTest {
             "http://localhost:17779",
             "access-token-abc",
             "refresh-token-xyz",
-            1785036296L
+            1785036296L,
+            null
         ));
         ConfigLoader.save(new OrchardConfig("local", targets));
 
@@ -200,7 +211,8 @@ class ConfigLoaderTest {
             "http://localhost:17779",
             "access-token-abc",
             "refresh-token-xyz",
-            1785036296L
+            1785036296L,
+            null
         ));
         ConfigLoader.save(new OrchardConfig("local", targets));
 

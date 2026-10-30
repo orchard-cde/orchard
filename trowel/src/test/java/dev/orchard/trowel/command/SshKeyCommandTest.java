@@ -100,6 +100,37 @@ class SshKeyCommandTest {
         assertThat(hits).anyMatch(h -> h.contains("\"publicKey\":\"ssh-ed25519 "));
     }
 
+    private void writeLocalConfig(String sshKey) throws Exception {
+        var targets = new java.util.LinkedHashMap<String, dev.orchard.trowel.config.OrchardConfig.Target>();
+        targets.put("local", new dev.orchard.trowel.config.OrchardConfig.Target(
+            serverUrl(), "c-uuid", null, null, null, null, sshKey));
+        dev.orchard.trowel.config.ConfigLoader.save(new dev.orchard.trowel.config.OrchardConfig("local", targets));
+    }
+
+    private String savedSshKey() {
+        return dev.orchard.trowel.config.ConfigLoader.load().targets().get("local").sshKey();
+    }
+
+    @Test
+    void sshKeyAdd_generated_setsTargetSshKey() throws Exception {
+        writeLocalConfig(null);
+
+        run("ssh-key", "add", "--name", "dev-server");
+
+        assertThat(savedSshKey()).isEqualTo("dev-server");
+    }
+
+    @Test
+    void sshKeyAdd_withPath_leavesSshKeyUnchanged() throws Exception {
+        writeLocalConfig("kept");
+        Path existingKey = tempDir.resolve("imported.pub");
+        Files.writeString(existingKey, "ssh-ed25519 AAAAimported imported@elsewhere\n");
+
+        run("ssh-key", "add", "--name", "imported", "--path", existingKey.toString());
+
+        assertThat(savedSshKey()).isEqualTo("kept");
+    }
+
     @Test
     void add_withPathOption_registersExistingKeyWithoutGenerating() throws Exception {
         Path existingKey = tempDir.resolve("imported.pub");

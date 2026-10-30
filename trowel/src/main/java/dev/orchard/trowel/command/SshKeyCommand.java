@@ -7,8 +7,13 @@ import dev.orchard.trowel.ssh.SshKeyPaths;
 import dev.orchard.trowel.ssh.SshKeyStore;
 import picocli.CommandLine;
 
+import dev.orchard.trowel.config.ConfigLoader;
+import dev.orchard.trowel.config.OrchardConfig;
+
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
@@ -49,6 +54,7 @@ public class SshKeyCommand implements Callable<Integer> {
                     publicLine = Files.readString(Path.of(path)).trim();
                 } else {
                     SshKeyStore.loadOrCreate(name);
+                    saveActiveTargetSshKey(name, parent.parent.getTargetName());
                     publicLine = Files.readString(SshKeyPaths.publicKey(name)).trim();
                 }
 
@@ -68,6 +74,23 @@ public class SshKeyCommand implements Callable<Integer> {
                 return 1;
             }
         }
+    }
+
+    private static void saveActiveTargetSshKey(String keyName, String explicitTarget) throws IOException {
+        OrchardConfig config = ConfigLoader.load();
+        if (config == null || config.targets() == null) {
+            return;
+        }
+        String targetName = explicitTarget != null ? explicitTarget : config.active();
+        OrchardConfig.Target existing = config.targets().get(targetName);
+        if (existing == null) {
+            return;
+        }
+        var targets = new LinkedHashMap<>(config.targets());
+        targets.put(targetName, new OrchardConfig.Target(
+            existing.server(), existing.cultivator(), existing.fenceServer(), existing.accessToken(),
+            existing.refreshToken(), existing.expiresAt(), keyName));
+        ConfigLoader.save(new OrchardConfig(config.active(), targets));
     }
 
     @CommandLine.Command(name = "list", aliases = {"ls"}, description = "List registered SSH keys")

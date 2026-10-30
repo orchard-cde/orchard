@@ -125,6 +125,11 @@ public class Trowel implements Callable<Integer> {
         return new NoAuthProvider();
     }
 
+    public String getSshKeyName() {
+        OrchardConfig.Target target = resolveConfigTarget();
+        return target != null ? target.sshKey() : null;
+    }
+
     /** Returns the --target flag value or ORCHARD_TARGET env var, or null if neither is set. */
     public String getTargetName() {
         if (targetName != null) {
