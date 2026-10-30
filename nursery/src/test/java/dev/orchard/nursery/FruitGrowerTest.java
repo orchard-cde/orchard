@@ -27,9 +27,9 @@ import java.util.concurrent.CompletionException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -117,7 +117,7 @@ class FruitGrowerTest {
         CommandRunner runner = runner();
         Fruit fruit = buddedFruit(defaultSeed());
 
-        when(cli.up(any(), eq(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
+        when(cli.up(atWorkspace(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c123", null, "vscode", WORKSPACE_PATH));
         when(cli.inspectContainerName(any(), eq("c123"))).thenReturn("real-container-name");
 
@@ -137,9 +137,9 @@ class FruitGrowerTest {
         Fruit withProject = buddedFruit(defaultSeed());
         Fruit withoutProject = buddedFruit(defaultSeed());
 
-        when(cli.up(any(), eq(WORKSPACE_PATH), eq(withProject.id()), any(), any()))
+        when(cli.up(atWorkspace(WORKSPACE_PATH), eq(withProject.id()), any(), any()))
             .thenReturn(new DevcontainerCliResult("c1", "proj", "vscode", WORKSPACE_PATH));
-        when(cli.up(any(), eq(WORKSPACE_PATH), eq(withoutProject.id()), any(), any()))
+        when(cli.up(atWorkspace(WORKSPACE_PATH), eq(withoutProject.id()), any(), any()))
             .thenReturn(new DevcontainerCliResult("c2", null, "vscode", WORKSPACE_PATH));
         when(cli.inspectContainerName(any(), any())).thenReturn("real-name");
 
@@ -158,7 +158,7 @@ class FruitGrowerTest {
         CliError error = new CliError("boom", "feature install failed", "ghcr.io/devcontainers/features/bad:1",
             null, false, "https://example/docs");
         doThrow(new DevcontainerCli.DevcontainerCliException(error))
-            .when(cli).up(any(), any(), any(), anyString(), any());
+            .when(cli).up(any(), any(), anyString(), any());
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
@@ -181,7 +181,7 @@ class FruitGrowerTest {
             .build();
         Fruit fruit = buddedFruit(seed);
 
-        when(cli.up(any(), eq(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
+        when(cli.up(atWorkspace(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c-pa", null, "vscode", WORKSPACE_PATH));
         when(cli.inspectContainerName(any(), eq("c-pa"))).thenReturn(fruit.containerName());
 
@@ -194,7 +194,7 @@ class FruitGrowerTest {
 
         // attach() runs the post-attach command via CLI exec and flips to RIPE.
         Fruit afterAttach = grower.attach(execTarget(runner), afterGrow).get();
-        verify(cli).exec(same(runner), eq(WORKSPACE_PATH), eq("echo hi"));
+        verify(cli).exec(atWorkspace(WORKSPACE_PATH), eq("echo hi"));
         assertThat(afterAttach.state()).isEqualTo(FruitState.RIPE);
     }
 
@@ -210,12 +210,12 @@ class FruitGrowerTest {
         // each distinct phase boundary.
         doAnswer(inv -> {
             @SuppressWarnings("unchecked")
-            java.util.function.Consumer<String> sink = inv.getArgument(4);
+            java.util.function.Consumer<String> sink = inv.getArgument(3);
             sink.accept("{\"type\":\"progress\",\"message\":\"Building image abc\"}");
             sink.accept("{\"type\":\"progress\",\"message\":\"Running install.sh for ghcr.io/.../node:1\"}");
             sink.accept("{\"outcome\":\"success\",\"containerId\":\"c-events\"}");
             return new DevcontainerCliResult("c-events", null, "vscode", WORKSPACE_PATH);
-        }).when(cli).up(any(), any(), any(), anyString(), any());
+        }).when(cli).up(any(), any(), anyString(), any());
 
         when(cli.inspectContainerName(any(), eq("c-events"))).thenReturn(fruit.containerName());
 
@@ -246,7 +246,7 @@ class FruitGrowerTest {
         Fruit fruit = buddedFruit(defaultSeed());
         String customWorkspacePath = "/custom/workspace";
 
-        when(cli.up(any(), eq(customWorkspacePath), eq(fruit.id()), eq(fruit.containerName()), any()))
+        when(cli.up(atWorkspace(customWorkspacePath), eq(fruit.id()), eq(fruit.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c-custom", null, "vscode", customWorkspacePath));
         when(cli.inspectContainerName(any(), eq("c-custom"))).thenReturn(fruit.containerName());
 
@@ -255,8 +255,8 @@ class FruitGrowerTest {
         Fruit result = grower.grow(new ExecTarget(runner, customWorkspacePath, SEEDLING_ID, ContainerRuntime.DOCKER), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
-        verify(cli).up(any(), eq(customWorkspacePath), eq(fruit.id()), eq(fruit.containerName()), any());
-        verify(cli, never()).up(any(), eq(WORKSPACE_PATH), any(), anyString(), any());
+        verify(cli).up(atWorkspace(customWorkspacePath), eq(fruit.id()), eq(fruit.containerName()), any());
+        verify(cli, never()).up(atWorkspace(WORKSPACE_PATH), any(), anyString(), any());
     }
 
     @Test
@@ -273,7 +273,7 @@ class FruitGrowerTest {
 
         Fruit result = grower.grow(execTarget(runner), fruit).get();
 
-        verify(cli, never()).up(any(), any(), any(), anyString(), any());
+        verify(cli, never()).up(any(), any(), anyString(), any());
         verify(cli, never()).inspectContainerName(any(), anyString());
         // The legacy path's SSH call will fail (no real VM), so the fruit rots — that's the
         // signal we took the legacy branch.
@@ -290,7 +290,7 @@ class FruitGrowerTest {
         Fruit fruit = buddedFruit(defaultSeed());
         String originalContainerName = fruit.containerName();
 
-        when(cli.up(any(), eq(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
+        when(cli.up(atWorkspace(WORKSPACE_PATH), eq(fruit.id()), eq(fruit.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c-real", null, "vscode", WORKSPACE_PATH));
         when(cli.inspectContainerName(any(), eq("c-real"))).thenReturn("real-container-name");
 
@@ -303,7 +303,7 @@ class FruitGrowerTest {
             .isEqualTo("real-container-name")
             .isNotEqualTo(originalContainerName);
         assertThat(result.containerId()).isEqualTo("c-real");
-        verify(cli).inspectContainerName(same(runner), eq("c-real"));
+        verify(cli).inspectContainerName(argThat(t -> t.runner() == runner), eq("c-real"));
     }
 
 
@@ -456,7 +456,7 @@ class FruitGrowerTest {
         var order = inOrder(runner);
         order.verify(runner).execute("docker start cid1");
         order.verify(runner).execute(
-            "devcontainer run-user-commands --workspace-folder " + WORKSPACE_PATH
+            "devcontainer run-user-commands --workspace-folder '" + WORKSPACE_PATH + "'"
                 + " --container-id cid1 --log-format json --skip-post-attach",
             600L);
         order.verifyNoMoreInteractions();
@@ -544,6 +544,139 @@ class FruitGrowerTest {
     private static CommandRunner runner() {
         // 127.0.0.255 / port 1 — guaranteed to refuse on any host the test runs on.
         return new SshVine(new VmPlot(SEEDLING_ID, UUID.randomUUID(), "test", null, PlotState.ROOTED, Instant.now(), null, "127.0.0.255", 1, List.of(), VmSpec.small())).commands();
+    }
+
+    /** Records every command and answers just enough for each grow path to run to completion. */
+    private static final class RecordingRunner implements CommandRunner {
+        final List<String> commands = new java.util.concurrent.CopyOnWriteArrayList<>();
+        volatile String psService = "web";
+
+        @Override
+        public String execute(String c) {
+            commands.add(c);
+            return c.contains(" ps --format") ? "cid1|" + psService + "|n\n" : "cid1\n";
+        }
+
+        @Override
+        public String execute(String c, long timeoutSeconds) {
+            commands.add(c);
+            return "{\"outcome\":\"success\"}\n";
+        }
+
+        @Override
+        public java.util.Optional<String> readFile(String p) { return java.util.Optional.empty(); }
+
+        @Override
+        public void executeStreaming(String c, java.util.function.Consumer<String> consumer, long timeoutSeconds) {
+            commands.add(c);
+            consumer.accept("{\"outcome\":\"success\",\"containerId\":\"cid1\"}");
+        }
+    }
+
+    private static ExecTarget target(CommandRunner runner, String workspacePath, ContainerRuntime runtime) {
+        return new ExecTarget(runner, workspacePath, SEEDLING_ID, runtime);
+    }
+
+    @Test
+    void podman_everyEngineCommandUsesPodman() throws Exception {
+        var runner = new RecordingRunner();
+        var target = target(runner, "/h/ws", ContainerRuntime.PODMAN);
+        var cliGrower = new FruitGrower(new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60)), true, null);
+        var legacyGrower = new FruitGrower(null, false, null);
+
+        Seed devfile = DevfileSeed.builder().name("n").image("img").postStartCommand(POST_START).build();
+        Seed built = Seed.devcontainer().name("n").dockerfilePath("Dockerfile").buildContext("ctx").build();
+        Seed compose = Seed.devcontainer().name("n").image("img").postCreateCommand(POST_START).build();
+
+        legacyGrower.grow(target, buddedFruit(devfile)).get();
+        legacyGrower.grow(target, buddedFruit(defaultSeed())).get();
+        legacyGrower.grow(target, buddedFruit(built)).get();
+        Fruit composeFruit = buddedFruit(compose);
+        runner.psService = composeFruit.containerName();
+        legacyGrower.growCompose(target, List.of(composeFruit), "compose.yml").get();
+        cliGrower.grow(target, buddedFruit(defaultSeed())).get();
+        cliGrower.ripen(target, runningFruit(seedWithPostStart())).join();
+        legacyGrower.pick(target, runningFruit(defaultSeed())).join();
+        legacyGrower.pick(target, runningFruit(defaultSeed()).withComposeProjectName("proj")).join();
+        legacyGrower.ripen(target, runningFruit(seedWithPostStart())).join();
+        legacyGrower.ripen(target, runningFruit(defaultSeed()).withComposeProjectName("proj")).join();
+        legacyGrower.compost(target, runningFruit(defaultSeed())).join();
+
+        assertThat(runner.commands).isNotEmpty();
+        assertThat(runner.commands).noneMatch(c -> c.matches("(?s).*(^|[;&| ])docker( |$).*"));
+        assertThat(runner.commands)
+            .filteredOn(c -> !c.startsWith("devcontainer ") && !c.startsWith("command -v "))
+            .allMatch(c -> c.startsWith("podman"));
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("podman build"));
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("podman compose"));
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("podman inspect"));
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("podman rm -f"));
+    }
+
+    @Test
+    void growViaCli_workspaceWithSpace_isQuoted() throws Exception {
+        var runner = new RecordingRunner();
+        var grower = new FruitGrower(new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60)), true, null);
+
+        grower.grow(target(runner, "/tmp/a b/ws", ContainerRuntime.DOCKER), buddedFruit(defaultSeed())).get();
+
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("devcontainer up")
+            && c.contains("--workspace-folder '/tmp/a b/ws' "));
+    }
+
+    @Test
+    void devfile_hostMountUsesWorkspacePath() throws Exception {
+        var runner = new RecordingRunner();
+        Seed devfile = DevfileSeed.builder().name("n").image("img").build();
+
+        plainGrower().grow(target(runner, "/h/ws", ContainerRuntime.DOCKER), buddedFruit(devfile)).get();
+
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("docker run")
+            && c.contains(" -v '/h/ws':/projects") && c.contains(" -w /projects"));
+    }
+
+    @Test
+    void legacyImage_hostMountUsesWorkspacePath_containerSideUnchanged() throws Exception {
+        var runner = new RecordingRunner();
+
+        plainGrower().grow(target(runner, "/h/ws", ContainerRuntime.DOCKER), buddedFruit(defaultSeed())).get();
+
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("docker run")
+            && c.contains(" -v '/h/ws':/workspace") && c.contains(" -w '/workspace'"));
+    }
+
+    @Test
+    void legacyBuild_andCompose_resolveAgainstWorkspacePath() throws Exception {
+        var runner = new RecordingRunner();
+        var grower = plainGrower();
+        Seed built = Seed.devcontainer().name("n").dockerfilePath("Dockerfile").buildContext("ctx").build();
+        Seed compose = Seed.devcontainer().name("n").image("img").build();
+
+        grower.grow(target(runner, "/h/ws", ContainerRuntime.DOCKER), buddedFruit(built)).get();
+        Fruit composeFruit = buddedFruit(compose);
+        runner.psService = composeFruit.containerName();
+        grower.growCompose(target(runner, "/h/ws", ContainerRuntime.DOCKER), List.of(composeFruit), "compose.yml").get();
+
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("docker build")
+            && c.contains(" -f '/h/ws/Dockerfile' '/h/ws/ctx'"));
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("docker compose -f '/h/ws/compose.yml' up"));
+    }
+
+    @Test
+    void containers_areLabelledWithThePlotId() throws Exception {
+        var runner = new RecordingRunner();
+        Seed devfile = DevfileSeed.builder().name("n").image("img").build();
+
+        plainGrower().grow(target(runner, "/h/ws", ContainerRuntime.DOCKER), buddedFruit(devfile)).get();
+        plainGrower().grow(target(runner, "/h/ws", ContainerRuntime.DOCKER), buddedFruit(defaultSeed())).get();
+
+        assertThat(runner.commands).filteredOn(c -> c.startsWith("docker run"))
+            .hasSize(2)
+            .allMatch(c -> c.contains(" --label orchard.plot.id=" + SEEDLING_ID));
+    }
+
+    private static ExecTarget atWorkspace(String workspacePath) {
+        return argThat(t -> t != null && workspacePath.equals(t.workspacePath()));
     }
 
     private static ExecTarget execTarget(CommandRunner runner) {

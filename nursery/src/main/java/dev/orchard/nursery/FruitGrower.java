@@ -10,6 +10,7 @@ import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.ExecTarget;
+import dev.orchard.vine.ShellQuote;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -92,19 +93,19 @@ public class FruitGrower {
             return switch (fruit.seed()) {
                 case DevfileSeed ignored -> {
                     log.info("Growing fruit {} on target {} (path=devfile-docker)", fruit.id(), target.targetId());
-                    yield growDevfileViaDocker(target.runner(), fruit);
+                    yield growDevfileViaDocker(target, fruit);
                 }
                 case DevcontainerSeed ignored -> {
                     boolean useCli = cliEnabled();
                     log.info("Growing fruit {} on target {} (path={})", fruit.id(), target.targetId(),
                         useCli ? "devcontainer-cli" : "legacy-docker");
                     yield useCli ? growViaCli(target, fruit)
-                                  : growViaDocker(target.runner(), fruit);
+                                  : growViaDocker(target, fruit);
                 }
                 default -> {
                     log.warn("Unknown seed type {} for fruit {}, falling back to legacy docker",
                         fruit.seed().getClass().getSimpleName(), fruit.id());
-                    yield growViaDocker(target.runner(), fruit);
+                    yield growViaDocker(target, fruit);
                 }
             };
         }, executor);
@@ -117,7 +118,6 @@ public class FruitGrower {
      */
     Fruit growViaCli(ExecTarget target, Fruit fruit) {
         CommandRunner runner = target.runner();
-        String workspacePath = target.workspacePath();
         DevcontainerSeed seed = devcontainerSeed(fruit);
         try {
             // initializeCommand runs on the host before the container starts; the CLI does
@@ -130,14 +130,14 @@ public class FruitGrower {
             PhaseTransitionFilter phaseFilter = new PhaseTransitionFilter(fruit.id(), fruit.groveId(), events);
 
             DevcontainerCliResult result = devcontainerCli.up(
-                runner, workspacePath, fruit.id(), fruit.containerName(), phaseFilter::onLine);
+                target, fruit.id(), fruit.containerName(), phaseFilter::onLine);
 
             // The actual container name on the host may differ from
             // Fruit.containerName (e.g. CLI appends a suffix on regrow). Inspect and update so
             // downstream consumers (trowel grove status, GroveResponse) see reality.
             String realName;
             try {
-                realName = devcontainerCli.inspectContainerName(runner, result.containerId());
+                realName = devcontainerCli.inspectContainerName(target, result.containerId());
             } catch (Exception inspectFailure) {
                 log.warn("Could not inspect real container name for fruit {} (containerId={}); " +
                     "keeping Fruit.containerName as-is", fruit.id(), result.containerId(), inspectFailure);
@@ -148,7 +148,7 @@ public class FruitGrower {
             // the container is already running.
             List<Fruit.PortMapping> ports;
             try {
-                ports = getPortMappings(runner, result.containerId());
+                ports = getPortMappings(target, result.containerId());
             } catch (Exception portFailure) {
                 log.warn("Could not fetch port mappings for fruit {} (containerId={})",
                     fruit.id(), result.containerId(), portFailure);
@@ -249,7 +249,8 @@ public class FruitGrower {
      * seed.features()} is silently ignored here — this path predates feature support.
      */
     @Deprecated(forRemoval = true, since = "next-release")
-    Fruit growViaDocker(CommandRunner runner, Fruit fruit) {
+    Fruit growViaDocker(ExecTarget target, Fruit fruit) {
+        CommandRunner runner = target.runner();
         try {
             DevcontainerSeed seed = devcontainerSeed(fruit);
 
@@ -260,26 +261,26 @@ public class FruitGrower {
 
             String containerId;
             if (seed.image() != null) {
-                containerId = legacyRunFromImage(runner, fruit);
+                containerId = legacyRunFromImage(target, fruit);
             } else if (seed.dockerfilePath() != null) {
-                containerId = legacyBuildAndRun(runner, fruit);
+                containerId = legacyBuildAndRun(target, fruit);
             } else {
                 throw new IllegalArgumentException("Seed must have either image or dockerfilePath");
             }
 
-            List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
+            List<Fruit.PortMapping> ports = getPortMappings(target, containerId);
 
             if (seed.onCreateCommand() != null) {
                 runLifecycleCommand(seed.onCreateCommand(),
-                    cmd -> inContainer(runner, containerId, cmd));
+                    cmd -> inContainer(target, containerId, cmd));
             }
             if (seed.postCreateCommand() != null) {
                 runLifecycleCommand(seed.postCreateCommand(),
-                    cmd -> inContainer(runner, containerId, cmd));
+                    cmd -> inContainer(target, containerId, cmd));
             }
             if (seed.updateContentCommand() != null) {
                 runLifecycleCommand(seed.updateContentCommand(),
-                    cmd -> inContainer(runner, containerId, cmd));
+                    cmd -> inContainer(target, containerId, cmd));
             }
 
             Fruit result = fruit.withContainerDetails(containerId, ports);
@@ -289,7 +290,7 @@ public class FruitGrower {
 
             if (seed.postStartCommand() != null) {
                 runLifecycleCommand(seed.postStartCommand(),
-                    cmd -> inContainer(runner, containerId, cmd));
+                    cmd -> inContainer(target, containerId, cmd));
             }
 
             return result;
@@ -321,7 +322,9 @@ public class FruitGrower {
      * LifecycleCommand}/{@code runLifecycleCommand} primitive the devcontainer hooks use, with no
      * translation between devfile and devcontainer event names.
      */
-    Fruit growDevfileViaDocker(CommandRunner runner, Fruit fruit) {
+    Fruit growDevfileViaDocker(ExecTarget target, Fruit fruit) {
+        CommandRunner runner = target.runner();
+        String cli = target.runtime().cli();
         DevfileSeed seed = devfileSeed(fruit);
         try {
             if (seed.image() == null || seed.image().isBlank()) {
@@ -335,14 +338,15 @@ public class FruitGrower {
                     cmd -> executeSsh(runner, cmd));
             }
 
-            executeSsh(runner, "docker pull " + shellQuote(seed.image()));
+            executeSsh(runner, cli + " pull " + ShellQuote.quote(seed.image()));
 
-            StringBuilder cmd = new StringBuilder("docker run -d");
-            cmd.append(" --name ").append(shellQuote(fruit.containerName()));
+            StringBuilder cmd = new StringBuilder(cli + " run -d");
+            cmd.append(" --name ").append(ShellQuote.quote(fruit.containerName()));
+            cmd.append(" --label orchard.plot.id=").append(target.targetId());
 
             if (!seed.containerEnv().isEmpty()) {
                 for (var entry : seed.containerEnv().entrySet()) {
-                    cmd.append(" -e ").append(shellQuote(entry.getKey() + "=" + entry.getValue()));
+                    cmd.append(" -e ").append(ShellQuote.quote(entry.getKey() + "=" + entry.getValue()));
                 }
             }
             if (!seed.forwardPorts().isEmpty()) {
@@ -351,20 +355,20 @@ public class FruitGrower {
                 }
             }
             if (seed.memoryLimit() != null) {
-                cmd.append(" --memory ").append(shellQuote(seed.memoryLimit()));
+                cmd.append(" --memory ").append(ShellQuote.quote(seed.memoryLimit()));
             }
             if (seed.cpuLimit() != null) {
-                cmd.append(" --cpus ").append(shellQuote(seed.cpuLimit()));
+                cmd.append(" --cpus ").append(ShellQuote.quote(seed.cpuLimit()));
             }
 
             // Mount workspace at /projects — devfile convention
-            cmd.append(" -v /workspace:/projects");
+            cmd.append(" -v ").append(ShellQuote.quote(target.workspacePath())).append(":/projects");
             cmd.append(" -w /projects");
-            cmd.append(" ").append(shellQuote(seed.image()));
+            cmd.append(" ").append(ShellQuote.quote(seed.image()));
             cmd.append(" sleep infinity");
 
             String containerId = executeSsh(runner, cmd.toString()).trim();
-            List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
+            List<Fruit.PortMapping> ports = getPortMappings(target, containerId);
 
             // Record container details before executing lifecycle commands so the fruit
             // retains a containerId reference for cleanup even if a command fails.
@@ -373,7 +377,7 @@ public class FruitGrower {
             // devfile events.postStart — runs inside the container, after it starts.
             if (seed.postStartCommand() != null) {
                 runLifecycleCommand(seed.postStartCommand(),
-                    c -> inContainer(runner, containerId, c));
+                    c -> inContainer(target, containerId, c));
             }
 
             return fruit.withState(FruitState.RIPE);
@@ -406,14 +410,15 @@ public class FruitGrower {
                                                         List<String> composeFiles) {
         return CompletableFuture.supplyAsync(() -> {
             CommandRunner runner = target.runner();
+            String cli = target.runtime().cli();
             try {
                 log.info("Growing {} fruits via Docker Compose on target {}", fruits.size(), target.targetId());
 
                 // Build "-f file1 -f file2 ..." from all compose files (issue #32)
                 StringBuilder fileArgs = new StringBuilder();
                 for (String cf : composeFiles) {
-                    String path = cf.startsWith("/") ? cf : "/workspace/" + cf;
-                    fileArgs.append(" -f ").append(shellQuote(path));
+                    String path = cf.startsWith("/") ? cf : target.workspacePath() + "/" + cf;
+                    fileArgs.append(" -f ").append(ShellQuote.quote(path));
                 }
 
                 // Determine services to start: runServices union primary service names
@@ -429,14 +434,14 @@ public class FruitGrower {
                     java.util.LinkedHashSet<String> allServices = new java.util.LinkedHashSet<>(serviceNames);
                     allServices.addAll(dcs.runServices());
                     upServicesArg = " " + allServices.stream()
-                        .map(FruitGrower::shellQuote)
+                        .map(ShellQuote::quote)
                         .collect(java.util.stream.Collectors.joining(" "));
                 }
 
-                executeSsh(runner, "docker compose" + fileArgs + " up -d" + upServicesArg);
+                executeSsh(runner, cli + " compose" + fileArgs + " up -d" + upServicesArg);
 
                 String psOutput = executeSsh(runner,
-                    "docker compose" + fileArgs + " ps --format '{{.ID}}|{{.Service}}|{{.Name}}'");
+                    cli + " compose" + fileArgs + " ps --format '{{.ID}}|{{.Service}}|{{.Name}}'");
 
                 List<Fruit> grownFruits = new ArrayList<>();
                 for (Fruit fruit : fruits) {
@@ -455,16 +460,16 @@ public class FruitGrower {
                     }
 
                     if (containerId != null) {
-                        List<Fruit.PortMapping> ports = getPortMappings(runner, containerId);
+                        List<Fruit.PortMapping> ports = getPortMappings(target, containerId);
                         if (fruit.seed() instanceof DevcontainerSeed s) {
                             String cid = containerId;
                             if (s.onCreateCommand() != null) {
                                 runLifecycleCommand(s.onCreateCommand(),
-                                    cmd -> inContainer(runner, cid, cmd));
+                                    cmd -> inContainer(target, cid, cmd));
                             }
                             if (s.postCreateCommand() != null) {
                                 runLifecycleCommand(s.postCreateCommand(),
-                                    cmd -> inContainer(runner, cid, cmd));
+                                    cmd -> inContainer(target, cid, cmd));
                             }
                         }
                         grownFruits.add(fruit
@@ -495,7 +500,7 @@ public class FruitGrower {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Picking fruit {}", fruit.id());
-                String command = lifecycleCommand(fruit, "stop");
+                String command = lifecycleCommand(target, fruit, "stop");
                 if (command != null) {
                     executeSsh(target.runner(), command);
                 }
@@ -520,7 +525,7 @@ public class FruitGrower {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Ripening fruit {}", fruit.id());
-                String command = lifecycleCommand(fruit, "start");
+                String command = lifecycleCommand(target, fruit, "start");
                 if (command != null) {
                     executeSsh(target.runner(), command);
                 }
@@ -536,11 +541,12 @@ public class FruitGrower {
         }, executor);
     }
 
-    private static String lifecycleCommand(Fruit fruit, String verb) {
+    private static String lifecycleCommand(ExecTarget target, Fruit fruit, String verb) {
+        String cli = target.runtime().cli();
         if (fruit.composeProjectName() != null) {
-            return "docker compose -p " + shellQuote(fruit.composeProjectName()) + " " + verb;
+            return cli + " compose -p " + ShellQuote.quote(fruit.composeProjectName()) + " " + verb;
         }
-        return fruit.containerId() != null ? "docker " + verb + " " + fruit.containerId() : null;
+        return fruit.containerId() != null ? cli + " " + verb + " " + fruit.containerId() : null;
     }
 
     private boolean cliEnabled() {
@@ -550,7 +556,7 @@ public class FruitGrower {
     private void runPostStart(ExecTarget target, Fruit fruit) throws InterruptedException {
         try {
             if (fruit.seed() instanceof DevcontainerSeed && cliEnabled()) {
-                devcontainerCli.runUserCommands(target.runner(), target.workspacePath(), fruit.containerId());
+                devcontainerCli.runUserCommands(target, fruit.containerId());
                 return;
             }
             LifecycleCommand postStart = switch (fruit.seed()) {
@@ -559,7 +565,7 @@ public class FruitGrower {
                 default -> null;
             };
             if (postStart != null) {
-                runLifecycleCommand(postStart, cmd -> inContainer(target.runner(), fruit.containerId(), cmd));
+                runLifecycleCommand(postStart, cmd -> inContainer(target, fruit.containerId(), cmd));
             }
         } catch (InterruptedException e) {
             throw e;
@@ -576,7 +582,7 @@ public class FruitGrower {
             try {
                 log.info("Composting fruit {}", fruit.id());
                 if (fruit.containerId() != null) {
-                    executeSsh(target.runner(), "docker rm -f " + fruit.containerId());
+                    executeSsh(target.runner(), target.runtime().cli() + " rm -f " + fruit.containerId());
                 }
             } catch (Exception e) {
                 log.error("Failed to compost fruit {}", fruit.id(), e);
@@ -595,10 +601,10 @@ public class FruitGrower {
                 if (seed.postAttachCommand() != null) {
                     if (cliEnabled()) {
                         runLifecycleCommand(seed.postAttachCommand(),
-                            cmd -> devcontainerCli.exec(target.runner(), target.workspacePath(), cmd));
+                            cmd -> devcontainerCli.exec(target, cmd));
                     } else {
                         runLifecycleCommand(seed.postAttachCommand(),
-                            cmd -> inContainer(target.runner(), fruit.containerId(), cmd));
+                            cmd -> inContainer(target, fruit.containerId(), cmd));
                     }
                 }
                 if (seed.waitFor() == WaitFor.POST_ATTACH_COMMAND) {
@@ -625,24 +631,22 @@ public class FruitGrower {
         throw new IllegalArgumentException("Fruit " + fruit.id() + " has no DevcontainerSeed");
     }
 
-    private static String shellQuote(String s) {
-        return "'" + s.replace("'", "'\\''") + "'";
-    }
-
     private static DevfileSeed devfileSeed(Fruit fruit) {
         if (fruit.seed() instanceof DevfileSeed s) return s;
         throw new IllegalArgumentException("Fruit " + fruit.id() + " has no DevfileSeed");
     }
 
     @Deprecated(forRemoval = true, since = "next-release")
-    private String legacyRunFromImage(CommandRunner runner, Fruit fruit)
+    private String legacyRunFromImage(ExecTarget target, Fruit fruit)
             throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
+        String cli = target.runtime().cli();
 
-        executeSsh(runner, "docker pull " + shellQuote(seed.image()));
+        executeSsh(target.runner(), cli + " pull " + ShellQuote.quote(seed.image()));
 
-        StringBuilder cmd = new StringBuilder("docker run -d");
-        cmd.append(" --name ").append(shellQuote(fruit.containerName()));
+        StringBuilder cmd = new StringBuilder(cli + " run -d");
+        cmd.append(" --name ").append(ShellQuote.quote(fruit.containerName()));
+        cmd.append(" --label orchard.plot.id=").append(target.targetId());
 
         // Runtime flags (issue #29)
         if (Boolean.TRUE.equals(seed.privileged())) {
@@ -652,14 +656,14 @@ public class FruitGrower {
             cmd.append(" --init");
         }
         for (String cap : seed.capAdd()) {
-            cmd.append(" --cap-add ").append(shellQuote(cap));
+            cmd.append(" --cap-add ").append(ShellQuote.quote(cap));
         }
         for (String opt : seed.securityOpt()) {
-            cmd.append(" --security-opt ").append(shellQuote(opt));
+            cmd.append(" --security-opt ").append(ShellQuote.quote(opt));
         }
 
         for (var entry : seed.containerEnv().entrySet()) {
-            cmd.append(" -e ").append(shellQuote(entry.getKey() + "=" + entry.getValue()));
+            cmd.append(" -e ").append(ShellQuote.quote(entry.getKey() + "=" + entry.getValue()));
         }
 
         for (String port : seed.forwardPorts()) {
@@ -668,64 +672,65 @@ public class FruitGrower {
 
         // extra mounts (issue #29)
         for (String mount : seed.mounts()) {
-            cmd.append(" --mount ").append(shellQuote(mount));
+            cmd.append(" --mount ").append(ShellQuote.quote(mount));
         }
 
         // extra docker run args (issue #29)
         for (String arg : seed.runArgs()) {
-            cmd.append(" ").append(shellQuote(arg));
+            cmd.append(" ").append(ShellQuote.quote(arg));
         }
 
         // workspace mount / folder (issue #29)
         if (seed.workspaceMount() != null) {
-            cmd.append(" --mount ").append(shellQuote(seed.workspaceMount()));
+            cmd.append(" --mount ").append(ShellQuote.quote(seed.workspaceMount()));
         } else {
-            cmd.append(" -v /workspace:/workspace");
+            cmd.append(" -v ").append(ShellQuote.quote(target.workspacePath())).append(":/workspace");
         }
         String workdir = seed.workspaceFolder() != null ? seed.workspaceFolder() : "/workspace";
-        cmd.append(" -w ").append(shellQuote(workdir));
+        cmd.append(" -w ").append(ShellQuote.quote(workdir));
 
-        cmd.append(" ").append(shellQuote(seed.image()));
+        cmd.append(" ").append(ShellQuote.quote(seed.image()));
         cmd.append(" sleep infinity");
 
-        return executeSsh(runner, cmd.toString()).trim();
+        return executeSsh(target.runner(), cmd.toString()).trim();
     }
 
     @Deprecated(forRemoval = true, since = "next-release")
-    private String legacyBuildAndRun(CommandRunner runner, Fruit fruit)
+    private String legacyBuildAndRun(ExecTarget target, Fruit fruit)
             throws IOException, InterruptedException {
         DevcontainerSeed seed = devcontainerSeed(fruit);
+        String workspace = target.workspacePath();
 
         String imageTag = "orchard-fruit-" + fruit.id().toString().substring(0, 8);
-        StringBuilder buildCmd = new StringBuilder("docker build");
-        buildCmd.append(" -t ").append(shellQuote(imageTag));
+        StringBuilder buildCmd = new StringBuilder(target.runtime().cli() + " build");
+        buildCmd.append(" -t ").append(ShellQuote.quote(imageTag));
 
         for (var entry : seed.buildArgs().entrySet()) {
             buildCmd.append(" --build-arg ")
-                .append(shellQuote(entry.getKey() + "=" + entry.getValue()));
+                .append(ShellQuote.quote(entry.getKey() + "=" + entry.getValue()));
         }
         // build.target (issue #31)
         if (seed.buildTarget() != null) {
-            buildCmd.append(" --target ").append(shellQuote(seed.buildTarget()));
+            buildCmd.append(" --target ").append(ShellQuote.quote(seed.buildTarget()));
         }
         // build.cacheFrom (issue #31)
         for (String cache : seed.buildCacheFrom()) {
-            buildCmd.append(" --cache-from ").append(shellQuote(cache));
+            buildCmd.append(" --cache-from ").append(ShellQuote.quote(cache));
         }
         // build.options — verbatim flags (issue #31)
         for (String opt : seed.buildOptions()) {
             buildCmd.append(" ").append(opt);
         }
 
-        buildCmd.append(" -f ").append(shellQuote("/workspace/" + seed.dockerfilePath()));
+        buildCmd.append(" -f ").append(ShellQuote.quote(workspace + "/" + seed.dockerfilePath()));
 
-        // build.context (issue #31) — relative to /workspace
+        // build.context (issue #31) — relative to the workspace
         String context = seed.buildContext() != null
-            ? "/workspace/" + seed.buildContext()
-            : "/workspace";
-        buildCmd.append(" ").append(shellQuote(context));
+            ? workspace + "/" + seed.buildContext()
+            : workspace;
+        buildCmd.append(" ").append(ShellQuote.quote(context));
 
-        executeSsh(runner, buildCmd.toString());
+        executeSsh(target.runner(), buildCmd.toString());
 
         Seed imageOnlySeed = DevcontainerSeed.devcontainer()
             .name(seed.name())
@@ -748,7 +753,7 @@ public class FruitGrower {
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt()
         );
 
-        return legacyRunFromImage(runner, imageFruit);
+        return legacyRunFromImage(target, imageFruit);
     }
 
     static List<Fruit.PortMapping> parsePortOutput(String output) {
@@ -770,15 +775,15 @@ public class FruitGrower {
         return mappings;
     }
 
-    private List<Fruit.PortMapping> getPortMappings(CommandRunner runner, String containerId)
+    private List<Fruit.PortMapping> getPortMappings(ExecTarget target, String containerId)
             throws IOException, InterruptedException {
-        String output = executeSsh(runner, "docker port " + containerId + " 2>/dev/null || echo ''");
+        String output = executeSsh(target.runner(), target.runtime().cli() + " port " + containerId + " 2>/dev/null || echo ''");
         return parsePortOutput(output);
     }
 
-    private void inContainer(CommandRunner runner, String containerId, String command)
+    private void inContainer(ExecTarget target, String containerId, String command)
             throws IOException, InterruptedException {
-        executeSsh(runner, "docker exec " + containerId + " /bin/sh -c '" + command + "'");
+        executeSsh(target.runner(), target.runtime().cli() + " exec " + containerId + " /bin/sh -c '" + command + "'");
     }
 
     private String executeSsh(CommandRunner runner, String command)

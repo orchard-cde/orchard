@@ -454,7 +454,7 @@ class AbstractGroveProviderTest {
         VmPlot s = TestPlots.fake();
         Fruit f = TestPlots.budded(s);
 
-        when(cli.up(any(), eq("/workspace"), eq(f.id()), eq(f.containerName()), any()))
+        when(cli.up(any(), eq(f.id()), eq(f.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c-identity", null, "vscode", "/workspace"));
         when(cli.inspectContainerName(any(), eq("c-identity"))).thenReturn(f.containerName());
 
@@ -463,13 +463,14 @@ class AbstractGroveProviderTest {
         ArgumentCaptor<ExecTarget> viaFruitGrower = ArgumentCaptor.forClass(ExecTarget.class);
         verify(fruitGrowerSpy).grow(viaFruitGrower.capture(), eq(f));
 
-        ArgumentCaptor<CommandRunner> viaCli = ArgumentCaptor.forClass(CommandRunner.class);
-        verify(cli).up(viaCli.capture(), eq("/workspace"), eq(f.id()), eq(f.containerName()), any());
+        ArgumentCaptor<ExecTarget> viaCli = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(cli).up(viaCli.capture(), eq(f.id()), eq(f.containerName()), any());
 
-        assertThat(viaCli.getValue())
+        assertThat(viaCli.getValue().runner())
             .as("the CommandRunner DevcontainerCli.up() receives must be the exact same instance "
                 + "AbstractGroveProvider handed to FruitGrower.grow() — not merely one of the same type")
             .isSameAs(viaFruitGrower.getValue().runner());
+        assertThat(viaCli.getValue().workspacePath()).isEqualTo("/workspace");
     }
 
     @Test
