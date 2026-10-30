@@ -109,12 +109,20 @@ class LocalCommandRunnerTest {
     }
 
     @Test
-    void execute_backgroundedGrandchild_returnsWithinGrace() throws Exception {
+    void execute_backgroundedGrandchild_returnsWithinGrace(@TempDir Path tmp) throws Exception {
+        Path pidFile = tmp.resolve("pid");
         long start = System.nanoTime();
-        String out = runner.execute("(sleep 30 &) ; echo hi", 5);
+        try {
+            String out = runner.execute("(sleep 30 & echo $! > " + pidFile + ") ; echo hi", 5);
 
-        assertThat(out).isEqualTo("hi\n");
-        assertThat((System.nanoTime() - start) / 1_000_000_000L).isLessThan(8);
+            assertThat(out).isEqualTo("hi\n");
+            assertThat((System.nanoTime() - start) / 1_000_000_000L).isLessThan(8);
+        } finally {
+            if (Files.exists(pidFile) && !Files.readString(pidFile).isBlank()) {
+                ProcessHandle.of(Long.parseLong(Files.readString(pidFile).trim()))
+                    .ifPresent(ProcessHandle::destroyForcibly);
+            }
+        }
     }
 
     @Test

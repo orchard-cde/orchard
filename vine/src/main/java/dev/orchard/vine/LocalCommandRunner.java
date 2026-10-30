@@ -12,7 +12,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-/** Runs commands on the trellis host itself through {@code /bin/sh -c}. */
+/**
+ * Runs commands on the trellis host itself through {@code /bin/sh -c}. A descendant that detaches from
+ * the shell before it exits is not killed on timeout or interrupt.
+ */
 public final class LocalCommandRunner implements CommandRunner {
 
     private static final Logger log = LoggerFactory.getLogger(LocalCommandRunner.class);
