@@ -141,6 +141,29 @@ class ProviderRegistryTest {
         assertThat(new StubProvider("x").sizes()).isSameAs(PlotSizes.DEFAULT);
     }
 
+    @Test
+    void close_closesAutoCloseableProviders_andContinuesOnFailure() {
+        java.util.List<String> closed = new java.util.ArrayList<>();
+        registry.register(new ClosingProvider("a", () -> { throw new IllegalStateException("boom"); }));
+        registry.register(new ClosingProvider("b", () -> closed.add("b")));
+        registry.register(new StubProvider("plain"));
+
+        registry.close();
+
+        assertThat(closed).containsExactly("b");
+    }
+
+    private static final class ClosingProvider extends StubProvider implements AutoCloseable {
+        private final Runnable onClose;
+
+        ClosingProvider(String id, Runnable onClose) {
+            super(id);
+            this.onClose = onClose;
+        }
+
+        @Override public void close() { onClose.run(); }
+    }
+
     private static class StubProvider implements GroveProvider {
         private final String providerId;
 
