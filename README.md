@@ -241,6 +241,10 @@ orchard:
     # enable-kvm/serial-output default per-platform (KVM on Linux, HVF on macOS)
 ```
 
+The container provider runs repository-controlled commands and mounts with the trellis user's rights on the host (`initializeCommand`, devfile `preStart`, `runArgs`, `mounts`). Use it single-tenant, with trusted repositories only.
+
+On any non-local deployment, set `orchard.gateway.ssh-host` to the gateway's public host.
+
 ### CLI (`~/.orchard/config.toml`)
 
 ```toml
