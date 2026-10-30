@@ -456,7 +456,7 @@ class GroveServiceTest {
     private static Plot containerPlot() {
         return new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "owner", null,
             PlotState.GERMINATING, Instant.now(), null, java.nio.file.Path.of("/h/ws"),
-            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048));
+            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048), null);
     }
 
     private static Plot vmPlot() {
@@ -470,6 +470,46 @@ class GroveServiceTest {
             "https://github.com/user/repo", "main", "/h/ws", runner);
 
         assertThat(commands).isNotEmpty().noneMatch(c -> c.contains("cloud-init"));
+    }
+
+    @Test
+    void provision_containerPlot_persistsFruitRemoteUserOnPlot() throws Exception {
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withRemoteEnv("/workspaces/repo", "vscode").withState(FruitState.RIPE)));
+        provisionRecordingKeepingGrow(containerPlot(), mock(CommandRunner.class));
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        GroveEntity last = saved.getAllValues().getLast();
+        assertThat(last.getState()).isEqualTo(GroveState.FLOURISHING);
+        assertThat(((ContainerPlot) last.plot()).remoteUser()).isEqualTo("vscode");
+    }
+
+    @Test
+    void provision_containerPlot_fruitWithoutRemoteUser_leavesPlotUnset() throws Exception {
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+        provisionRecordingKeepingGrow(containerPlot(), mock(CommandRunner.class));
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(((ContainerPlot) saved.getAllValues().getLast().plot()).remoteUser()).isNull();
+    }
+
+    private void provisionRecordingKeepingGrow(Plot plot, CommandRunner runner) throws Exception {
+        when(runner.execute(any())).thenAnswer(inv -> {
+            String command = inv.getArgument(0);
+            if (command.contains("rev-parse")) return "abc123";
+            if (command.startsWith("test -f")) return "yes";
+            return "";
+        });
+        when(ownerProvider.host(any())).thenReturn(runner);
+        when(ownerProvider.workspacePath(any())).thenReturn("/h/ws");
+        when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
+            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main").withPlot(plot);
+
+        groveService.provisionGrove(grove, SeedSpec.AUTO);
     }
 
     @Test

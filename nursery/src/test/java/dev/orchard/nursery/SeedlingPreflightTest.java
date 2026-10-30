@@ -105,7 +105,7 @@ class SeedlingPreflightTest {
     void verifyDevcontainerCli_containerPlot_missingCli_namesNpmInstall() {
         ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
             "c-1", PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
-            new ContainerSpec(2, 2048));
+            new ContainerSpec(2, 2048), null);
         CommandRunner runner = new CannedVersionRunner("(unused)", true);
 
         assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))

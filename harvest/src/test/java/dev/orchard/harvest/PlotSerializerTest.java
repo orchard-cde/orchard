@@ -48,11 +48,12 @@ class PlotSerializerTest {
     void roundTrip_containerPlot() {
         ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local", "c-1",
             PlotState.ROOTED, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-01-01T00:01:00Z"),
-            Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN, new ContainerSpec(2, 4096));
+            Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN, new ContainerSpec(2, 4096), "vscode");
 
         Plot restored = serializer.deserialize(serializer.serialize(plot));
 
         assertThat(restored).isEqualTo(plot);
+        assertThat(((ContainerPlot) restored).remoteUser()).isEqualTo("vscode");
     }
 
     @Test
@@ -74,7 +75,7 @@ class PlotSerializerTest {
     void deserialize_unknownRuntime_throws() {
         ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local", "c-1",
             PlotState.ROOTED, Instant.now(), null, Path.of("/srv/g"), ContainerRuntime.DOCKER,
-            new ContainerSpec(2, 4096));
+            new ContainerSpec(2, 4096), null);
         String json = serializer.serialize(plot).replace("\"DOCKER\"", "\"LXC\"");
 
         assertThat(json).contains("LXC");

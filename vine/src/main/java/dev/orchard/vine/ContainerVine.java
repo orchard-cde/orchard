@@ -11,7 +11,8 @@ import java.util.function.Consumer;
  * {@code <runtime> exec}, driven through a local command runner on the trellis host.
  *
  * <p>The container is resolved by plot label on every call, so a recreated fruit is found without
- * the vine holding a stale container id.
+ * the vine holding a stale container id. Commands run as the plot's remote user when it has one,
+ * so files they write in the bind-mounted workspace are not owned by the container's root.
  */
 public final class ContainerVine implements Vine {
 
@@ -20,7 +21,7 @@ public final class ContainerVine implements Vine {
     private final CommandRunner runner;
 
     public ContainerVine(ContainerPlot plot, CommandRunner local) {
-        this.runner = new ExecRunner(plot.runtime().cli(), plot.id().toString(), local);
+        this.runner = new ExecRunner(plot.runtime().cli(), plot.id().toString(), plot.remoteUser(), local);
     }
 
     @Override
@@ -28,7 +29,8 @@ public final class ContainerVine implements Vine {
         return runner;
     }
 
-    private record ExecRunner(String cli, String plotId, CommandRunner local) implements CommandRunner {
+    private record ExecRunner(String cli, String plotId, String remoteUser, CommandRunner local)
+            implements CommandRunner {
 
         @Override
         public String execute(String command) throws IOException, InterruptedException {
@@ -61,7 +63,8 @@ public final class ContainerVine implements Vine {
 
         private String execCommand(String command) throws IOException, InterruptedException {
             String id = resolveContainer();
-            return cli + " exec " + ShellQuote.quote(id) + " /bin/sh -c " + ShellQuote.quote(command);
+            String user = remoteUser == null ? "" : "-u " + ShellQuote.quote(remoteUser) + " ";
+            return cli + " exec " + user + ShellQuote.quote(id) + " /bin/sh -c " + ShellQuote.quote(command);
         }
 
         private String resolveContainer() throws IOException, InterruptedException {

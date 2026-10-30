@@ -63,7 +63,7 @@ class ContainerGroveProviderTest {
     private ContainerPlot planted(PlotState state) {
         ContainerPlot d = draft();
         return new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(), state,
-            Instant.now(), Instant.now(), d.workspacePath(), ContainerRuntime.DOCKER, d.spec());
+            Instant.now(), Instant.now(), d.workspacePath(), ContainerRuntime.DOCKER, d.spec(), null);
     }
 
     @Test
@@ -255,7 +255,7 @@ class ContainerGroveProviderTest {
         ContainerPlot d = draft();
         ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
             PlotState.DORMANT, Instant.now(), Instant.now(),
-            otherRoot.resolve(d.id().toString()).resolve(d.id().toString()), ContainerRuntime.DOCKER, d.spec());
+            otherRoot.resolve(d.id().toString()).resolve(d.id().toString()), ContainerRuntime.DOCKER, d.spec(), null);
 
         provider.uproot(plot).get();
 
@@ -272,7 +272,7 @@ class ContainerGroveProviderTest {
         String workspace = path.equals("REL") ? "rel/" + id + "/" + id
             : path.replace("OTHER", UUID.randomUUID().toString()).replace("ID", id);
         ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
-            PlotState.DORMANT, Instant.now(), Instant.now(), Path.of(workspace), ContainerRuntime.DOCKER, d.spec());
+            PlotState.DORMANT, Instant.now(), Instant.now(), Path.of(workspace), ContainerRuntime.DOCKER, d.spec(), null);
 
         assertThatThrownBy(() -> provider.uproot(plot).get())
             .isInstanceOf(ExecutionException.class)

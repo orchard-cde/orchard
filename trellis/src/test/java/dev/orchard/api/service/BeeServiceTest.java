@@ -831,7 +831,7 @@ class BeeServiceTest {
     private ContainerPlot containerPlot() {
         return new ContainerPlot(UUID.randomUUID(), groveId, "p", "c-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), java.nio.file.Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
-            new ContainerSpec(2, 2048));
+            new ContainerSpec(2, 2048), null);
     }
 
     private VmPlot plotOwnedBy(String providerId) {

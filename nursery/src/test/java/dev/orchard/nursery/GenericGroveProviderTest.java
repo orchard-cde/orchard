@@ -207,7 +207,7 @@ class GenericGroveProviderTest {
         protected ContainerPlot draft(UUID groveId, SeedlingSpec seedlingSpec) {
             return new ContainerPlot(UUID.randomUUID(), groveId, getProviderId(), null,
                 PlotState.GERMINATING, Instant.now(), null, Path.of("/tmp/orchard-ws"),
-                ContainerRuntime.PODMAN, new ContainerSpec(seedlingSpec.cpuCores(), seedlingSpec.memoryMb()));
+                ContainerRuntime.PODMAN, new ContainerSpec(seedlingSpec.cpuCores(), seedlingSpec.memoryMb()), null);
         }
 
         @Override

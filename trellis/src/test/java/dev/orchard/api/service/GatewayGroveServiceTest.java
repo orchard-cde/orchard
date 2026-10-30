@@ -115,7 +115,7 @@ class GatewayGroveServiceTest {
         return new ContainerPlot(
             UUID.randomUUID(), UUID.randomUUID(), "docker", "c-1", state, Instant.now(), Instant.now(),
             null, ContainerRuntime.PODMAN, new ContainerSpec(2, 2048)
-        );
+        , null);
     }
 
     private static Fruit fruit(FruitState state, String containerId, String user, String folder) {

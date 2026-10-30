@@ -68,7 +68,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
         UUID id = UUID.randomUUID();
         return new ContainerPlot(id, groveId, getProviderId(), null, PlotState.GERMINATING,
             Instant.now(), null, plotRoot(id).resolve(id.toString()), null,
-            new ContainerSpec(spec.cpuCores(), spec.memoryMb()));
+            new ContainerSpec(spec.cpuCores(), spec.memoryMb()), null);
     }
 
     @Override
@@ -82,7 +82,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     @Override
     protected ContainerPlot ready(ContainerPlot plot, ContainerRuntime runtime) {
         return new ContainerPlot(plot.id(), plot.groveId(), plot.providerId(), plot.id().toString(),
-            plot.state(), plot.plantedAt(), plot.readyAt(), plot.workspacePath(), runtime, plot.spec());
+            plot.state(), plot.plantedAt(), plot.readyAt(), plot.workspacePath(), runtime, plot.spec(), plot.remoteUser());
     }
 
     @Override

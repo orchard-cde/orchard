@@ -65,7 +65,7 @@ class GroveRepositoryTest {
     private ContainerPlot plot(UUID groveId, PlotState state) {
         Instant now = Instant.now();
         return new ContainerPlot(UUID.randomUUID(), groveId, "docker", "c-123", state, now, now,
-            Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN, new ContainerSpec(2, 4096));
+            Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN, new ContainerSpec(2, 4096), null);
     }
 
     @Test

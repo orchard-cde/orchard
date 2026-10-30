@@ -681,7 +681,7 @@ class AbstractGroveProviderTest {
     private static ContainerPlot containerPlot() {
         return new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local", "c-1",
             PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
-            new ContainerSpec(2, 2048));
+            new ContainerSpec(2, 2048), null);
     }
 
     static Stream<Arguments> templateMethods() {

@@ -206,6 +206,9 @@ public class GroveService {
         Fruit grownFruit = provider.growFruit(plot, fruit).join();
         grove = grove.withFruit(grownFruit);
         saveFruits(grove.fruits());
+        if (grove.plot() instanceof ContainerPlot container && grownFruit.remoteUser() != null) {
+            grove = grove.withPlot(container.withRemoteUser(grownFruit.remoteUser()));
+        }
 
         if (grownFruit.state() == FruitState.RIPE) {
             grove = grove.withState(GroveState.FLOURISHING);

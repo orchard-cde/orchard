@@ -24,7 +24,7 @@ class ContainerVineTest {
 
     private ContainerPlot plot(ContainerRuntime runtime) {
         return new ContainerPlot(plotId, UUID.randomUUID(), "p", "c-1", PlotState.ROOTED, Instant.now(),
-            Instant.now(), Path.of("/ws"), runtime, new ContainerSpec(1, 512));
+            Instant.now(), Path.of("/ws"), runtime, new ContainerSpec(1, 512), null);
     }
 
     private String psCommand(String cli) {
@@ -76,6 +76,24 @@ class ContainerVineTest {
         assertThat(local.commands).containsExactly(
             psCommand("docker"),
             "docker exec 'abc' /bin/sh -c 'ls -la'");
+    }
+
+    @Test
+    void execute_withRemoteUser_passesU() throws Exception {
+        RecordingRunner local = new RecordingRunner();
+        new ContainerVine(plot(ContainerRuntime.DOCKER).withRemoteUser("dev user"), local).commands().execute("id");
+
+        assertThat(local.commands).containsExactly(
+            psCommand("docker"),
+            "docker exec -u 'dev user' 'abc' /bin/sh -c 'id'");
+    }
+
+    @Test
+    void execute_withoutRemoteUser_noU() throws Exception {
+        RecordingRunner local = new RecordingRunner();
+        new ContainerVine(plot(ContainerRuntime.DOCKER), local).commands().execute("id");
+
+        assertThat(local.commands.get(1)).isEqualTo("docker exec 'abc' /bin/sh -c 'id'").doesNotContain(" -u ");
     }
 
     @Test

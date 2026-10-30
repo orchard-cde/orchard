@@ -288,7 +288,7 @@ class GroveTest {
     private ContainerPlot createContainerPlot(UUID groveId) {
         return new ContainerPlot(UUID.randomUUID(), groveId, "docker", "c-1", PlotState.GERMINATING,
                 Instant.now(), null, Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
-                new ContainerSpec(2, 4096));
+                new ContainerSpec(2, 4096), null);
     }
 
     private Fruit createRipeFruit(UUID groveId, UUID plotId) {

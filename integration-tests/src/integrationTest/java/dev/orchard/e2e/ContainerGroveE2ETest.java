@@ -137,7 +137,7 @@ class ContainerGroveE2ETest {
         var info = grove.plot();
         return new ContainerPlot(info.id(), grove.id(), info.providerId(), info.id().toString(), state,
             null, null, WORKSPACE_ROOT.resolve(info.id().toString()).resolve(info.id().toString()),
-            info.runtime(), null);
+            info.runtime(), null, null);
     }
 
     private static String containersLabelled(ContainerPlot plot) throws Exception {

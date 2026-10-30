@@ -276,7 +276,7 @@ class Ec2GroveProviderTest {
         Ec2GroveProvider provider = providerWith(configWith(Ec2Config.IpMode.AUTO));
         ContainerPlot container = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
             "c-1", PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"),
-            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048));
+            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048), null);
         Runnable call = switch (method) {
             case "water" -> () -> provider.water(container);
             case "dormant" -> () -> provider.dormant(container);

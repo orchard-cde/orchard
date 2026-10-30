@@ -49,7 +49,7 @@ class GroveControllerTest {
         when(groveService.getGrove(grove.id())).thenReturn(Optional.of(grove.withPlot(
             new ContainerPlot(UUID.randomUUID(), grove.id(), "docker", "c-1", PlotState.ROOTED,
                 Instant.now(), Instant.now(), Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
-                new ContainerSpec(2, 4096)))));
+                new ContainerSpec(2, 4096), null))));
 
         mockMvc.perform(get("/api/groves/{groveId}/ssh-config", grove.id()))
             .andExpect(status().isConflict());

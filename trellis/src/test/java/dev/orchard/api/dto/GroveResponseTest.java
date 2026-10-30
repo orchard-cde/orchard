@@ -161,6 +161,6 @@ class GroveResponseTest {
     private static ContainerPlot containerPlot(UUID groveId) {
         return new ContainerPlot(UUID.randomUUID(), groveId, "docker", "c-1", PlotState.ROOTED,
             Instant.now(), Instant.now(), Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
-            new ContainerSpec(2, 4096));
+            new ContainerSpec(2, 4096), null);
     }
 }
