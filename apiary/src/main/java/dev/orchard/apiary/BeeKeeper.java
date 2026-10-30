@@ -17,9 +17,9 @@ public interface BeeKeeper {
 
     BeeType getBeeType();
 
-    CompletableFuture<Bee> install(Bee bee, BeeSpec spec, CommandRunner runner);
+    CompletableFuture<Bee> install(Bee bee, BeeSpec spec, CommandRunner runner, String workspaceRoot);
 
-    CompletableFuture<Bee> release(Bee bee, CommandRunner runner);
+    CompletableFuture<Bee> release(Bee bee, CommandRunner runner, String workspaceRoot);
 
     CompletableFuture<Bee> smoke(Bee bee, CommandRunner runner);
 

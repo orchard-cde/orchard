@@ -29,6 +29,8 @@ class OpencodeBeeKeeperTest {
 
     @Mock private CommandRunner runner;
 
+    private static final String ROOT = "/workspace";
+
     private OpencodeBeeKeeper keeper;
     private final UUID groveId = UUID.randomUUID();
 
@@ -52,7 +54,7 @@ class OpencodeBeeKeeperTest {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
         when(runner.execute("command -v opencode")).thenReturn("/usr/local/bin/opencode");
 
-        Bee result = keeper.install(bee, bee.spec(), runner).join();
+        Bee result = keeper.install(bee, bee.spec(), runner, ROOT).join();
 
         assertThat(result).isEqualTo(bee);
         verify(runner, never()).execute(contains("curl"));
@@ -64,7 +66,7 @@ class OpencodeBeeKeeperTest {
         when(runner.execute("command -v opencode")).thenThrow(new IOException("not found"));
         when(runner.execute(contains("curl"))).thenReturn("");
 
-        keeper.install(bee, bee.spec(), runner).join();
+        keeper.install(bee, bee.spec(), runner, ROOT).join();
 
         verify(runner).execute(contains("install.sh"));
     }
@@ -74,10 +76,32 @@ class OpencodeBeeKeeperTest {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
         when(runner.execute("command -v opencode")).thenReturn("/usr/local/bin/opencode");
 
-        keeper.install(bee, bee.spec(), runner).join();
+        keeper.install(bee, bee.spec(), runner, ROOT).join();
 
         verify(runner).execute(argThat(cmd ->
-            cmd.contains("mkdir -p /workspace/.opencode") && cmd.contains("opencode.jsonc")));
+            cmd.contains("mkdir -p '/workspace/.opencode'") && cmd.contains("opencode.jsonc")));
+    }
+
+    @Test
+    void install_writesConfigUnderWorkspaceRoot() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        when(runner.execute("command -v opencode")).thenReturn("/usr/local/bin/opencode");
+
+        keeper.install(bee, bee.spec(), runner, "/workspaces/repo").join();
+
+        verify(runner).execute(argThat(cmd ->
+            cmd.contains("mkdir -p '/workspaces/repo/.opencode'")
+                && cmd.contains("> '/workspaces/repo/.opencode/opencode.jsonc'")));
+    }
+
+    @Test
+    void release_cdsIntoWorkspaceRoot() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        when(runner.execute(contains("nohup opencode serve"))).thenReturn("1\n");
+
+        keeper.release(bee, runner, "/workspaces/my repo").join();
+
+        verify(runner).execute(startsWith("cd '/workspaces/my repo' && nohup opencode serve"));
     }
 
     @Test
@@ -86,7 +110,7 @@ class OpencodeBeeKeeperTest {
         when(runner.execute("command -v opencode")).thenReturn("/usr/local/bin/opencode");
         when(runner.execute(contains("mkdir -p"))).thenThrow(new IOException("disk full"));
 
-        assertThatThrownBy(() -> keeper.install(bee, bee.spec(), runner).join())
+        assertThatThrownBy(() -> keeper.install(bee, bee.spec(), runner, ROOT).join())
             .hasCauseInstanceOf(BeeProvisioningException.class);
     }
 
@@ -95,7 +119,7 @@ class OpencodeBeeKeeperTest {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
         when(runner.execute(contains("nohup opencode serve"))).thenReturn("12345\n");
 
-        Bee result = keeper.release(bee, runner).join();
+        Bee result = keeper.release(bee, runner, ROOT).join();
 
         assertThat(result.processId()).isEqualTo("12345");
     }
@@ -105,7 +129,7 @@ class OpencodeBeeKeeperTest {
         BeeSpec spec = new BeeSpec(BeeType.OPENCODE, null, Map.of("mode", "interactive"));
         Bee bee = Bee.hatching(groveId, spec);
 
-        Bee result = keeper.release(bee, runner).join();
+        Bee result = keeper.release(bee, runner, ROOT).join();
 
         assertThat(result.processId()).isNull();
         verify(runner, never()).execute(contains("nohup"));
@@ -157,7 +181,7 @@ class OpencodeBeeKeeperTest {
         Bee bee = Bee.hatching(groveId, new BeeSpec(BeeType.OPENCODE, "1.0.0",
             Map.of("theme", "dark")));
 
-        String json = keeper.renderConfig(bee, bee.spec());
+        String json = keeper.renderConfig(bee, bee.spec(), ROOT);
 
         assertThat(json)
             .contains("\"workspace_root\" : \"/workspace\"")
