@@ -157,7 +157,8 @@ public class FruitGrower {
 
             Fruit grown = rebuildWithRealName(fruit, realName)
                 .withContainerDetails(result.containerId(), ports)
-                .withComposeProjectName(result.composeProjectName());
+                .withComposeProjectName(result.composeProjectName())
+                .withRemoteEnv(result.remoteWorkspaceFolder(), result.remoteUser());
 
             // CLI ran every lifecycle command up to waitFor; if the user asked to wait for
             // postAttach, FruitGrower.attach() will flip to RIPE later.
@@ -192,7 +193,8 @@ public class FruitGrower {
         }
         return new Fruit(
             fruit.id(), fruit.groveId(), fruit.plotId(),
-            fruit.containerId(), newName, fruit.serviceName(), fruit.composeProjectName(), fruit.seed(),
+            fruit.containerId(), newName, fruit.serviceName(), fruit.composeProjectName(),
+            fruit.workspaceFolder(), fruit.remoteUser(), fruit.seed(),
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt());
     }
 
@@ -283,7 +285,8 @@ public class FruitGrower {
                     cmd -> inContainer(target, containerId, cmd));
             }
 
-            Fruit result = fruit.withContainerDetails(containerId, ports);
+            Fruit result = fruit.withContainerDetails(containerId, ports)
+                .withRemoteEnv(seed.workspaceFolder() != null ? seed.workspaceFolder() : "/workspace", null);
             if (seed.effectiveWaitFor() != WaitFor.POST_ATTACH_COMMAND) {
                 result = result.withState(FruitState.RIPE);
             }
@@ -372,7 +375,7 @@ public class FruitGrower {
 
             // Record container details before executing lifecycle commands so the fruit
             // retains a containerId reference for cleanup even if a command fails.
-            fruit = fruit.withContainerDetails(containerId, ports);
+            fruit = fruit.withContainerDetails(containerId, ports).withRemoteEnv("/projects", null);
 
             // devfile events.postStart — runs inside the container, after it starts.
             if (seed.postStartCommand() != null) {
@@ -749,7 +752,8 @@ public class FruitGrower {
 
         Fruit imageFruit = new Fruit(
             fruit.id(), fruit.groveId(), fruit.plotId(),
-            null, fruit.containerName(), fruit.serviceName(), fruit.composeProjectName(), imageOnlySeed,
+            null, fruit.containerName(), fruit.serviceName(), fruit.composeProjectName(),
+            fruit.workspaceFolder(), fruit.remoteUser(), imageOnlySeed,
             fruit.state(), fruit.portMappings(), fruit.buddedAt(), fruit.ripenedAt()
         );
 

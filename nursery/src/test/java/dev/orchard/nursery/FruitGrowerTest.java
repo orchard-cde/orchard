@@ -636,6 +636,52 @@ class FruitGrowerTest {
     }
 
     @Test
+    void growViaCli_setsWorkspaceFolderFromCliResult() throws Exception {
+        DevcontainerCli cli = mock(DevcontainerCli.class);
+        Fruit fruit = buddedFruit(defaultSeed());
+        when(cli.up(any(), eq(fruit.id()), eq(fruit.containerName()), any()))
+            .thenReturn(new DevcontainerCliResult("c123", null, "vscode", "/workspaces/repo"));
+        when(cli.inspectContainerName(any(), eq("c123"))).thenReturn("n");
+
+        Fruit result = new FruitGrower(cli, true, mock(ApplicationEventPublisher.class))
+            .grow(execTarget(runner()), fruit).get();
+
+        assertThat(result.workspaceFolder()).isEqualTo("/workspaces/repo");
+        assertThat(result.remoteUser()).isEqualTo("vscode");
+    }
+
+    @Test
+    void growDevfile_setsWorkspaceFolderToProjects() throws Exception {
+        Seed devfile = DevfileSeed.builder().name("n").image("img").build();
+
+        Fruit result = plainGrower().grow(target(new RecordingRunner(), "/h/ws", ContainerRuntime.DOCKER),
+            buddedFruit(devfile)).get();
+
+        assertThat(result.workspaceFolder()).isEqualTo("/projects");
+    }
+
+    @Test
+    void growDevfile_remoteUserNull() throws Exception {
+        Seed devfile = DevfileSeed.builder().name("n").image("img").build();
+
+        Fruit result = plainGrower().grow(target(new RecordingRunner(), "/h/ws", ContainerRuntime.DOCKER),
+            buddedFruit(devfile)).get();
+
+        assertThat(result.remoteUser()).isNull();
+    }
+
+    @Test
+    void legacy_setsWorkspaceFolder() throws Exception {
+        var target = target(new RecordingRunner(), "/h/ws", ContainerRuntime.DOCKER);
+        Seed custom = Seed.devcontainer().name("n").image("img").workspaceFolder("/custom").build();
+
+        assertThat(plainGrower().grow(target, buddedFruit(defaultSeed())).get().workspaceFolder())
+            .isEqualTo("/workspace");
+        assertThat(plainGrower().grow(target, buddedFruit(custom)).get().workspaceFolder())
+            .isEqualTo("/custom");
+    }
+
+    @Test
     void legacyImage_hostMountUsesWorkspacePath_containerSideUnchanged() throws Exception {
         var runner = new RecordingRunner();
 

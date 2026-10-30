@@ -16,6 +16,8 @@ public record Fruit(
     String containerName,
     String serviceName,
     String composeProjectName,
+    String workspaceFolder,
+    String remoteUser,
     Seed seed,
     FruitState state,
     List<PortMapping> portMappings,
@@ -41,6 +43,8 @@ public record Fruit(
             seed.name() != null ? seed.name() : "orchard-fruit",
             serviceName,
             null,
+            null,
+            null,
             seed,
             FruitState.BUDDING,
             List.of(),
@@ -50,18 +54,23 @@ public record Fruit(
     }
 
     public Fruit withState(FruitState newState) {
-        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, composeProjectName, seed,
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, composeProjectName, workspaceFolder, remoteUser, seed,
             newState, portMappings, buddedAt, newState == FruitState.RIPE ? Instant.now() : ripenedAt);
     }
 
     public Fruit withContainerDetails(String containerId, List<PortMapping> ports) {
-        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, composeProjectName, seed,
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, composeProjectName, workspaceFolder, remoteUser, seed,
             state, ports, buddedAt, ripenedAt);
     }
 
     public Fruit withComposeProjectName(String name) {
-        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, name, seed,
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, name, workspaceFolder, remoteUser, seed,
             state, portMappings, buddedAt, ripenedAt);
+    }
+
+    public Fruit withRemoteEnv(String workspaceFolder, String remoteUser) {
+        return new Fruit(id, groveId, plotId, containerId, containerName, serviceName, composeProjectName,
+            workspaceFolder, remoteUser, seed, state, portMappings, buddedAt, ripenedAt);
     }
 
     public boolean isReady() {
