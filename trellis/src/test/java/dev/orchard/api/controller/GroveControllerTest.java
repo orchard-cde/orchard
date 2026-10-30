@@ -1,5 +1,6 @@
 package dev.orchard.api.controller;
 
+import dev.orchard.api.service.GatewayGroveService;
 import dev.orchard.api.service.GroveService;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
@@ -38,6 +39,9 @@ class GroveControllerTest {
 
     @MockitoBean
     private GroveService groveService;
+
+    @MockitoBean
+    private GatewayGroveService gatewayGroveService;
 
     @Test
     void sshConfig_containerPlot_returns409() throws Exception {

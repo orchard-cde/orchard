@@ -47,6 +47,6 @@ public class ApiMappingBenchmark {
 
     @Benchmark
     public GroveResponse mapGroveResponse() {
-        return GroveResponse.fromModel(grove);
+        return GroveResponse.fromModel(grove, null);
     }
 }

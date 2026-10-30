@@ -30,7 +30,7 @@ class GroveResponseTest {
             Instant.now(), Instant.now()
         );
 
-        GroveResponse response = GroveResponse.fromModel(grove);
+        GroveResponse response = GroveResponse.fromModel(grove, null);
 
         assertThat(response.id()).isEqualTo(groveId);
         assertThat(response.name()).isEqualTo("my-grove");
@@ -45,10 +45,17 @@ class GroveResponseTest {
     }
 
     @Test
+    void fromModel_carriesTheGivenConnectionString() {
+        assertThat(GroveResponse.fromModel(grove(), "ssh -p 2222 x@localhost").sshConnectionString())
+            .isEqualTo("ssh -p 2222 x@localhost");
+        assertThat(GroveResponse.fromModel(grove(), null).sshConnectionString()).isNull();
+    }
+
+    @Test
     void fromModel_vmPlot() {
         Grove grove = grove().withPlot(vmPlot(UUID.randomUUID()));
 
-        PlotInfo plot = GroveResponse.fromModel(grove).plot();
+        PlotInfo plot = GroveResponse.fromModel(grove, null).plot();
 
         assertThat(plot.kind()).isEqualTo(PlotKind.VM);
         assertThat(plot.state()).isEqualTo(PlotState.ROOTED);
@@ -65,7 +72,7 @@ class GroveResponseTest {
     void fromModel_containerPlot() {
         Grove grove = grove().withPlot(containerPlot(UUID.randomUUID()));
 
-        PlotInfo plot = GroveResponse.fromModel(grove).plot();
+        PlotInfo plot = GroveResponse.fromModel(grove, null).plot();
 
         assertThat(plot.kind()).isEqualTo(PlotKind.CONTAINER);
         assertThat(plot.providerId()).isEqualTo("docker");
@@ -79,7 +86,7 @@ class GroveResponseTest {
 
     @Test
     void fromModel_nullPlot_nullPlotInfo() {
-        GroveResponse response = GroveResponse.fromModel(grove());
+        GroveResponse response = GroveResponse.fromModel(grove(), null);
 
         assertThat(response.plot()).isNull();
     }
@@ -89,7 +96,7 @@ class GroveResponseTest {
         VmPlot plot = vmPlot(UUID.randomUUID()).withAuthorizedKeys(List.of("ssh-ed25519 AAAA secret"));
 
         String json = JsonMapper.builder().build()
-            .writeValueAsString(GroveResponse.fromModel(grove().withPlot(plot)));
+            .writeValueAsString(GroveResponse.fromModel(grove().withPlot(plot), null));
 
         assertThat(json).contains("\"plot\"");
         assertThat(json).doesNotContain("\"seedling\"", "authorizedKeys", "providerInstanceId", "inst-1");
@@ -99,7 +106,7 @@ class GroveResponseTest {
     void fromModel_handlesEmptyFruits() {
         Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main");
 
-        GroveResponse response = GroveResponse.fromModel(grove);
+        GroveResponse response = GroveResponse.fromModel(grove, null);
 
         assertThat(response.fruits()).isEmpty();
     }

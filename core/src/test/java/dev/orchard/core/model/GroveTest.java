@@ -233,51 +233,6 @@ class GroveTest {
     }
 
     @Test
-    void getSshConnectionString_returnsFormattedString() {
-        Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        VmPlot plot = createReadyPlot(grove.id());
-        grove = grove.withPlot(plot);
-
-        String ssh = grove.getSshConnectionString();
-
-        assertThat(ssh).contains("ssh -o StrictHostKeyChecking=no");
-        assertThat(ssh).contains("-o UserKnownHostsFile=/dev/null");
-        assertThat(ssh).contains(".ssh/orchard_ed25519");
-        assertThat(ssh).contains("-p 2222");
-        assertThat(ssh).contains("cultivator@192.168.1.1");
-    }
-
-    @Test
-    void getSshConnectionString_returnsNullWhenPlotNull() {
-        Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-
-        assertThat(grove.getSshConnectionString()).isNull();
-    }
-
-    @Test
-    void getSshConnectionString_returnsNullWhenIpNull() {
-        Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        VmPlot plot = VmPlot.germinate(grove.id(), "qemu", SeedlingSpec.from(VmSpec.small()));
-        grove = grove.withPlot(plot);
-
-        assertThat(grove.getSshConnectionString()).isNull();
-    }
-
-    @Test
-    void getSshConnectionString_nullUnlessPlotIsRooted() {
-        Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        VmPlot sapling = createReadyPlot(grove.id());
-
-        assertThat(grove.withPlot(sapling).getSshConnectionString()).isNotNull();
-        for (PlotState other : PlotState.values()) {
-            if (other != PlotState.ROOTED) {
-                assertThat(grove.withPlot(sapling.withState(other)).getSshConnectionString())
-                    .as(other.name()).isNull();
-            }
-        }
-    }
-
-    @Test
     void isReady_trueOnlyForRootedPlot() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
         VmPlot sapling = createReadyPlot(grove.id());
@@ -292,14 +247,6 @@ class GroveTest {
         }
         assertThat(grove.withPlot(createContainerPlot(grove.id()).withState(PlotState.ROOTED)).isReady())
                 .isTrue();
-    }
-
-    @Test
-    void sshConnectionString_nullForContainerPlot() {
-        Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main")
-                .withPlot(createContainerPlot(UUID.randomUUID()).withState(PlotState.ROOTED));
-
-        assertThat(grove.getSshConnectionString()).isNull();
     }
 
     @Test

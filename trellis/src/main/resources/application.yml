@@ -42,6 +42,10 @@ management:
       show-details: always
 
 orchard:
+  gateway:
+    ssh-host: localhost
+    ssh-port: 2222
+
   security:
     oauth2:
       # Set to true to enable JWT authentication. When false (default), all
