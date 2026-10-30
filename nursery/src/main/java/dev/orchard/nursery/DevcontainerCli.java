@@ -128,7 +128,7 @@ public class DevcontainerCli {
     /** Run a command inside the fruit's container. Used by FruitGrower.attach() for postAttachCommand. */
     public void exec(ExecTarget target, String command) throws IOException, InterruptedException {
         String cmd = "devcontainer exec --workspace-folder " + ShellQuote.quote(target.workspacePath())
-            + dockerPathArgs(target) + " -- " + command;
+            + dockerPathArgs(target) + " -- /bin/sh -c " + ShellQuote.quote(command);
         target.runner().execute(cmd, config.execTimeoutSeconds());
     }
 

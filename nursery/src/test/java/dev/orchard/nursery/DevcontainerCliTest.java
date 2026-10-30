@@ -262,6 +262,17 @@ class DevcontainerCliTest {
     }
 
     @Test
+    void exec_commandIsQuotedForContainerShell() throws Exception {
+        var calls = new ArrayList<String>();
+        var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
+
+        cli.exec(target(stubRunnerCapturing(calls), "/workspace"), "echo hi; touch /tmp/x");
+
+        assertThat(calls).singleElement().satisfies(c ->
+            assertThat(c).endsWith("-- /bin/sh -c 'echo hi; touch /tmp/x'"));
+    }
+
+    @Test
     void upTargetsTheSuppliedWorkspacePath() throws Exception {
         var calls = new ArrayList<String>();
         CommandRunner runner = stubRunnerCapturing(calls);
