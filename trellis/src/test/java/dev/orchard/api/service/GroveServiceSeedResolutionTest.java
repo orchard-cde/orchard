@@ -20,8 +20,8 @@ class GroveServiceSeedResolutionTest {
     private static final DevcontainerParser DEVCONTAINER_PARSER = new DevcontainerParser();
     private static final DevfileParser DEVFILE_PARSER = new DevfileParser();
 
-    private static final String DEVCONTAINER_PATH = "/workspace/.devcontainer/devcontainer.json";
-    private static final String DEVFILE_PATH = "/workspace/devfile.yaml";
+    private static final String DEVCONTAINER_PATH = ".devcontainer/devcontainer.json";
+    private static final String DEVFILE_PATH = "devfile.yaml";
 
     private static final String DEVCONTAINER_JSON = "{\"image\": \"ubuntu:22.04\"}";
     private static final String DEVFILE_YAML = """

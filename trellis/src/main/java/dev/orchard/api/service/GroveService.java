@@ -11,6 +11,7 @@ import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.SeedlingProvisioningException;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ShellQuote;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.FruitRepository;
@@ -147,8 +148,10 @@ public class GroveService {
                 return;
             }
 
-            // Wait for cloud-init to finish (installs docker, git, node, devcontainer CLI, etc.)
-            waitForCloudInit(provider, plantedPlot);
+            // A VM boots asynchronously; cloud-init installs docker, git, node, devcontainer CLI, etc.
+            if (plantedPlot instanceof VmPlot) {
+                waitForCloudInit(provider, plantedPlot);
+            }
 
             // Verify devcontainer CLI was installed by cloud-init's runcmd block
             provider.verifyDevcontainerCli(plantedPlot, devcontainerCliConfig.version());
@@ -251,7 +254,7 @@ public class GroveService {
 
     private void waitForCloudInit(GroveProvider provider, Plot plot) {
         log.info("Waiting for cloud-init to complete on plot {}", plot.id());
-        CommandRunner ssh = provider.vine(plot).commands();
+        CommandRunner ssh = provider.host(plot);
         int maxAttempts = 60; // up to ~5 minutes
         for (int i = 0; i < maxAttempts; i++) {
             try {
@@ -302,10 +305,11 @@ public class GroveService {
     private String cloneRepository(GroveProvider provider, Plot plot, String repoUrl, String branch) {
         log.info("Cloning {} branch {} to plot {}", repoUrl, branch, plot.id());
         try {
-            CommandRunner ssh = provider.vine(plot).commands();
-            ssh.execute("mkdir -p /workspace");
-            ssh.execute("git clone --branch %s --depth 1 %s /workspace".formatted(branch, repoUrl));
-            String commitSha = ssh.execute("git -C /workspace rev-parse HEAD").trim();
+            CommandRunner host = provider.host(plot);
+            String ws = ShellQuote.quote(provider.workspacePath(plot));
+            host.execute("git clone --branch %s --depth 1 %s %s".formatted(
+                ShellQuote.quote(branch), ShellQuote.quote(repoUrl), ws));
+            String commitSha = host.execute("git -C " + ws + " rev-parse HEAD").trim();
             log.info("Repository cloned, commit: {}", commitSha);
             return commitSha;
         } catch (IOException | InterruptedException e) {
@@ -317,17 +321,17 @@ public class GroveService {
         }
     }
 
-    /** Standard on-VM locations for a devcontainer config, in precedence order. */
+    /** Standard workspace-relative locations for a devcontainer config, in precedence order. */
     private static final List<String> DEVCONTAINER_PATHS = List.of(
-        "/workspace/.devcontainer/devcontainer.json",
-        "/workspace/.devcontainer.json");
+        ".devcontainer/devcontainer.json",
+        ".devcontainer.json");
 
-    /** Standard on-VM locations for a devfile, in precedence order. */
+    /** Standard workspace-relative locations for a devfile, in precedence order. */
     private static final List<String> DEVFILE_PATHS = List.of(
-        "/workspace/devfile.yaml",
-        "/workspace/devfile.yml",
-        "/workspace/.devfile.yaml",
-        "/workspace/.devfile.yml");
+        "devfile.yaml",
+        "devfile.yml",
+        ".devfile.yaml",
+        ".devfile.yml");
 
     /** Shared defaults for a synthesized seed when a repo ships no workspace config. */
     private static final String DEFAULT_SEED_NAME = "orchard-workspace";
@@ -335,8 +339,9 @@ public class GroveService {
     private static final List<String> DEFAULT_SEED_PORTS = List.of("8080", "3000");
 
     private Seed discoverSeed(GroveProvider provider, Plot plot, SeedSpec spec) {
-        CommandRunner ssh = provider.vine(plot).commands();
-        return resolveSeed(spec, ssh::readFile, devcontainerParser, devfileParser);
+        CommandRunner host = provider.host(plot);
+        String ws = provider.workspacePath(plot);
+        return resolveSeed(spec, rel -> host.readFile(ws + "/" + rel), devcontainerParser, devfileParser);
     }
 
     /**
@@ -349,7 +354,8 @@ public class GroveService {
      *   <li>{@link SeedSpec#DEVFILE} — devfile.yaml only; a default devfile seed when absent.</li>
      * </ul>
      *
-     * <p>Reader-injected so the rules are unit-testable without a live VM.
+     * <p>Reader-injected so the rules are unit-testable without a live plot; the reader receives
+     * workspace-relative paths.
      */
     static Seed resolveSeed(SeedSpec spec,
                             Function<String, Optional<String>> reader,
@@ -419,7 +425,7 @@ public class GroveService {
      * Ensures the workspace on the plot has the configuration file it needs to start.
      *
      * <ul>
-     *   <li>{@link DevcontainerSeed} — writes {@code /workspace/.devcontainer/devcontainer.json}
+     *   <li>{@link DevcontainerSeed} — writes {@code <workspace>/.devcontainer/devcontainer.json}
      *       if not already present, so that {@code devcontainer up} doesn't fail with
      *       "Config not found".</li>
      *   <li>{@link DevfileSeed} — no-op; the devfile is already on disk (we discovered it from
@@ -436,16 +442,18 @@ public class GroveService {
     }
 
     /**
-     * Ensures a devcontainer.json exists at /workspace/.devcontainer/devcontainer.json
+     * Ensures a devcontainer.json exists at <workspace>/.devcontainer/devcontainer.json
      * on the plot. If the cloned repo already has one, this is a no-op (the file
      * test returns fast). Otherwise it serialises the given Seed to a valid
-     * devcontainer.json so that {@code devcontainer up --workspace-folder /workspace}
+     * devcontainer.json so that {@code devcontainer up --workspace-folder <workspace>}
      * does not fail with "Config not found".
      */
     private void ensureDevcontainerConfig(GroveProvider provider, Plot plot, DevcontainerSeed seed) {
-        CommandRunner ssh = provider.vine(plot).commands();
+        CommandRunner host = provider.host(plot);
+        String configPath = ShellQuote.quote(provider.workspacePath(plot) + "/.devcontainer/devcontainer.json");
+        String configDir = ShellQuote.quote(provider.workspacePath(plot) + "/.devcontainer");
         try {
-            if (ssh.execute("test -f /workspace/.devcontainer/devcontainer.json && echo yes || echo no")
+            if (host.execute("test -f " + configPath + " && echo yes || echo no")
                     .trim().equals("yes")) {
                 return;
             }
@@ -471,7 +479,8 @@ public class GroveService {
 
             String json = devcontainerMapper.writeValueAsString(root);
             String b64 = Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
-            ssh.execute("mkdir -p /workspace/.devcontainer && echo '" + b64 + "' | base64 -d > /workspace/.devcontainer/devcontainer.json");
+            host.execute("mkdir -p " + configDir + " && echo " + ShellQuote.quote(b64)
+                + " | base64 -d > " + configPath);
         } catch (IOException | InterruptedException e) {
             log.warn("Failed to ensure devcontainer.json on plot {}", plot.id(), e);
         }
