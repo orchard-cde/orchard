@@ -5,6 +5,7 @@ import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -161,6 +162,8 @@ class ProviderRegistryTest {
         @Override public CompletableFuture<Fruit> pickFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Fruit> ripenFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
         @Override public Vine vine(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CommandRunner host(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public String workspacePath(Plot s) { throw new UnsupportedOperationException(); }
         @Override public void verifyDevcontainerCli(Plot s, String expectedVersion) { throw new UnsupportedOperationException(); }
     }
 }

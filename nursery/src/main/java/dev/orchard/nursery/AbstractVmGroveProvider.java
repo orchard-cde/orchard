@@ -1,9 +1,10 @@
 package dev.orchard.nursery;
 
-import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.VmEndpoint;
 import dev.orchard.core.model.VmPlot;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.SshVine;
 import dev.orchard.vine.Vine;
 
@@ -57,15 +58,18 @@ public abstract class AbstractVmGroveProvider<L> extends AbstractGroveProvider<V
         return new SshVine(plot);
     }
 
-    protected static void requireDormant(VmPlot vm) {
-        if (vm.state() != PlotState.DORMANT) {
-            throw new IllegalStateException(
-                "Only a DORMANT plot can be watered; plot " + vm.id() + " is " + vm.state());
-        }
+    @Override
+    protected CommandRunner hostFor(VmPlot plot) {
+        return new SshVine(plot).commands();
     }
 
     @Override
-    protected final String workspacePath(VmPlot plot) {
+    protected final ContainerRuntime runtime(VmPlot plot) {
+        return ContainerRuntime.DOCKER;
+    }
+
+    @Override
+    protected final String workspacePathFor(VmPlot plot) {
         return "/workspace";
     }
 }

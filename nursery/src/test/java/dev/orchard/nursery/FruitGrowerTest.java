@@ -1,6 +1,7 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.DevfileSeed;
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
@@ -251,7 +252,7 @@ class FruitGrowerTest {
 
         FruitGrower grower = new FruitGrower(cli, true, null);
 
-        Fruit result = grower.grow(new ExecTarget(runner, customWorkspacePath, SEEDLING_ID), fruit).get();
+        Fruit result = grower.grow(new ExecTarget(runner, customWorkspacePath, SEEDLING_ID, ContainerRuntime.DOCKER), fruit).get();
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         verify(cli).up(any(), eq(customWorkspacePath), eq(fruit.id()), eq(fruit.containerName()), any());
@@ -546,6 +547,6 @@ class FruitGrowerTest {
     }
 
     private static ExecTarget execTarget(CommandRunner runner) {
-        return new ExecTarget(runner, WORKSPACE_PATH, SEEDLING_ID);
+        return new ExecTarget(runner, WORKSPACE_PATH, SEEDLING_ID, ContainerRuntime.DOCKER);
     }
 }

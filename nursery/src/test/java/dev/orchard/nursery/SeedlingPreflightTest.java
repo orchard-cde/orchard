@@ -1,11 +1,18 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.ContainerPlot;
+import dev.orchard.core.model.ContainerRuntime;
+import dev.orchard.core.model.ContainerSpec;
 import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.vine.CommandRunner;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.UUID;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -92,5 +99,18 @@ class SeedlingPreflightTest {
             .isInstanceOf(SeedlingProvisioningException.class)
             .hasMessageContaining("missing devcontainer CLI")
             .hasRootCauseInstanceOf(IOException.class);
+    }
+
+    @Test
+    void verifyDevcontainerCli_containerPlot_missingCli_namesNpmInstall() {
+        ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
+            "c-1", PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
+            new ContainerSpec(2, 2048));
+        CommandRunner runner = new CannedVersionRunner("(unused)", true);
+
+        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))
+            .isInstanceOf(SeedlingProvisioningException.class)
+            .hasMessageContaining("npm install -g @devcontainers/cli@0.87.0")
+            .message().doesNotContain("cloud-init");
     }
 }
