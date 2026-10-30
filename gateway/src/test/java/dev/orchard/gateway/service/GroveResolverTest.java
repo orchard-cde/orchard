@@ -1,6 +1,7 @@
 package dev.orchard.gateway.service;
 
 import dev.orchard.gateway.api.GatewayRoute;
+import dev.orchard.gateway.api.RouteKind;
 import dev.orchard.gateway.api.TrellisApiClient;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +20,7 @@ class GroveResolverTest {
     void resolve_delegatesForValidUuid() {
         TrellisApiClient trellis = mock(TrellisApiClient.class);
         UUID groveId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, UUID.randomUUID(), "127.0.0.1", 22, "FLOURISHING");
+        GatewayRoute route = new GatewayRoute(groveId, UUID.randomUUID(), "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null);
         when(trellis.resolveGrove(groveId)).thenReturn(Optional.of(route));
 
         GroveResolver resolver = new GroveResolver(trellis);

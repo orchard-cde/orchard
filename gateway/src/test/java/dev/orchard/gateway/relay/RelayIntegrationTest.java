@@ -370,7 +370,7 @@ class RelayIntegrationTest {
             sendJson(exchange, 200, body);
         });
 
-        String groveJson = ("{\"groveId\":\"%s\",\"cultivatorId\":\"%s\",\"host\":\"127.0.0.1\","
+        String groveJson = ("{\"groveId\":\"%s\",\"cultivatorId\":\"%s\",\"kind\":\"vm\",\"host\":\"127.0.0.1\","
                 + "\"sshPort\":%d,\"state\":\"FLOURISHING\"}")
                 .formatted(groveId, cultivatorId, sshPort);
         server.createContext("/api/gateway/groves/" + groveId, exchange -> {

@@ -1,6 +1,8 @@
 package dev.orchard.gateway.relay;
 
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.gateway.api.GatewayRoute;
+import dev.orchard.gateway.api.RouteKind;
 import dev.orchard.gateway.auth.KeyAuthenticator;
 import org.apache.sshd.client.channel.ChannelDirectTcpip;
 import org.apache.sshd.client.future.OpenFuture;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,7 +47,7 @@ import static org.mockito.Mockito.when;
 class RelayDirectTcpipChannelTest {
 
     private static final GatewayRoute ROUTE =
-            new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "10.0.5.9", 22, "ROOTED");
+            new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "ROOTED", RouteKind.VM, "10.0.5.9", 22, null, null, null, null);
 
     @Test
     void doInitOpensTheTunnelOnTheSeedlingClientSessionInsteadOfRawTcp() throws Exception {
@@ -100,6 +103,25 @@ class RelayDirectTcpipChannelTest {
         OpenFuture result = invokeDoInit(channel, "example.internal", 8080, "127.0.0.1", 54321);
 
         assertThat(result.getException()).isSameAs(boom);
+    }
+
+    @Test
+    void directTcpip_onContainerRoute_refused() throws Exception {
+        SeedlingRelay relay = mock(SeedlingRelay.class);
+        ServerSession serverSession = mock(ServerSession.class);
+        when(serverSession.getAttribute(KeyAuthenticator.ROUTE_KEY)).thenReturn(new GatewayRoute(
+                UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.CONTAINER,
+                null, null, ContainerRuntime.PODMAN, "c0ffee", null, null));
+
+        RelayDirectTcpipChannel channel = new RelayDirectTcpipChannel(relay);
+        setSession(channel, serverSession);
+
+        OpenFuture result = invokeDoInit(channel, "localhost", 8080, "127.0.0.1", 54321);
+
+        assertThat(result.isOpened()).isFalse();
+        assertThat(result.getException())
+                .hasMessage("port forwarding is not available for container groves yet");
+        verifyNoInteractions(relay);
     }
 
     /**
