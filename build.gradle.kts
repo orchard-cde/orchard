@@ -1,6 +1,6 @@
 plugins {
     java
-    id("org.springframework.boot") version "4.1.1" apply false
+    id("org.springframework.boot") version "4.1.2" apply false
     id("io.spring.dependency-management") version "1.1.7" apply false
     id("org.graalvm.buildtools.native") version "1.1.17" apply false
     // Pinned, not "latest.release": 7.41.0 depends on org.openrewrite:rewrite-bom:8.91.0, which was
