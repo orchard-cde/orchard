@@ -26,12 +26,25 @@ class ConnectArgsTest {
         List<String> argv = GroveCommand.connectArgv(CONNECTION, keysDir, "dev-server");
 
         assertThat(argv).containsExactly(
-            "ssh", "-p", "2222",
+            "ssh",
             "-i", keysDir.resolve("dev-server").toString(),
             "-o", "IdentitiesOnly=yes",
+            "-p", "2222",
             "0b9f@localhost");
         assertThat(argv.stream().filter("-i"::equals)).hasSize(1);
         assertThat(String.join(" ", argv)).doesNotContain("other");
+    }
+
+    @Test
+    void connectArgv_trailingCommand_keepsFlagsBeforeDestination() throws Exception {
+        Files.writeString(keysDir.resolve("dev-server"), "k");
+
+        List<String> argv = GroveCommand.connectArgv(CONNECTION + " uptime", keysDir, "dev-server");
+
+        assertThat(argv.subList(0, 5)).containsExactly(
+            "ssh", "-i", keysDir.resolve("dev-server").toString(), "-o", "IdentitiesOnly=yes");
+        assertThat(argv.indexOf("0b9f@localhost")).isGreaterThan(argv.indexOf("IdentitiesOnly=yes"));
+        assertThat(argv.get(argv.size() - 1)).isEqualTo("uptime");
     }
 
     @Test

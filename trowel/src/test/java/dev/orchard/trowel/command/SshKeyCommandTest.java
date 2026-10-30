@@ -120,6 +120,36 @@ class SshKeyCommandTest {
         assertThat(savedSshKey()).isEqualTo("dev-server");
     }
 
+    private int runExit(String... args) {
+        java.io.PrintStream err = System.err;
+        System.setErr(new PrintStream(new ByteArrayOutputStream()));
+        try {
+            return new CommandLine(new Trowel()).execute(args);
+        } finally {
+            System.setErr(err);
+        }
+    }
+
+    @Test
+    void sshKeyAdd_noConfig_recordsKey() {
+        String out = run("--server", serverUrl(), "ssh-key", "add", "--name", "dev-server");
+
+        assertThat(out).contains("Created trowel config at");
+        var config = dev.orchard.trowel.config.ConfigLoader.load();
+        assertThat(config.active()).isEqualTo("local");
+        assertThat(config.targets().get("local").sshKey()).isEqualTo("dev-server");
+    }
+
+    @Test
+    void sshKeyAdd_unknownTarget_failsLoudly() throws Exception {
+        writeLocalConfig(null);
+
+        int exit = runExit("--server", serverUrl(), "--target", "nope", "ssh-key", "add");
+
+        assertThat(exit).isNotZero();
+        assertThat(savedSshKey()).isNull();
+    }
+
     @Test
     void sshKeyAdd_withPath_leavesSshKeyUnchanged() throws Exception {
         writeLocalConfig("kept");

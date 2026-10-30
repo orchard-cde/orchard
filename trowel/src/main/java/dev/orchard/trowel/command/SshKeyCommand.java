@@ -69,6 +69,9 @@ public class SshKeyCommand implements Callable<Integer> {
                     System.out.println("  key file:    " + SshKeyPaths.privateKey(name));
                 }
                 return 0;
+            } catch (IllegalStateException e) {
+                System.err.println(e.getMessage());
+                return 1;
             } catch (Exception e) {
                 System.err.println("Failed to register SSH key: " + e.getMessage());
                 return 1;
@@ -78,19 +81,25 @@ public class SshKeyCommand implements Callable<Integer> {
 
     private static void saveActiveTargetSshKey(String keyName, String explicitTarget) throws IOException {
         OrchardConfig config = ConfigLoader.load();
-        if (config == null || config.targets() == null) {
-            return;
+        boolean created = false;
+        if (config == null) {
+            config = OrchardConfig.withDefault();
+            created = true;
         }
         String targetName = explicitTarget != null ? explicitTarget : config.active();
-        OrchardConfig.Target existing = config.targets().get(targetName);
+        OrchardConfig.Target existing = config.targets() == null ? null : config.targets().get(targetName);
         if (existing == null) {
-            return;
+            throw new IllegalStateException("could not record SSH key '" + keyName + "': target '" + targetName
+                + "' not found in config; run: trowel config target add " + targetName + " --server <url> --cultivator <id>");
         }
         var targets = new LinkedHashMap<>(config.targets());
         targets.put(targetName, new OrchardConfig.Target(
             existing.server(), existing.cultivator(), existing.fenceServer(), existing.accessToken(),
             existing.refreshToken(), existing.expiresAt(), keyName));
         ConfigLoader.save(new OrchardConfig(config.active(), targets));
+        if (created) {
+            System.out.println("Created trowel config at " + ConfigLoader.tomlFile());
+        }
     }
 
     @CommandLine.Command(name = "list", aliases = {"ls"}, description = "List registered SSH keys")

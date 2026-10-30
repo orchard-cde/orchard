@@ -340,8 +340,7 @@ public class GroveCommand implements Callable<Integer> {
             throw new IllegalStateException("no SSH key provisioned for this target; run: trowel ssh-key add");
         }
         List<String> parts = new ArrayList<>(List.of(connectionString.split(" ")));
-        int destination = parts.size() - 1;
-        parts.addAll(destination, List.of("-i", key.toString(), "-o", "IdentitiesOnly=yes"));
+        parts.addAll(1, List.of("-i", key.toString(), "-o", "IdentitiesOnly=yes"));
         return parts;
     }
 
