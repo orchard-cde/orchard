@@ -32,16 +32,14 @@ public final class LocalCommandRunner implements CommandRunner {
         log.debug("Executing local command: {}", command);
         Process process = start(command);
 
-        StringBuilder stdout = new StringBuilder();
+        StringBuffer stdout = new StringBuffer();
         Thread stdoutReader = Thread.ofVirtual().name("local-exec-stdout")
             .start(() -> drain(process.getInputStream(), stdout, Integer.MAX_VALUE));
-        StringBuilder stderr = new StringBuilder();
+        StringBuffer stderr = new StringBuffer();
         Thread stderrReader = Thread.ofVirtual().name("local-exec-stderr")
             .start(() -> drain(process.getErrorStream(), stderr, STDERR_CAPTURE_CAP_BYTES));
 
         awaitExit(process, timeoutSeconds, command, stdoutReader, stderrReader);
-        stdoutReader.join();
-        stderrReader.join();
 
         int exitCode = process.exitValue();
         if (exitCode != 0) {
@@ -65,6 +63,7 @@ public final class LocalCommandRunner implements CommandRunner {
                         lineConsumer.accept(line);
                     } catch (Throwable t) {
                         consumerFailure.set(t);
+                        destroyTree(process);
                         return;
                     }
                 }
@@ -72,13 +71,11 @@ public final class LocalCommandRunner implements CommandRunner {
                 log.warn("Local stdout reader hit IO error: {}", e.getMessage());
             }
         });
-        StringBuilder stderr = new StringBuilder();
+        StringBuffer stderr = new StringBuffer();
         Thread stderrReader = Thread.ofVirtual().name("local-stream-stderr")
             .start(() -> drain(process.getErrorStream(), stderr, STDERR_CAPTURE_CAP_BYTES));
 
         awaitExit(process, timeoutSeconds, command, stdoutReader, stderrReader);
-        stdoutReader.join();
-        stderrReader.join();
 
         Throwable consumerThrowable = consumerFailure.get();
         if (consumerThrowable != null) {
@@ -108,25 +105,58 @@ public final class LocalCommandRunner implements CommandRunner {
         return new ProcessBuilder("/bin/sh", "-c", command).start();
     }
 
+    /**
+     * Waits for exit, then gives the readers a bounded grace to drain. The process tree is destroyed on
+     * timeout, interrupt, or any other abnormal exit; a grandchild that outlives the shell and holds a
+     * pipe open is abandoned after the grace rather than waited on.
+     */
     private static void awaitExit(Process process, long timeoutSeconds, String command,
                                   Thread stdoutReader, Thread stderrReader)
             throws IOException, InterruptedException {
-        if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-            process.destroyForcibly();
+        boolean exited = false;
+        try {
+            if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+                destroyTree(process);
+                stdoutReader.join(DRAIN_GRACE_MS);
+                stderrReader.join(DRAIN_GRACE_MS);
+                throw new IOException("Local command timed out after " + timeoutSeconds + "s: " + command);
+            }
+            exited = true;
             stdoutReader.join(DRAIN_GRACE_MS);
             stderrReader.join(DRAIN_GRACE_MS);
-            throw new IOException("Local command timed out after " + timeoutSeconds + "s: " + command);
+            if (stdoutReader.isAlive() || stderrReader.isAlive()) {
+                destroyTree(process);
+                closeQuietly(process.getInputStream());
+                closeQuietly(process.getErrorStream());
+            }
+        } finally {
+            if (!exited) {
+                destroyTree(process);
+            }
         }
     }
 
-    private static IOException failure(int exitCode, String command, StringBuilder stderr) {
+    private static void destroyTree(Process process) {
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
+        process.destroyForcibly();
+    }
+
+    private static void closeQuietly(InputStream in) {
+        try {
+            in.close();
+        } catch (IOException ignored) {
+            // best effort: releasing a reader stuck on an inherited pipe
+        }
+    }
+
+    private static IOException failure(int exitCode, String command, StringBuffer stderr) {
         String tail = stderr.toString().trim();
         log.error("Local command failed (exit {}): {} - stderr: {}", exitCode, command, tail);
         return new IOException("Local command failed with exit code " + exitCode + ": " + command
             + (tail.isEmpty() ? "" : " - " + tail));
     }
 
-    private static void drain(InputStream in, StringBuilder sink, int capBytes) {
+    private static void drain(InputStream in, StringBuffer sink, int capBytes) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
             String line;
             while ((line = reader.readLine()) != null) {
