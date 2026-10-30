@@ -1,6 +1,12 @@
 package dev.orchard.trowel.command;
 
 import dev.orchard.trowel.Trowel;
+import dev.orchard.trowel.auth.NoAuthProvider;
+import dev.orchard.trowel.client.OrchardClient;
+import dev.orchard.trowel.config.ConfigLoader;
+import dev.orchard.trowel.config.OrchardConfig;
+import dev.orchard.trowel.ssh.SshKeyPaths;
+import dev.orchard.trowel.ssh.SshKeyStore;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
@@ -36,6 +42,8 @@ public class DevServerCommand implements Callable<Integer> {
 
     // The gateway's admin/actuator port (server.port), separate from its SSH port.
     static final int GATEWAY_ADMIN_PORT = 18081;
+
+    static final String DEV_SERVER_KEY = "dev-server";
 
     @ParentCommand
     Trowel parent;
@@ -92,9 +100,9 @@ public class DevServerCommand implements Callable<Integer> {
         return orchardHome().resolve("logs").resolve("orchard-gateway.log");
     }
 
-    // Same key path trellis/QEMU resolves by default (see QemuPlatformDefaults.defaultSshKeyPath()
-    // and GroveController.resolveSshKeyPath()): ~/.ssh/orchard_ed25519. The gateway's
-    // internal-ssh-key-path MUST match this, since it's the key authorized on seedlings.
+    // Same key path trellis/QEMU resolves by default (QemuPlatformDefaults.defaultSshKeyPath()):
+    // ~/.ssh/orchard_ed25519. The gateway's internal-ssh-key-path MUST match this, since it's
+    // the key authorized on seedlings.
     static String internalSshKeyPath() {
         return Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519").toString();
     }
@@ -151,6 +159,9 @@ public class DevServerCommand implements Callable<Integer> {
 
         @Option(names = {"--gateway-ssh-port"}, description = "SSH gateway port (default: 12222)", defaultValue = "12222")
         int gatewaySshPort = 12222;
+
+        @Option(names = {"--provider"}, description = "Grove provider: qemu or container (default: qemu)", defaultValue = "qemu")
+        String provider = "qemu";
 
         @Option(names = {"--no-gateway"}, description = "Start without the SSH gateway")
         boolean noGateway;
@@ -273,6 +284,8 @@ public class DevServerCommand implements Callable<Integer> {
             command.add(binary.toString());
             command.add("--spring.profiles.active=devserver");
             command.add("--server.port=" + corePort);
+            command.add("--orchard.nursery.provider=" + provider);
+            command.add("--orchard.gateway.ssh-port=" + gatewaySshPort);
 
             String cultivatorId = resolveCultivatorId();
             if (cultivatorId != null && !cultivatorId.isBlank()) {
@@ -290,6 +303,41 @@ public class DevServerCommand implements Callable<Integer> {
             }
 
             return command;
+        }
+
+        void provisionKey(OrchardClient client) {
+            try {
+                String targetName = parent != null && parent.parent != null ? parent.parent.getTargetName() : null;
+                OrchardConfig config = ConfigLoader.load();
+                if (config != null && config.targets() != null) {
+                    String name = targetName != null ? targetName : config.active();
+                    OrchardConfig.Target target = name == null ? null : config.targets().get(name);
+                    if (target != null && target.sshKey() != null
+                            && Files.exists(SshKeyPaths.privateKey(target.sshKey()))) {
+                        return;
+                    }
+                }
+
+                OrchardConfig planned = SshKeyCommand.planSshKey(
+                    DEV_SERVER_KEY, targetName, "http://localhost:" + corePort);
+                SshKeyStore.loadOrCreate(DEV_SERVER_KEY);
+                String publicLine = Files.readString(SshKeyPaths.publicKey(DEV_SERVER_KEY)).trim();
+                boolean registered = client.listSshPublicKeys().stream()
+                    .anyMatch(k -> publicLine.equals(k.publicKey() == null ? null : k.publicKey().trim()));
+                if (!registered) {
+                    client.registerSshPublicKey(DEV_SERVER_KEY, publicLine);
+                }
+                ConfigLoader.save(planned);
+            } catch (SshKeyCommand.TargetNotFoundException e) {
+                System.err.println(e.getMessage());
+            } catch (Exception e) {
+                String message = String.valueOf(e.getMessage());
+                if (message.startsWith("Server returned 401") || message.startsWith("Server returned 403")) {
+                    System.out.println("  connect needs a registered key: run trowel login, then trowel ssh-key add");
+                } else {
+                    System.err.println("  could not provision the connect key: " + message);
+                }
+            }
         }
 
         ArrayList<String> buildUiCommand(Path uiBinary) {
@@ -401,6 +449,9 @@ public class DevServerCommand implements Callable<Integer> {
                     }
                     return 1;
                 }
+                provisionKey(new OrchardClient(
+                    "http://localhost:" + corePort,
+                    parent != null && parent.parent != null ? parent.parent.getAuthProvider() : new NoAuthProvider()));
             }
 
             if (uiBinary != null) {
