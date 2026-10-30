@@ -10,6 +10,7 @@ import dev.orchard.core.model.PlotState;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.trellis.OrchardApplication;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +24,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.util.FileSystemUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -62,6 +64,11 @@ class ContainerGroveE2ETest {
     private int port;
 
     private GroveClient groves;
+
+    @AfterAll
+    static void deleteWorkspaceRoot() throws IOException {
+        FileSystemUtils.deleteRecursively(WORKSPACE_ROOT);
+    }
 
     @BeforeEach
     void connect() {

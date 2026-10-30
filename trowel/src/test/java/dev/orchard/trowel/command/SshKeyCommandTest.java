@@ -22,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class SshKeyCommandTest {
 
@@ -143,6 +144,7 @@ class SshKeyCommandTest {
 
     @Test
     void sshKeyAdd_noConfig_defaultServer_recordsLocalhost() {
+        assumeTrue(System.getenv("ORCHARD_SERVER_URL") == null);
         var planned = SshKeyCommand.planSshKey("dev-server", null, new Trowel().getServerUrl());
 
         var target = planned.targets().get("local");

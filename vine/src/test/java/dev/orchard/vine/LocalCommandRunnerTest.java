@@ -118,10 +118,16 @@ class LocalCommandRunnerTest {
             assertThat(out).isEqualTo("hi\n");
             assertThat((System.nanoTime() - start) / 1_000_000_000L).isLessThan(8);
         } finally {
-            if (Files.exists(pidFile) && !Files.readString(pidFile).isBlank()) {
-                ProcessHandle.of(Long.parseLong(Files.readString(pidFile).trim()))
-                    .ifPresent(ProcessHandle::destroyForcibly);
-            }
+            killRecordedPid(pidFile);
+        }
+    }
+
+    /** Never throws, so a missing or half-written pid file cannot mask the test's own failure. */
+    private static void killRecordedPid(Path pidFile) {
+        try {
+            ProcessHandle.of(Long.parseLong(Files.readString(pidFile).trim()))
+                .ifPresent(ProcessHandle::destroyForcibly);
+        } catch (IOException | NumberFormatException ignored) {
         }
     }
 
