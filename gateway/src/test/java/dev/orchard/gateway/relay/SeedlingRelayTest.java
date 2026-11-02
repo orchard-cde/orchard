@@ -168,7 +168,7 @@ class SeedlingRelayTest {
         sftp.start(channel, mock(org.apache.sshd.server.Environment.class));
 
         assertThat(exit.get(5, TimeUnit.SECONDS)).isEqualTo(1);
-        assertThat(err.toString(StandardCharsets.UTF_8)).isEqualTo("sftp is not available for container groves yet\n");
+        assertThat(err.toString(StandardCharsets.UTF_8)).isEqualTo("sftp is not available for container groves\n");
         assertThat(launched).isEmpty();
     }
 

@@ -228,7 +228,7 @@ class ContainerExecCommandTest {
                 RelayCommand.Mode.SUBSYSTEM, "sftp", launcher), "", null);
 
         assertThat(run.awaitExit()).isEqualTo(1);
-        assertThat(run.err()).isEqualTo("sftp is not available for container groves yet\n");
+        assertThat(run.err()).isEqualTo("sftp is not available for container groves\n");
         assertThat(launcher.argvs).isEmpty();
     }
 

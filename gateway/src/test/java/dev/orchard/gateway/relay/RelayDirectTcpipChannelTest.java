@@ -120,7 +120,7 @@ class RelayDirectTcpipChannelTest {
 
         assertThat(result.isOpened()).isFalse();
         assertThat(result.getException())
-                .hasMessage("port forwarding is not available for container groves yet");
+                .hasMessage("port forwarding is not available for container groves");
         verifyNoInteractions(relay);
     }
 

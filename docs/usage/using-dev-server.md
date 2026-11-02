@@ -86,7 +86,7 @@ The container provider runs repository-controlled commands and mounts with the t
 
 `trowel grove connect <id>` goes through the gateway for every grove and authenticates with the target's provisioned key only (`IdentitiesOnly=yes`). `trowel ssh-key add` records that key. With the fence enabled, `dev-server start` (background or `-f`) registers a `dev-server` key once core and the gateway are healthy, when you have logged in; otherwise it prints `connect needs a registered key: run trowel login, then trowel ssh-key add`. It does nothing when the active target points at another server. `--no-auth` and `--no-gateway` disable connect. The gateway address comes from `orchard.gateway.ssh-host` and `orchard.gateway.ssh-port`; on any non-local deployment set `orchard.gateway.ssh-host` to the gateway's public host.
 
-Container groves currently have an interim shell: no sftp, no port forwarding and no window-resize, and on docker the shell has no TTY (no line editing), while podman gets one. A future Orchard relay agent removes these limits.
+Container groves support shell and exec sessions; sftp, port forwarding and window-resize are not available. On docker the shell has no TTY (no line editing); podman gets one.
 
 ## Starting the Web UI (Optional)
 

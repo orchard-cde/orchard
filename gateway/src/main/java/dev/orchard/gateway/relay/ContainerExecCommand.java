@@ -20,14 +20,13 @@ import java.util.List;
  * the client's command reaches the container's {@code /bin/sh -c} unaltered. Closing the channel kills the
  * process and its descendants.
  *
- * <p>This is the interim relay: there is no window-change propagation, no sftp subsystem and no port
- * forwarding for container groves. Docker refuses {@code -t} when its stdin is a pipe, so docker shells
- * run {@code /bin/sh -il} without a TTY: no line editing or curses apps until the relay agent. Podman
- * accepts {@code -t} and gets a real PTY.
+ * <p>There is no window-change propagation, no sftp subsystem and no port forwarding for container
+ * groves. Docker refuses {@code -t} when its stdin is a pipe, so docker shells run {@code /bin/sh -il}
+ * without a TTY: no line editing or curses apps. Podman accepts {@code -t} and gets a real PTY.
  */
 public class ContainerExecCommand extends AbstractCommandSupport {
 
-    static final String SFTP_REFUSED = "sftp is not available for container groves yet";
+    static final String SFTP_REFUSED = "sftp is not available for container groves";
 
     private final GatewayRoute route;
     private final RelayCommand.Mode mode;

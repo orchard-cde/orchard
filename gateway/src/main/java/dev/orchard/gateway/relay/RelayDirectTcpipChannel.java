@@ -60,7 +60,7 @@ public class RelayDirectTcpipChannel extends AbstractServerChannel {
             ServerSession serverSession = (ServerSession) getSession();
             GatewayRoute route = serverSession.getAttribute(KeyAuthenticator.ROUTE_KEY);
             if (route != null && route.kind() == RouteKind.CONTAINER) {
-                throw new UnsupportedOperationException("port forwarding is not available for container groves yet");
+                throw new UnsupportedOperationException("port forwarding is not available for container groves");
             }
             ClientSession client = relay.relaySession(serverSession, route);
             // ChannelDirectTcpip's constructor takes only (SshdSocketAddress, SshdSocketAddress)
