@@ -233,8 +233,6 @@ spring:
 orchard:
   nursery:
     provider: qemu  # qemu, container, aws, gcp, azure
-    container:
-      workspace-root: ${user.home}/.orchard/plots  # bind-mounted workspaces of container groves
   qemu:
     base-image-path: /tmp/orchard/images/base.qcow2
     vm-storage-path: ${user.home}/.orchard/data/vms
