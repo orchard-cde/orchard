@@ -315,6 +315,33 @@ class LoginCommandTest {
     }
 
     @Test
+    void login_serverReturnsNonJson_failsWithMessage() throws Exception {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        HttpServer orchard = startOrchardStub("<html>" + "x".repeat(500) + "</html>");
+        writeConfig("local", urlOf(orchard));
+
+        int exitCode = execute("login", "--no-browser");
+
+        String err = errContent.toString().trim();
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(err).startsWith(
+            "server " + urlOf(orchard) + " publishes no fence issuer; pass --fence-server or set FENCE_SERVER_URL (");
+        assertThat(err).doesNotContain("Exception").hasSizeLessThan(400);
+    }
+
+    @Test
+    void login_malformedServerUrl_failsWithMessage() throws Exception {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        writeConfig("local", "http://bad host");
+
+        int exitCode = execute("login", "--no-browser");
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(errContent.toString().trim()).startsWith(
+            "server http://bad host publishes no fence issuer; pass --fence-server or set FENCE_SERVER_URL (");
+    }
+
+    @Test
     void login_explicitTarget_discoversFromThatTargetsServer() throws Exception {
         Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
         HttpServer orchard = startOrchardStub("{\"issuer\":\"http://localhost:" + fencePort + "\"}");

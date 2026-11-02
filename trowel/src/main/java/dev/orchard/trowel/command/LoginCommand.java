@@ -9,6 +9,7 @@ import dev.orchard.trowel.client.OrchardClient;
 import dev.orchard.trowel.config.ConfigLoader;
 import dev.orchard.trowel.config.OrchardConfig;
 import picocli.CommandLine.Command;
+import tools.jackson.core.JacksonException;
 import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Option;
 
@@ -32,6 +33,8 @@ public class LoginCommand implements Callable<Integer> {
     @Option(names = {"--no-browser"}, description = "Do not attempt to open browser")
     private boolean noBrowser;
 
+    private static final int MAX_REASON = 200;
+
     static String resolveFenceServer(String flag, String env, String serverUrl) throws IOException {
         if (flag != null) {
             return flag;
@@ -45,8 +48,8 @@ public class LoginCommand implements Callable<Integer> {
             if (issuer != null && !issuer.isBlank()) {
                 return issuer;
             }
-        } catch (IOException e) {
-            reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        } catch (IOException | JacksonException | IllegalArgumentException e) {
+            reason = describe(e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             reason = "interrupted";
@@ -54,6 +57,14 @@ public class LoginCommand implements Callable<Integer> {
         throw new IOException("server " + serverUrl
             + " publishes no fence issuer; pass --fence-server or set FENCE_SERVER_URL"
             + (reason != null ? " (" + reason + ")" : ""));
+    }
+
+    private static String describe(Exception e) {
+        String message = e.getMessage() != null ? e.getMessage().replaceAll("\\s+", " ").strip() : "";
+        if (message.isEmpty()) {
+            return e.getClass().getSimpleName();
+        }
+        return message.length() > MAX_REASON ? message.substring(0, MAX_REASON) + "..." : message;
     }
 
     @Override

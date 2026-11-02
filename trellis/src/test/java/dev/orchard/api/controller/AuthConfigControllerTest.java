@@ -41,4 +41,10 @@ class AuthConfigControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.issuer").value("https://fence.example.test"));
     }
+
+    @Test
+    void otherAuthPaths_stillRequireAuthentication() throws Exception {
+        mockMvc.perform(get("/api/auth/other"))
+            .andExpect(status().isUnauthorized());
+    }
 }
