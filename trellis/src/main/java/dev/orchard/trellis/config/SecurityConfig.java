@@ -14,7 +14,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * <p>
  * When an OIDC issuer is configured (orchard.security.oauth2.enabled=true),
  * the secured filter chain validates JWT tokens on all /api/** endpoints
- * except health and actuator.
+ * except health, actuator and the auth config discovery endpoint.
  * <p>
  * When no OIDC issuer is configured (default for dev), the permissive filter
  * chain allows all requests through without authentication.
@@ -26,7 +26,7 @@ public class SecurityConfig {
     /**
      * Secured filter chain - active when orchard.security.oauth2.enabled=true.
      * Configures JWT resource server validation with:
-     * - /api/health/** and /actuator/** open to all
+     * - /api/health/**, /api/auth/config and /actuator/** open to all
      * - /api/** requiring authentication
      * - Stateless session management
      */
@@ -39,6 +39,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/health/**").permitAll()
+                .requestMatchers("/api/auth/config").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
                 .requestMatchers("/api/gateway/**").hasAuthority("SCOPE_gateway")
