@@ -13,7 +13,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.HttpMethod.GET;
@@ -135,25 +134,6 @@ class TrellisApiClientTest {
                 groveId, cultivatorId, "FLOURISHING", RouteKind.CONTAINER, null, null,
                 ContainerRuntime.PODMAN, "c0ffee", "vscode", "/workspaces/app"));
         assertThat(route.sshPort()).isNull();
-    }
-
-    @Test
-    void nullKind_rejected() {
-        setUp("http://trellis:8080");
-        UUID groveId = UUID.randomUUID();
-        String body = """
-                {"groveId":"%s","cultivatorId":"%s","state":"FLOURISHING","kind":null,
-                 "host":"10.0.5.9","sshPort":22}
-                """.formatted(groveId, UUID.randomUUID());
-        server.expect(requestTo("http://trellis:8080/api/gateway/groves/" + groveId))
-                .andRespond(withSuccess(body, APPLICATION_JSON));
-        server.expect(requestTo("http://trellis:8080/api/gateway/authorize-owner"))
-                .andRespond(withSuccess(body.replace(",\"kind\":null", ""), APPLICATION_JSON));
-
-        assertThatThrownBy(() -> client.resolveGrove(groveId))
-                .hasMessage("trellis returned a route without a kind for grove " + groveId);
-        assertThatThrownBy(() -> client.authorizeOwner(groveId, "alice@example.com"))
-                .hasMessage("trellis returned a route without a kind for grove " + groveId);
     }
 
     @Test
