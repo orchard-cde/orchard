@@ -24,9 +24,9 @@ The rest of this guide covers the **manual contributor workflow** — running Tr
 |-------------|---------|---------|
 | Java | 25+ | Backend (Trellis) and CLI (Trowel) |
 | Docker & Docker Compose | Latest | PostgreSQL and devcontainer runtime |
-| QEMU | Latest | Local VM provisioning (`--provider qemu`) |
-| docker or podman | Latest | Container provider (`--provider container`): the engine must be reachable (`docker info` or `podman info` succeeds) |
-| devcontainer CLI | 0.87.0 | Container provider: `npm install -g @devcontainers/cli@0.87.0` |
+| QEMU | Latest | VM engine for `--provider qemu` |
+| docker or podman | Latest | Container engine for `--provider container`; groves run on it. It must be reachable (`docker info` or `podman info` succeeds) |
+| devcontainer CLI | 0.87.0 | Used by `--provider container` to build and start each grove's devcontainer on that engine: `npm install -g @devcontainers/cli@0.87.0` |
 | Node.js | 18+ | Web UI (Canopy) — optional |
 
 ## Starting the Backend

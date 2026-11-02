@@ -28,7 +28,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 
 - Java 25+
 - Docker & Docker Compose
-- QEMU (for local VM provisioning), or for the container provider a reachable docker or podman engine plus `npm install -g @devcontainers/cli@0.87.0`
+- QEMU for `--provider qemu`, or a reachable docker or podman engine for `--provider container`; the container provider builds groves on that engine with the devcontainer CLI (`npm install -g @devcontainers/cli@0.87.0`)
 
 ### Start the Platform
 
