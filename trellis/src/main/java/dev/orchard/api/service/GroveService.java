@@ -310,17 +310,23 @@ public class GroveService {
     private static final Pattern CONTAINER_REPO_URL = Pattern.compile(
         "(?i)(https?|ssh)://.+|[A-Za-z0-9._-]+@[^/:\\s]+:.+");
 
+    /** Git run without the host user's configuration, credential helpers, hooks or prompts. */
+    private static final String LOCKED_DOWN_GIT = "env GIT_TERMINAL_PROMPT=0 GIT_CONFIG_GLOBAL=/dev/null "
+        + "GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c credential.helper=";
+
     private String cloneRepository(GroveProvider provider, Plot plot, String repoUrl, String branch) {
-        if (plot instanceof ContainerPlot && !CONTAINER_REPO_URL.matcher(repoUrl).matches()) {
+        boolean container = plot instanceof ContainerPlot;
+        if (container && !CONTAINER_REPO_URL.matcher(repoUrl).matches()) {
             throw new IllegalArgumentException("unsupported repository URL for a container grove: " + repoUrl);
         }
+        String git = container ? LOCKED_DOWN_GIT : "git";
         log.info("Cloning {} branch {} to plot {}", repoUrl, branch, plot.id());
         try {
             CommandRunner host = provider.host(plot);
             String ws = ShellQuote.quote(provider.workspacePath(plot));
-            host.execute("git clone --branch %s --depth 1 -- %s %s".formatted(
-                ShellQuote.quote(branch), ShellQuote.quote(repoUrl), ws));
-            String commitSha = host.execute("git -C " + ws + " rev-parse HEAD").trim();
+            host.execute("%s clone --branch %s --depth 1 -- %s %s".formatted(
+                git, ShellQuote.quote(branch), ShellQuote.quote(repoUrl), ws));
+            String commitSha = host.execute(git + " -C " + ws + " rev-parse HEAD").trim();
             log.info("Repository cloned, commit: {}", commitSha);
             return commitSha;
         } catch (IOException | InterruptedException e) {

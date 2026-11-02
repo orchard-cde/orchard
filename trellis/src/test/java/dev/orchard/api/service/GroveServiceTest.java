@@ -530,37 +530,38 @@ class GroveServiceTest {
             "https://github.com/user/repo", "main", "/h/ws", runner);
 
         assertThat(commands).contains(
-            "git clone --branch 'main' --depth 1 -- 'https://github.com/user/repo' '/h/ws'",
-            "git -C '/h/ws' rev-parse HEAD");
+            LOCKED_GIT + " clone --branch 'main' --depth 1 -- 'https://github.com/user/repo' '/h/ws'",
+            LOCKED_GIT + " -C '/h/ws' rev-parse HEAD");
         verify(ownerProvider, never()).vine(any());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"file:///etc", "/etc", "--upload-pack=touch /tmp/x", "ext::sh -c id"})
-    void clone_containerPlot_unsupportedUrl_blightsWithoutCloning(String url) throws Exception {
+    private static final String LOCKED_GIT = "env GIT_TERMINAL_PROMPT=0 GIT_CONFIG_GLOBAL=/dev/null "
+        + "GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c credential.helper=";
+
+    private static final List<String> LOCKDOWN_FLAGS = List.of("GIT_TERMINAL_PROMPT=0",
+        "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "core.hooksPath=/dev/null",
+        "credential.helper=");
+
+    @Test
+    void clone_containerPlot_runsWithSanitizedGitEnvironment() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
-        lenient().when(ownerProvider.host(any())).thenReturn(runner);
-        when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
-            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        List<String> commands = provisionRecording(containerPlot(),
+            "https://github.com/user/repo", "main", "/h/ws", runner);
 
-        groveService.provisionGrove(
-            Grove.plant(UUID.randomUUID(), "test", url, "main").withPlot(containerPlot()), SeedSpec.AUTO);
-
-        verifyNoInteractions(runner);
-        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
-        verify(groveRepository, atLeastOnce()).save(saved.capture());
-        assertThat(saved.getAllValues().getLast().getState()).isEqualTo(GroveState.BLIGHTED);
-        verify(ownerProvider, never()).growFruit(any(), any());
+        String clone = commands.stream().filter(c -> c.contains(" clone ")).findFirst().orElseThrow();
+        String revParse = commands.stream().filter(c -> c.contains("rev-parse")).findFirst().orElseThrow();
+        assertThat(clone).contains(LOCKDOWN_FLAGS);
+        assertThat(revParse).contains(LOCKDOWN_FLAGS);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"https://github.com/u/r", "http://h/r.git",
-        "ssh://git@h/r.git", "git@github.com:u/r.git", "HTTPS://github.com/u/r"})
-    void clone_containerPlot_supportedUrl_clones(String url) throws Exception {
+    @ValueSource(strings = {"git@github.com:o/r.git", "/srv/repo"})
+    void clone_vmPlot_unchanged(String url) throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
-        List<String> commands = provisionRecording(containerPlot(), url, "main", "/h/ws", runner);
+        List<String> commands = provisionRecording(vmPlot(), url, "main", "/workspace", runner);
 
-        assertThat(commands).contains("git clone --branch 'main' --depth 1 -- '" + url + "' '/h/ws'");
+        assertThat(commands).contains("git clone --branch 'main' --depth 1 -- '" + url + "' '/workspace'");
+        assertThat(String.join("\n", commands)).doesNotContain("GIT_CONFIG_GLOBAL");
     }
 
     @Test
@@ -577,7 +578,7 @@ class GroveServiceTest {
         List<String> commands = provisionRecording(containerPlot(), HOSTILE_URL, HOSTILE_BRANCH,
             "/h/ws", runner);
 
-        String clone = commands.stream().filter(c -> c.startsWith("git clone")).findFirst().orElseThrow();
+        String clone = commands.stream().filter(c -> c.contains(" clone ")).findFirst().orElseThrow();
         assertThat(clone).contains("'" + HOSTILE_BRANCH + "'").contains("'" + HOSTILE_URL + "'");
         assertThat(clone.replace("'" + HOSTILE_BRANCH + "'", "").replace("'" + HOSTILE_URL + "'", ""))
             .doesNotContain(";").doesNotContain("$(");

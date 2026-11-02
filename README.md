@@ -241,7 +241,7 @@ orchard:
     # enable-kvm/serial-output default per-platform (KVM on Linux, HVF on macOS)
 ```
 
-The container provider runs repository-controlled commands and mounts with the trellis user's rights on the host (`initializeCommand`, devfile `preStart`, `runArgs`, `mounts`). Use it single-tenant, with trusted repositories only.
+The container provider runs repository-controlled commands and mounts with the trellis user's rights on the host (`initializeCommand`, devfile `preStart`, `runArgs`, `mounts`). Use it single-tenant, with trusted repositories only. Container groves clone once at plant time, on the host, with no host git configuration, credential helpers or hooks. HTTPS URLs are the default; `ssh://` and `git@host:path` URLs also work and use the trellis host's SSH setup.
 
 On any non-local deployment, set `orchard.gateway.ssh-host` to the gateway's public host.
 
