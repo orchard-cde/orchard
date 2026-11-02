@@ -3,6 +3,7 @@ package dev.orchard.trowel.command;
 import dev.orchard.trowel.Trowel;
 import dev.orchard.trowel.auth.AuthorizationPendingException;
 import dev.orchard.trowel.auth.FenceClient;
+import dev.orchard.trowel.auth.NoAuthProvider;
 import dev.orchard.trowel.auth.SlowDownException;
 import dev.orchard.trowel.client.OrchardClient;
 import dev.orchard.trowel.config.ConfigLoader;
@@ -25,35 +26,46 @@ public class LoginCommand implements Callable<Integer> {
     @ParentCommand
     Trowel parent;
 
-    @Option(names = {"--fence-server"}, description = "Fence server URL (default: $FENCE_SERVER_URL, else the active target's fence server)")
+    @Option(names = {"--fence-server"}, description = "Fence server URL (default: $FENCE_SERVER_URL, else the issuer published by the Orchard server)")
     private String fenceServerUrl;
 
     @Option(names = {"--no-browser"}, description = "Do not attempt to open browser")
     private boolean noBrowser;
 
-    static final String NO_FENCE_SERVER =
-        "no fence server configured; pass --fence-server, set FENCE_SERVER_URL, or start trowel dev-server";
-
-    static String resolveFenceServer(String flag, String env, OrchardConfig.Target target) {
+    static String resolveFenceServer(String flag, String env, String serverUrl) throws IOException {
         if (flag != null) {
             return flag;
         }
         if (env != null) {
             return env;
         }
-        return target != null ? target.fenceServer() : null;
+        String reason = null;
+        try {
+            String issuer = new OrchardClient(serverUrl, new NoAuthProvider()).getAuthConfig().issuer();
+            if (issuer != null && !issuer.isBlank()) {
+                return issuer;
+            }
+        } catch (IOException e) {
+            reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            reason = "interrupted";
+        }
+        throw new IOException("server " + serverUrl
+            + " publishes no fence issuer; pass --fence-server or set FENCE_SERVER_URL"
+            + (reason != null ? " (" + reason + ")" : ""));
     }
 
     @Override
     public Integer call() {
+        String fenceUrl;
         try {
-            String fenceUrl = resolveFenceServer(
-                fenceServerUrl, System.getenv("FENCE_SERVER_URL"), parent.resolveConfigTarget());
-            if (fenceUrl == null) {
-                System.err.println(NO_FENCE_SERVER);
-                return 1;
-            }
-
+            fenceUrl = resolveFenceServer(fenceServerUrl, System.getenv("FENCE_SERVER_URL"), parent.getServerUrl());
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+            return 1;
+        }
+        try {
             String clientId = Trowel.CLIENT_ID;
 
             FenceClient fenceClient = new FenceClient(fenceUrl, clientId);

@@ -33,6 +33,7 @@ class LoginCommandTest {
     private PrintStream originalOut;
     private PrintStream originalErr;
     private String originalHome;
+    private final java.util.List<HttpServer> orchardStubs = new java.util.ArrayList<>();
 
     @BeforeAll
     static void startFenceServer() throws IOException {
@@ -73,6 +74,7 @@ class LoginCommandTest {
 
     @AfterEach
     void tearDown() {
+        orchardStubs.forEach(s -> s.stop(0));
         System.setOut(originalOut);
         System.setErr(originalErr);
         System.setProperty("user.home", originalHome);
@@ -201,27 +203,6 @@ class LoginCommandTest {
         assertThat(outContent.toString()).contains("Success User");
     }
 
-    @Test
-    void login_usesFlagThenEnvThenTargetFenceServer() {
-        var target = new OrchardConfig.Target("http://s", "c", "http://target-fence", null, null, null, null);
-
-        assertThat(LoginCommand.resolveFenceServer("http://flag", "http://env", target)).isEqualTo("http://flag");
-        assertThat(LoginCommand.resolveFenceServer(null, "http://env", target)).isEqualTo("http://env");
-        assertThat(LoginCommand.resolveFenceServer(null, null, target)).isEqualTo("http://target-fence");
-        assertThat(LoginCommand.resolveFenceServer(null, null, null)).isNull();
-    }
-
-    @Test
-    void login_noFenceServerConfigured_failsWithMessage() {
-        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
-
-        int exitCode = execute("login", "--no-browser");
-
-        assertThat(exitCode).isEqualTo(1);
-        assertThat(errContent.toString().trim()).isEqualTo(
-            "no fence server configured; pass --fence-server, set FENCE_SERVER_URL, or start trowel dev-server");
-    }
-
     private void stubFullLoginFlow(AtomicInteger deviceRequests) {
         fenceServer.createContext("/oauth2/device_authorization", exchange -> {
             deviceRequests.incrementAndGet();
@@ -237,17 +218,35 @@ class LoginCommandTest {
             respond(exchange, 200, "{\"id\": \"cult-t\", \"displayName\": \"T\", \"email\": \"t@example.com\"}"));
     }
 
-    @Test
-    void login_noFlagNoEnv_usesActiveTargetsFenceServer() throws Exception {
-        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
-        Files.writeString(ConfigLoader.tomlFile(), """
-                active = "local"
+    private HttpServer startOrchardStub(String authConfigBody) throws IOException {
+        HttpServer orchard = HttpServer.create(new InetSocketAddress(0), 0);
+        orchard.createContext("/api/auth/config", exchange -> respond(exchange, 200, authConfigBody));
+        orchard.createContext("/api/me", exchange ->
+            respond(exchange, 200, "{\"id\": \"cult-t\", \"displayName\": \"T\", \"email\": \"t@example.com\"}"));
+        orchard.start();
+        orchardStubs.add(orchard);
+        return orchard;
+    }
 
-                [targets.local]
-                server = "http://localhost:%1$d"
+    private void writeConfig(String name, String server) throws IOException {
+        Files.writeString(ConfigLoader.tomlFile(), """
+                active = "%s"
+
+                [targets.%s]
+                server = "%s"
                 cultivator = "initial-uuid"
-                fence_server = "http://localhost:%1$d"
-                """.formatted(fencePort));
+                """.formatted(name, name, server));
+    }
+
+    private static String urlOf(HttpServer s) {
+        return "http://localhost:" + s.getAddress().getPort();
+    }
+
+    @Test
+    void login_discoversFenceFromServer() throws Exception {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        HttpServer orchard = startOrchardStub("{\"issuer\":\"http://localhost:" + fencePort + "\"}");
+        writeConfig("local", urlOf(orchard));
         var deviceRequests = new AtomicInteger();
         stubFullLoginFlow(deviceRequests);
 
@@ -255,30 +254,87 @@ class LoginCommandTest {
 
         assertThat(exitCode).as(errContent.toString()).isZero();
         assertThat(deviceRequests.get()).isEqualTo(1);
+        assertThat(ConfigLoader.load().targets().get("local").fenceServer())
+            .isEqualTo("http://localhost:" + fencePort);
     }
 
     @Test
-    void login_explicitTarget_readsThatTargetsFenceServer() throws Exception {
+    void login_flagOverridesDiscovery() throws Exception {
         Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        HttpServer orchard = startOrchardStub("{\"issuer\":\"http://localhost:1\"}");
+        writeConfig("local", urlOf(orchard));
+        var deviceRequests = new AtomicInteger();
+        stubFullLoginFlow(deviceRequests);
+
+        int exitCode = execute("login", "--no-browser", "--fence-server", "http://localhost:" + fencePort);
+
+        assertThat(exitCode).as(errContent.toString()).isZero();
+        assertThat(deviceRequests.get()).isEqualTo(1);
+    }
+
+    @Test
+    void login_envOverridesDiscovery() throws Exception {
+        String env = System.getenv("FENCE_SERVER_URL");
+        Assumptions.assumeTrue(env != null, "needs FENCE_SERVER_URL set in the real environment");
+        HttpServer orchard = startOrchardStub("{\"issuer\":\"http://localhost:1\"}");
+        writeConfig("local", urlOf(orchard));
+
+        execute("login", "--no-browser");
+
+        assertThat(errContent.toString()).doesNotContain("publishes no fence issuer");
+    }
+
+    @Test
+    void login_serverPublishesNoIssuer_failsWithMessage() throws Exception {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        HttpServer orchard = startOrchardStub("{\"issuer\":null}");
+        writeConfig("local", urlOf(orchard));
+
+        int exitCode = execute("login", "--no-browser");
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(errContent.toString().trim()).isEqualTo(
+            "server " + urlOf(orchard) + " publishes no fence issuer; pass --fence-server or set FENCE_SERVER_URL");
+    }
+
+    @Test
+    void login_serverUnreachable_failsWithMessage() throws Exception {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        HttpServer closed = HttpServer.create(new InetSocketAddress(0), 0);
+        closed.start();
+        String url = urlOf(closed);
+        closed.stop(0);
+        writeConfig("local", url);
+
+        int exitCode = execute("login", "--no-browser");
+
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(errContent.toString().trim()).startsWith(
+            "server " + url + " publishes no fence issuer; pass --fence-server or set FENCE_SERVER_URL (");
+        assertThat(errContent.toString().trim()).endsWith(")");
+    }
+
+    @Test
+    void login_explicitTarget_discoversFromThatTargetsServer() throws Exception {
+        Assumptions.assumeTrue(System.getenv("FENCE_SERVER_URL") == null);
+        HttpServer orchard = startOrchardStub("{\"issuer\":\"http://localhost:" + fencePort + "\"}");
         Files.writeString(ConfigLoader.tomlFile(), """
                 active = "other"
 
                 [targets.other]
-                server = "http://localhost:%1$d"
+                server = "http://localhost:1"
                 cultivator = "other-uuid"
-                fence_server = "http://localhost:1"
 
                 [targets.picked]
-                server = "http://localhost:%1$d"
+                server = "%s"
                 cultivator = "picked-uuid"
-                fence_server = "http://localhost:%1$d"
-                """.formatted(fencePort));
+                """.formatted(urlOf(orchard)));
         var deviceRequests = new AtomicInteger();
         stubFullLoginFlow(deviceRequests);
 
         int exitCode = execute("--target", "picked", "login", "--no-browser");
 
-        assertThat(exitCode).isZero();
+        assertThat(exitCode).as(errContent.toString()).isZero();
         assertThat(deviceRequests.get()).isEqualTo(1);
         OrchardConfig config = ConfigLoader.load();
         assertThat(config.targets().get("picked").accessToken()).isEqualTo("at-target");

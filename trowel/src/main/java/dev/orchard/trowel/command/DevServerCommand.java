@@ -264,8 +264,6 @@ public class DevServerCommand implements Callable<Integer> {
                         return 1;
                     }
                 }
-                recordFenceServer();
-
                 var command = buildCommand(coreBinary);
 
                 if (foreground) {
@@ -327,31 +325,6 @@ public class DevServerCommand implements Callable<Integer> {
 
         private String coreUrl() {
             return "http://localhost:" + corePort;
-        }
-
-        void recordFenceServer() {
-            if (noAuth) {
-                return;
-            }
-            try {
-                String targetName = parent != null && parent.parent != null ? parent.parent.getTargetName() : null;
-                OrchardConfig config = SshKeyCommand.loadOrDefault(coreUrl());
-                String name = targetName != null ? targetName : config.active();
-                OrchardConfig.Target target = name == null || config.targets() == null ? null : config.targets().get(name);
-                String fenceUrl = "http://localhost:" + fencePort;
-                if (target == null || !isCoreUrl(target.server()) || fenceUrl.equals(target.fenceServer())) {
-                    return;
-                }
-                var targets = new java.util.LinkedHashMap<>(config.targets());
-                targets.put(name, new OrchardConfig.Target(
-                    target.server(), target.cultivator(), fenceUrl, null, null, null, target.sshKey()));
-                ConfigLoader.save(new OrchardConfig(config.active(), targets));
-                if (target.refreshToken() != null || target.accessToken() != null) {
-                    System.out.println("  fence server changed to " + fenceUrl + "; run trowel login");
-                }
-            } catch (Exception e) {
-                System.err.println("  could not record the fence server: " + e.getMessage());
-            }
         }
 
         void provisionKey(OrchardClient client) {
