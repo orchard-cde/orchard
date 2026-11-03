@@ -1,6 +1,7 @@
 package dev.orchard.trellis;
 
 import dev.orchard.nursery.DevcontainerCliConfig;
+import dev.orchard.nursery.container.ContainerConfig;
 import dev.orchard.trellis.config.GatewayAddress;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -14,7 +15,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
     "dev.orchard.roots",
     "dev.orchard.greenhouse"
 })
-@EnableConfigurationProperties({DevcontainerCliConfig.class, GatewayAddress.class})
+@EnableConfigurationProperties({DevcontainerCliConfig.class, ContainerConfig.class, GatewayAddress.class})
 @EntityScan("dev.orchard.roots.entity")
 @EnableJpaRepositories("dev.orchard.roots.repository")
 public class OrchardApplication {

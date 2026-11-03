@@ -165,13 +165,6 @@ public class NurseryConfig {
 
 
     @Bean
-    public ContainerConfig containerConfig(
-            @Value("${orchard.nursery.container.workspace-root:${user.home}/.orchard/plots}") String workspaceRoot,
-            @Value("${orchard.nursery.container.engine-url:}") String engineUrl) {
-        return new ContainerConfig(Path.of(workspaceRoot), engineUrl.isBlank() ? null : engineUrl);
-    }
-
-    @Bean
     public ProviderRegistry providerRegistry(
             @Value("${orchard.nursery.provider:qemu}") String defaultProvider,
             QemuConfig qemuConfig,
