@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * Route trellis returns for a routable grove. Mirrors trellis's GatewayGroveResponse: a {@link RouteKind#VM}
  * route sets {@code host} and {@code sshPort}; a {@link RouteKind#CONTAINER} route sets {@code runtime} and
- * {@code containerId}, with {@code user} and {@code workspaceFolder} optional. Unknown fields are ignored so
+ * {@code containerId}, with {@code user}, {@code workspaceFolder} and {@code engineUrl} optional. Unknown fields are ignored so
  * a newer trellis can add fields without breaking routing.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -22,5 +22,6 @@ public record GatewayRoute(
     ContainerRuntime runtime,
     String containerId,
     String user,
-    String workspaceFolder
+    String workspaceFolder,
+    String engineUrl
 ) {}

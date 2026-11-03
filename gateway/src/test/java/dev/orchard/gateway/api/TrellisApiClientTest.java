@@ -80,7 +80,7 @@ class TrellisApiClientTest {
     void authorizeOwner_returnsRouteForOwner() throws Exception {
         setUp("http://trellis:8080");
         UUID groveId = UUID.randomUUID();
-        GatewayRoute expected = new GatewayRoute(groveId, UUID.randomUUID(), "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null);
+        GatewayRoute expected = new GatewayRoute(groveId, UUID.randomUUID(), "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         server.expect(requestTo("http://trellis:8080/api/gateway/authorize-owner"))
                 .andExpect(method(POST))
                 .andExpect(content().json("{\"groveId\":\"" + groveId + "\",\"email\":\"alice@example.com\"}"))
@@ -114,7 +114,7 @@ class TrellisApiClientTest {
                         """.formatted(groveId, cultivatorId), APPLICATION_JSON));
 
         assertThat(client.resolveGrove(groveId)).contains(new GatewayRoute(
-                groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "10.0.5.9", 2222, null, null, null, null));
+                groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "10.0.5.9", 2222, null, null, null, null, null));
     }
 
     @Test
@@ -126,13 +126,15 @@ class TrellisApiClientTest {
                 .andRespond(withSuccess("""
                         {"groveId":"%s","cultivatorId":"%s","state":"FLOURISHING","kind":"container",
                          "host":null,"sshPort":null,"runtime":"PODMAN","containerId":"c0ffee",
-                         "user":"vscode","workspaceFolder":"/workspaces/app"}
+                         "user":"vscode","workspaceFolder":"/workspaces/app",
+                         "engineUrl":"unix:///run/podman/podman.sock"}
                         """.formatted(groveId, cultivatorId), APPLICATION_JSON));
 
         GatewayRoute route = client.resolveGrove(groveId).orElseThrow();
         assertThat(route).isEqualTo(new GatewayRoute(
                 groveId, cultivatorId, "FLOURISHING", RouteKind.CONTAINER, null, null,
-                ContainerRuntime.PODMAN, "c0ffee", "vscode", "/workspaces/app"));
+                ContainerRuntime.PODMAN, "c0ffee", "vscode", "/workspaces/app",
+                "unix:///run/podman/podman.sock"));
         assertThat(route.sshPort()).isNull();
     }
 

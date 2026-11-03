@@ -78,7 +78,7 @@ Key settings:
 
 ## Container Provider
 
-`--provider container` (`orchard.nursery.provider: container`) plants groves on the local machine instead of in a VM. Each plot is a bind-mounted workspace directory under `orchard.nursery.container.workspace-root` (default `${user.home}/.orchard/plots`) and the fruit is a devcontainer started by the host's `devcontainer` CLI on the docker or podman engine. Git and the container CLIs run on the host; commands into the grove run through `<runtime> exec`.
+`--provider container` (`orchard.nursery.provider: container`) plants groves on the local machine instead of in a VM. Each plot is a bind-mounted workspace directory under `orchard.nursery.container.workspace-root` (default `${user.home}/.orchard/plots`) and the fruit is a devcontainer started by the host's `devcontainer` CLI on the docker or podman engine. Git and the container CLIs run on the host; commands into the grove run through `<runtime> exec`. `orchard.nursery.container.engine-url` (`unix://…` or `tcp://…`) points the container provider and the gateway at a specific engine; by default they use the local environment's engine.
 
 The container provider runs repository-controlled commands and mounts with the trellis user's rights on the host: a repo's `initializeCommand` or devfile `preStart` runs in the host shell, and `devcontainer up` honours its `runArgs` and `mounts`. Use it single-tenant, with trusted repositories only. Container groves clone once at plant time, on the host, with no host git configuration, credential helpers or hooks. HTTPS URLs are the default; `ssh://` and `git@host:path` URLs also work and use the trellis host's SSH setup.
 

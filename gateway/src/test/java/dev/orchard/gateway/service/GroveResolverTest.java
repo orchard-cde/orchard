@@ -20,7 +20,7 @@ class GroveResolverTest {
     void resolve_delegatesForValidUuid() {
         TrellisApiClient trellis = mock(TrellisApiClient.class);
         UUID groveId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, UUID.randomUUID(), "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null);
+        GatewayRoute route = new GatewayRoute(groveId, UUID.randomUUID(), "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         when(trellis.resolveGrove(groveId)).thenReturn(Optional.of(route));
 
         GroveResolver resolver = new GroveResolver(trellis);

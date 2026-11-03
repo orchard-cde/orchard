@@ -19,7 +19,7 @@ import dev.orchard.nursery.container.ContainerGroveProvider;
 import dev.orchard.nursery.qemu.QemuConfig;
 import dev.orchard.nursery.qemu.QemuGroveProvider;
 import dev.orchard.nursery.qemu.QemuPlatformDefaults;
-import dev.orchard.vine.LocalCommandRunner;
+import dev.orchard.vine.ContainerCommandRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -166,8 +166,9 @@ public class NurseryConfig {
 
     @Bean
     public ContainerConfig containerConfig(
-            @Value("${orchard.nursery.container.workspace-root:${user.home}/.orchard/plots}") String workspaceRoot) {
-        return new ContainerConfig(Path.of(workspaceRoot));
+            @Value("${orchard.nursery.container.workspace-root:${user.home}/.orchard/plots}") String workspaceRoot,
+            @Value("${orchard.nursery.container.engine-url:}") String engineUrl) {
+        return new ContainerConfig(Path.of(workspaceRoot), engineUrl.isBlank() ? null : engineUrl);
     }
 
     @Bean
@@ -190,7 +191,8 @@ public class NurseryConfig {
         log.info("Registered grove provider: {}", qemuProvider.getProviderId());
 
         ContainerGroveProvider containerProvider =
-            new ContainerGroveProvider(containerConfig, fruitGrower, new LocalCommandRunner());
+            new ContainerGroveProvider(containerConfig, fruitGrower,
+                new ContainerCommandRunner(containerConfig.engineUrl()));
         registry.register(containerProvider);
         log.info("Registered grove provider: {}", containerProvider.getProviderId());
 

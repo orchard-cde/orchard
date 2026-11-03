@@ -34,7 +34,7 @@ class ContainerExecCommandTest {
 
     private static GatewayRoute podmanRoute(String user, String workspaceFolder) {
         return new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.CONTAINER,
-                null, null, ContainerRuntime.PODMAN, "c0ffee", user, workspaceFolder);
+                null, null, ContainerRuntime.PODMAN, "c0ffee", user, workspaceFolder, null);
     }
 
     @Test
@@ -93,10 +93,36 @@ class ContainerExecCommandTest {
 
     @Test
     @Timeout(10)
+    void engineUrl_setsBothEngineVariablesForTheLauncher() throws Exception {
+        GatewayRoute route = new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING",
+                RouteKind.CONTAINER, null, null, ContainerRuntime.PODMAN, "c0ffee", null, null, "tcp://10.0.0.5:2375");
+        ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
+        Run run = Run.start(new ContainerExecCommand(route, RelayCommand.Mode.EXEC, "true", launcher), "", null);
+
+        run.awaitExit();
+
+        assertThat(launcher.envs).containsExactly(
+                Map.of("DOCKER_HOST", "tcp://10.0.0.5:2375", "CONTAINER_HOST", "tcp://10.0.0.5:2375"));
+    }
+
+    @Test
+    @Timeout(10)
+    void noEngineUrl_launcherGetsEmptyEnv() throws Exception {
+        ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
+        Run run = Run.start(new ContainerExecCommand(podmanRoute(null, null), RelayCommand.Mode.EXEC, "true", launcher),
+                "", null);
+
+        run.awaitExit();
+
+        assertThat(launcher.envs).containsExactly(Map.of());
+    }
+
+    @Test
+    @Timeout(10)
     void nullRuntime_exits255WithMessage() throws Exception {
         UUID groveId = UUID.randomUUID();
         GatewayRoute route = new GatewayRoute(groveId, UUID.randomUUID(), "FLOURISHING", RouteKind.CONTAINER,
-                null, null, null, "c0ffee", null, null);
+                null, null, null, "c0ffee", null, null, null);
         ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
         Run run = Run.start(new ContainerExecCommand(route, RelayCommand.Mode.EXEC, "true", launcher), "", null);
 
@@ -144,7 +170,7 @@ class ContainerExecCommandTest {
     void argv_noUserNoWorkdir_dockerRuntime() throws Exception {
         ScriptedLauncher launcher = new ScriptedLauncher(ScriptedProcess.exiting(0, "", ""));
         GatewayRoute route = new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING",
-                RouteKind.CONTAINER, null, null, ContainerRuntime.DOCKER, "abc123", null, null);
+                RouteKind.CONTAINER, null, null, ContainerRuntime.DOCKER, "abc123", null, null, null);
         Run run = Run.start(new ContainerExecCommand(route, RelayCommand.Mode.EXEC, "true", launcher), "", null);
 
         run.awaitExit();
@@ -210,7 +236,7 @@ class ContainerExecCommandTest {
     @Test
     @Timeout(10)
     void launchFailure_exits255WithMessage() throws Exception {
-        ProcessLauncher failing = argv -> {
+        ProcessLauncher failing = (argv, env) -> {
             throw new IOException("Cannot run program \"podman\": error=2, No such file or directory");
         };
         Run run = Run.start(new ContainerExecCommand(podmanRoute(null, null),
@@ -256,7 +282,7 @@ class ContainerExecCommandTest {
         ScriptedProcess process = ScriptedProcess.runningUntilKilled();
         CountDownLatch launching = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        ProcessLauncher slow = argv -> {
+        ProcessLauncher slow = (argv, env) -> {
             launching.countDown();
             try {
                 release.await();
@@ -282,7 +308,7 @@ class ContainerExecCommandTest {
 
     private static GatewayRoute dockerRoute() {
         return new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.CONTAINER,
-                null, null, ContainerRuntime.DOCKER, "abc123", "vscode", "/workspaces/app");
+                null, null, ContainerRuntime.DOCKER, "abc123", "vscode", "/workspaces/app", null);
     }
 
     /** A client that drains slowly: each write takes {@code delayMillis}. */
@@ -415,6 +441,7 @@ class ContainerExecCommandTest {
 
     private static final class ScriptedLauncher implements ProcessLauncher {
         final List<List<String>> argvs = new CopyOnWriteArrayList<>();
+        final List<Map<String, String>> envs = new CopyOnWriteArrayList<>();
         final CountDownLatch launched = new CountDownLatch(1);
         private final ScriptedProcess process;
 
@@ -423,8 +450,9 @@ class ContainerExecCommandTest {
         }
 
         @Override
-        public Process launch(List<String> argv) {
+        public Process launch(List<String> argv, Map<String, String> env) {
             argvs.add(List.copyOf(argv));
+            envs.add(Map.copyOf(env));
             launched.countDown();
             return process;
         }

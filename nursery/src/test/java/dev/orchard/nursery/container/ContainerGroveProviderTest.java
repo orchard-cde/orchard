@@ -8,6 +8,7 @@ import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ContainerCommandRunner;
 import dev.orchard.vine.ContainerVine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,7 +45,7 @@ class ContainerGroveProviderTest {
     @BeforeEach
     void setUp() {
         local = new ScriptedRunner();
-        provider = new ContainerGroveProvider(new ContainerConfig(root), mock(FruitGrower.class), local);
+        provider = new ContainerGroveProvider(new ContainerConfig(root, null), mock(FruitGrower.class), local);
     }
 
     @AfterEach
@@ -115,7 +116,7 @@ class ContainerGroveProviderTest {
     void launch_workspaceRootWithSpace_quotesMkdir() throws Exception {
         Path spaced = root.resolve("with space");
         provider.close();
-        provider = new ContainerGroveProvider(new ContainerConfig(spaced), mock(FruitGrower.class), local);
+        provider = new ContainerGroveProvider(new ContainerConfig(spaced, null), mock(FruitGrower.class), local);
         ContainerPlot plot = draft();
 
         provider.plantSubstrate(plot).get();
@@ -277,6 +278,29 @@ class ContainerGroveProviderTest {
     @Test
     void host_isLocalRunner() {
         assertThat(provider.host(planted(PlotState.ROOTED))).isSameAs(local);
+    }
+
+    @Test
+    void hostChannel_carriesConfiguredEngineEnv() throws Exception {
+        provider.close();
+        provider = new ContainerGroveProvider(new ContainerConfig(root, "unix:///tmp/x.sock"),
+            mock(FruitGrower.class), new ContainerCommandRunner("unix:///tmp/x.sock"));
+
+        assertThat(provider.host(planted(PlotState.ROOTED)).execute("printenv DOCKER_HOST").trim())
+            .isEqualTo("unix:///tmp/x.sock");
+    }
+
+    @Test
+    void hostVineAndRuntimeProbe_shareTheOneLocalRunner() throws Exception {
+        local.on(c -> c.contains(" ps -q "), "abc123");
+        ContainerPlot plot = planted(PlotState.ROOTED);
+
+        provider.isAvailable();
+        provider.vine(plot).commands().execute("true");
+
+        assertThat(provider.host(plot)).isSameAs(local);
+        assertThat(local.commands).contains("docker info");
+        assertThat(local.commands).anyMatch(c -> c.startsWith("docker exec ") && c.endsWith("'true'"));
     }
 
     @Test

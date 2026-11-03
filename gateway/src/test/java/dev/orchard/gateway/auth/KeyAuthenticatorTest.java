@@ -46,7 +46,7 @@ class KeyAuthenticatorTest {
 
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null);
+        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
 
         KeyPair pair = ed25519KeyPair();
@@ -69,7 +69,7 @@ class KeyAuthenticatorTest {
 
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null);
+        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
 
         KeyPair registered = ed25519KeyPair();
@@ -114,7 +114,7 @@ class KeyAuthenticatorTest {
 
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null);
+        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
         when(trellis.listKeys(cultivatorId)).thenThrow(new IllegalStateException("trellis unreachable"));
 

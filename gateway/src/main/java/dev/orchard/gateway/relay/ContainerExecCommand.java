@@ -2,6 +2,7 @@ package dev.orchard.gateway.relay;
 
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.gateway.api.GatewayRoute;
+import dev.orchard.vine.ContainerCommandRunner;
 import org.apache.sshd.server.Environment;
 import org.apache.sshd.server.channel.ChannelSession;
 import org.apache.sshd.server.command.AbstractCommandSupport;
@@ -18,7 +19,8 @@ import java.util.List;
  * on the gateway host and pumps stdin, stdout and stderr through it, exiting with the process's code once
  * all output has been delivered. The argv goes straight to the launcher, never through a host shell, so
  * the client's command reaches the container's {@code /bin/sh -c} unaltered. Closing the channel kills the
- * process and its descendants.
+ * process and its descendants. The process reaches the route's engine URL through {@link ContainerCommandRunner}'s
+ * engine variables, or the gateway's own environment when the route has none.
  *
  * <p>There is no window-change propagation, no sftp subsystem and no port forwarding for container
  * groves. Docker refuses {@code -t} when its stdin is a pipe, so docker shells run {@code /bin/sh -il}
@@ -59,7 +61,7 @@ public class ContainerExecCommand extends AbstractCommandSupport {
         }
         Process started;
         try {
-            started = launcher.launch(argv(ptyTerm()));
+            started = launcher.launch(argv(ptyTerm()), new ContainerCommandRunner(route.engineUrl()).engineEnv());
         } catch (IOException | RuntimeException e) {
             log.warn("Container exec failed to start: {}", e.toString());
             writeError("failed to start " + route.runtime().cli() + " exec: " + e.getMessage());

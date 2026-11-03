@@ -152,7 +152,7 @@ class SeedlingRelayTest {
     @Timeout(10)
     void sftp_onContainerRoute_refused() throws Exception {
         List<List<String>> launched = new CopyOnWriteArrayList<>();
-        SeedlingRelay relay = new SeedlingRelay(new SshClient(), properties(), argv -> {
+        SeedlingRelay relay = new SeedlingRelay(new SshClient(), properties(), (argv, env) -> {
             launched.add(argv);
             throw new AssertionError("sftp must not launch a process");
         });
@@ -173,19 +173,19 @@ class SeedlingRelayTest {
     }
 
     private static ProcessLauncher refusingLauncher() {
-        return argv -> {
+        return (argv, env) -> {
             throw new AssertionError("no process expected");
         };
     }
 
     private static GatewayRoute vmRoute(String host, int port) {
         return new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.VM,
-                host, port, null, null, null, null);
+                host, port, null, null, null, null, null);
     }
 
     private static GatewayRoute containerRoute() {
         return new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.CONTAINER,
-                null, null, ContainerRuntime.PODMAN, "c0ffee", "vscode", "/workspaces/app");
+                null, null, ContainerRuntime.PODMAN, "c0ffee", "vscode", "/workspaces/app", null);
     }
 
     private ChannelSession channelFor(GatewayRoute route) {
@@ -292,7 +292,7 @@ class SeedlingRelayTest {
         SeedlingRelay relay = new SeedlingRelay(client, properties());
         relay.start(); // package-private @PostConstruct equivalent; no Spring context here
 
-        GatewayRoute route = new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.VM, "127.0.0.1", seedling.getPort(), null, null, null, null);
+        GatewayRoute route = new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.VM, "127.0.0.1", seedling.getPort(), null, null, null, null, null);
         return new Fixture(relay, fakeServerSession(), route, connectionCount);
     }
 

@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -23,7 +24,16 @@ public final class LocalCommandRunner implements CommandRunner {
     private static final long DRAIN_GRACE_MS = 2_000L;
     private static final int STDERR_CAPTURE_CAP_BYTES = 64 * 1024;
 
-    public LocalCommandRunner() {}
+    private final Map<String, String> extraEnv;
+
+    public LocalCommandRunner() {
+        this(Map.of());
+    }
+
+    /** Runs every command with {@code extraEnv} added to the inherited environment, overriding same-named entries. */
+    public LocalCommandRunner(Map<String, String> extraEnv) {
+        this.extraEnv = Map.copyOf(extraEnv);
+    }
 
     @Override
     public String execute(String command) throws IOException, InterruptedException {
@@ -104,8 +114,10 @@ public final class LocalCommandRunner implements CommandRunner {
         }
     }
 
-    private static Process start(String command) throws IOException {
-        return new ProcessBuilder("/bin/sh", "-c", command).start();
+    private Process start(String command) throws IOException {
+        ProcessBuilder builder = new ProcessBuilder("/bin/sh", "-c", command);
+        builder.environment().putAll(extraEnv);
+        return builder.start();
     }
 
     /**

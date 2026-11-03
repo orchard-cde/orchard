@@ -40,7 +40,7 @@ class GatewayGroveControllerTest {
         UUID groveId = UUID.randomUUID();
         when(service.resolveRoute(groveId)).thenReturn(Optional.of(
             new GatewayGroveResponse(groveId, UUID.randomUUID(), "FLOURISHING", "vm", "127.0.0.1", 22,
-                null, null, null, null)));
+                null, null, null, null, null)));
 
         mockMvc.perform(get("/api/gateway/groves/{groveId}", groveId))
             .andExpect(status().isOk())
@@ -56,7 +56,7 @@ class GatewayGroveControllerTest {
         UUID groveId = UUID.randomUUID();
         when(service.resolveRoute(groveId)).thenReturn(Optional.of(
             new GatewayGroveResponse(groveId, UUID.randomUUID(), "FLOURISHING", "container", null, null,
-                ContainerRuntime.PODMAN, "abc123", "vscode", "/workspaces/demo")));
+                ContainerRuntime.PODMAN, "abc123", "vscode", "/workspaces/demo", "unix:///run/podman/podman.sock")));
 
         mockMvc.perform(get("/api/gateway/groves/{groveId}", groveId))
             .andExpect(status().isOk())
@@ -64,7 +64,8 @@ class GatewayGroveControllerTest {
             .andExpect(jsonPath("$.runtime").value("PODMAN"))
             .andExpect(jsonPath("$.containerId").value("abc123"))
             .andExpect(jsonPath("$.user").value("vscode"))
-            .andExpect(jsonPath("$.workspaceFolder").value("/workspaces/demo"));
+            .andExpect(jsonPath("$.workspaceFolder").value("/workspaces/demo"))
+            .andExpect(jsonPath("$.engineUrl").value("unix:///run/podman/podman.sock"));
     }
 
     @Test
@@ -105,7 +106,7 @@ class GatewayGroveControllerTest {
         UUID groveId = UUID.randomUUID();
         when(service.authorizeOwner(groveId, "alice@example.com")).thenReturn(Optional.of(
             new GatewayGroveResponse(groveId, UUID.randomUUID(), "FLOURISHING", "vm", "127.0.0.1", 22,
-                null, null, null, null)));
+                null, null, null, null, null)));
 
         mockMvc.perform(post("/api/gateway/authorize-owner")
                 .contentType(MediaType.APPLICATION_JSON)

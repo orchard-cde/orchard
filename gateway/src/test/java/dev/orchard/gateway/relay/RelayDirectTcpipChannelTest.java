@@ -47,7 +47,7 @@ import static org.mockito.Mockito.when;
 class RelayDirectTcpipChannelTest {
 
     private static final GatewayRoute ROUTE =
-            new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "ROOTED", RouteKind.VM, "10.0.5.9", 22, null, null, null, null);
+            new GatewayRoute(UUID.randomUUID(), UUID.randomUUID(), "ROOTED", RouteKind.VM, "10.0.5.9", 22, null, null, null, null, null);
 
     @Test
     void doInitOpensTheTunnelOnTheSeedlingClientSessionInsteadOfRawTcp() throws Exception {
@@ -111,7 +111,7 @@ class RelayDirectTcpipChannelTest {
         ServerSession serverSession = mock(ServerSession.class);
         when(serverSession.getAttribute(KeyAuthenticator.ROUTE_KEY)).thenReturn(new GatewayRoute(
                 UUID.randomUUID(), UUID.randomUUID(), "FLOURISHING", RouteKind.CONTAINER,
-                null, null, ContainerRuntime.PODMAN, "c0ffee", null, null));
+                null, null, ContainerRuntime.PODMAN, "c0ffee", null, null, null));
 
         RelayDirectTcpipChannel channel = new RelayDirectTcpipChannel(relay);
         setSession(channel, serverSession);

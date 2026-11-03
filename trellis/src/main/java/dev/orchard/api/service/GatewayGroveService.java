@@ -11,6 +11,7 @@ import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.GroveState;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.VmPlot;
+import dev.orchard.nursery.container.ContainerConfig;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -29,10 +30,13 @@ public class GatewayGroveService {
     private final SshPublicKeyService sshPublicKeyService;
     private final CultivatorService cultivatorService;
     private final GatewayAddress gatewayAddress;
+    private final ContainerConfig containerConfig;
 
     public GatewayGroveService(GroveService groveService, SshPublicKeyService sshPublicKeyService,
-                               CultivatorService cultivatorService, GatewayAddress gatewayAddress) {
+                               CultivatorService cultivatorService, GatewayAddress gatewayAddress,
+                               ContainerConfig containerConfig) {
         this.gatewayAddress = gatewayAddress;
+        this.containerConfig = containerConfig;
         this.groveService = groveService;
         this.sshPublicKeyService = sshPublicKeyService;
         this.cultivatorService = cultivatorService;
@@ -93,10 +97,10 @@ public class GatewayGroveService {
         }
         return grove.sshReachableVm().map(vm -> new GatewayGroveResponse(
             grove.id(), grove.cultivatorId(), grove.state().name(), "vm",
-            vm.host(), vm.sshPort(), null, null, null, null));
+            vm.host(), vm.sshPort(), null, null, null, null, null));
     }
 
-    private static Optional<GatewayGroveResponse> containerRoute(Grove grove, ContainerPlot container) {
+    private Optional<GatewayGroveResponse> containerRoute(Grove grove, ContainerPlot container) {
         Fruit fruit = grove.primaryFruit();
         if (container.state() != PlotState.ROOTED || fruit == null
             || fruit.state() != FruitState.RIPE || fruit.containerId() == null) {
@@ -105,6 +109,6 @@ public class GatewayGroveService {
         return Optional.of(new GatewayGroveResponse(
             grove.id(), grove.cultivatorId(), grove.state().name(), "container",
             null, null, container.runtime(), fruit.containerId(),
-            fruit.remoteUser(), fruit.workspaceFolder()));
+            fruit.remoteUser(), fruit.workspaceFolder(), containerConfig.engineUrl()));
     }
 }

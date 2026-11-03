@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -21,6 +22,16 @@ class LocalCommandRunnerTest {
     @Test
     void execute_returnsStdout() throws Exception {
         assertThat(runner.execute("echo hi")).isEqualTo("hi\n");
+    }
+
+    @Test
+    void extraEnv_isVisibleToTheCommand() throws Exception {
+        LocalCommandRunner withEnv = new LocalCommandRunner(Map.of("ORCHARD_TEST_EXTRA", "a b"));
+
+        assertThat(withEnv.execute("printenv ORCHARD_TEST_EXTRA")).isEqualTo("a b\n");
+        List<String> streamed = new ArrayList<>();
+        withEnv.executeStreaming("printenv ORCHARD_TEST_EXTRA", streamed::add, 10);
+        assertThat(streamed).containsExactly("a b");
     }
 
     @Test

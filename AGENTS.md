@@ -61,7 +61,7 @@ path looks like two modules but is one. `integration-tests/` also exists, holdin
 - **Framework**: Spring Boot 4.1
 - **Database**: PostgreSQL with Flyway migrations
 - **CLI**: Picocli 4.7.6
-- **Grove providers**: QEMU (local VM), container (local docker/podman via the devcontainer CLI; `orchard.nursery.provider: container`, `orchard.nursery.container.workspace-root` defaults to `${user.home}/.orchard/plots`), AWS EC2 (GCP and Azure stubbed)
+- **Grove providers**: QEMU (local VM), container (local docker/podman via the devcontainer CLI; `orchard.nursery.provider: container`, `orchard.nursery.container.workspace-root` defaults to `${user.home}/.orchard/plots`, `orchard.nursery.container.engine-url` (`unix://` or `tcp://`) defaults to the environment's engine), AWS EC2 (GCP and Azure stubbed)
 
 ## Key Patterns
 
