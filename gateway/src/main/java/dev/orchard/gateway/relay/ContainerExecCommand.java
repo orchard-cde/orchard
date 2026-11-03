@@ -3,6 +3,7 @@ package dev.orchard.gateway.relay;
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.gateway.api.GatewayRoute;
 import dev.orchard.vine.ContainerCommandRunner;
+import dev.orchard.vine.ContainerExec;
 import org.apache.sshd.server.Environment;
 import org.apache.sshd.server.channel.ChannelSession;
 import org.apache.sshd.server.command.AbstractCommandSupport;
@@ -11,7 +12,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -107,26 +107,13 @@ public class ContainerExecCommand extends AbstractCommandSupport {
 
     List<String> argv(String term) {
         boolean podman = route.runtime() == ContainerRuntime.PODMAN;
-        List<String> argv = new ArrayList<>(List.of(route.runtime().cli(), "exec", "-i"));
+        ContainerExec exec = ContainerExec.of(route.runtime().cli(), route.containerId())
+                .interactive(true, term != null && podman);
         if (term != null) {
-            if (podman) {
-                argv.add("-t");
-            }
-            argv.addAll(List.of("-e", "TERM=" + term));
+            exec = exec.env("TERM", term);
         }
-        if (route.user() != null) {
-            argv.addAll(List.of("-u", route.user()));
-        }
-        if (route.workspaceFolder() != null) {
-            argv.addAll(List.of("-w", route.workspaceFolder()));
-        }
-        argv.add(route.containerId());
-        if (mode == RelayCommand.Mode.EXEC) {
-            argv.addAll(List.of("/bin/sh", "-c", command));
-        } else {
-            argv.addAll(List.of("/bin/sh", podman ? "-l" : "-il"));
-        }
-        return argv;
+        exec = exec.user(route.user()).workdir(route.workspaceFolder());
+        return mode == RelayCommand.Mode.EXEC ? exec.shell(command).argv() : exec.loginShell(!podman).argv();
     }
 
     /** MINA records a pty-req as the {@code TERM} environment variable; absent means no PTY was requested. */

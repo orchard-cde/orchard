@@ -384,7 +384,7 @@ class FruitGrowerTest {
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
         order.verify(runner).execute("docker start 'cid1'");
-        order.verify(runner).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
+        order.verify(runner).execute("'docker' 'exec' 'cid1' '/bin/sh' '-c' 'echo up'");
         order.verifyNoMoreInteractions();
     }
 
@@ -398,7 +398,7 @@ class FruitGrowerTest {
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
         order.verify(runner).execute("docker start 'cid1'");
-        order.verify(runner).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
+        order.verify(runner).execute("'docker' 'exec' 'cid1' '/bin/sh' '-c' 'echo up'");
         order.verifyNoMoreInteractions();
     }
 
@@ -412,7 +412,7 @@ class FruitGrowerTest {
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
         order.verify(runner).execute("docker compose -p 'proj' start");
-        order.verify(runner).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
+        order.verify(runner).execute("'docker' 'exec' 'cid1' '/bin/sh' '-c' 'echo up'");
         order.verifyNoMoreInteractions();
     }
 
@@ -429,7 +429,7 @@ class FruitGrowerTest {
     @Test
     void ripen_startOk_postStartFails_stillRipe_logsWarning() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
-        when(runner.execute("docker exec 'cid1' /bin/sh -c 'echo up'")).thenThrow(new IOException("exit 128"));
+        when(runner.execute("'docker' 'exec' 'cid1' '/bin/sh' '-c' 'echo up'")).thenThrow(new IOException("exit 128"));
         Fruit fruit = runningFruit(seedWithPostStart());
 
         java.io.PrintStream originalErr = System.err;
@@ -457,7 +457,7 @@ class FruitGrowerTest {
 
         assertThatThrownBy(() -> plainGrower().ripen(execTarget(runner), runningFruit(seedWithPostStart())).join())
             .isInstanceOf(CompletionException.class);
-        verify(runner, never()).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
+        verify(runner, never()).execute("'docker' 'exec' 'cid1' '/bin/sh' '-c' 'echo up'");
     }
 
     @Test
@@ -534,7 +534,7 @@ class FruitGrowerTest {
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
         order.verify(runner).execute("docker start 'cid1'");
-        order.verify(runner).execute("docker exec 'cid1' /bin/sh -c 'echo up'");
+        order.verify(runner).execute("'docker' 'exec' 'cid1' '/bin/sh' '-c' 'echo up'");
         order.verifyNoMoreInteractions();
         org.mockito.Mockito.verifyNoInteractions(cli);
     }
@@ -622,10 +622,10 @@ class FruitGrowerTest {
         legacyGrower.compost(target, runningFruit(defaultSeed())).join();
 
         assertThat(runner.commands).isNotEmpty();
-        assertThat(runner.commands).noneMatch(c -> c.matches("(?s).*(^|[;&| ])docker( |$).*"));
+        assertThat(runner.commands).noneMatch(c -> c.matches("(?s).*(^|[;&| ])'?docker'?( |$).*"));
         assertThat(runner.commands)
             .filteredOn(c -> !c.startsWith("devcontainer ") && !c.startsWith("command -v "))
-            .allMatch(c -> c.startsWith("podman"));
+            .allMatch(c -> c.startsWith("podman ") || c.startsWith("'podman' "));
         assertThat(runner.commands).anyMatch(c -> c.startsWith("podman build"));
         assertThat(runner.commands).anyMatch(c -> c.startsWith("podman compose"));
         assertThat(runner.commands).anyMatch(c -> c.startsWith("podman inspect"));
@@ -770,7 +770,7 @@ class FruitGrowerTest {
         plainGrower().ripen(target(runner, "/h/ws", ContainerRuntime.DOCKER), runningFruit(seed)).join();
 
         assertThat(runner.commands).contains(
-            "docker exec 'cid1' /bin/sh -c 'echo '\\''hi'\\''; touch /tmp/x'");
+            "'docker' 'exec' 'cid1' '/bin/sh' '-c' 'echo '\\''hi'\\''; touch /tmp/x'");
     }
 
     private static ExecTarget atWorkspace(String workspacePath) {

@@ -10,6 +10,7 @@ import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ContainerLabels;
 import dev.orchard.vine.ContainerVine;
 import dev.orchard.vine.ShellQuote;
 import dev.orchard.vine.Vine;
@@ -19,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -127,8 +129,8 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
                 if (!present.equals("present")) {
                     return container.withState(PlotState.WITHERED);
                 }
-                String running = local.execute(container.runtime().cli() + " ps -q --filter "
-                    + labelFilter(container) + " --filter status=running", PROBE_TIMEOUT_SECONDS).trim();
+                List<String> running = ContainerLabels.containerIds(local, container.runtime().cli(), container.id(),
+                    false, "running", PROBE_TIMEOUT_SECONDS);
                 return container.withState(running.isEmpty() ? PlotState.DORMANT : PlotState.ROOTED);
             } catch (IOException e) {
                 throw new CompletionException(e);
@@ -148,9 +150,8 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
             try {
                 if (container.runtime() != null) {
                     String cli = container.runtime().cli();
-                    String ids = local.execute(cli + " ps -aq --filter " + labelFilter(container),
-                        TEARDOWN_TIMEOUT_SECONDS);
-                    for (String id : ids.lines().map(String::trim).filter(s -> !s.isEmpty()).toList()) {
+                    for (String id : ContainerLabels.containerIds(local, cli, container.id(), true, null,
+                            TEARDOWN_TIMEOUT_SECONDS)) {
                         local.execute(cli + " rm -f " + ShellQuote.quote(id), TEARDOWN_TIMEOUT_SECONDS);
                     }
                 }
@@ -190,9 +191,5 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
 
     private Path plotRoot(UUID id) {
         return config.workspaceRoot().resolve(id.toString());
-    }
-
-    private static String labelFilter(ContainerPlot plot) {
-        return ShellQuote.quote("label=orchard.plot.id=" + plot.id());
     }
 }

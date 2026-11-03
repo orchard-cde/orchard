@@ -9,6 +9,8 @@ import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.WaitFor;
 import dev.orchard.nursery.event.FruitProgressEvent;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ContainerExec;
+import dev.orchard.vine.ContainerLabels;
 import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.ShellQuote;
 import org.slf4j.Logger;
@@ -346,7 +348,7 @@ public class FruitGrower {
 
             StringBuilder cmd = new StringBuilder(cli + " run -d");
             cmd.append(" --name ").append(ShellQuote.quote(fruit.containerName()));
-            cmd.append(" --label ").append(ShellQuote.quote("orchard.plot.id=" + target.targetId()));
+            cmd.append(" --label ").append(ShellQuote.quote(ContainerLabels.label(target.targetId())));
 
             if (!seed.containerEnv().isEmpty()) {
                 for (var entry : seed.containerEnv().entrySet()) {
@@ -655,7 +657,7 @@ public class FruitGrower {
 
         StringBuilder cmd = new StringBuilder(cli + " run -d");
         cmd.append(" --name ").append(ShellQuote.quote(fruit.containerName()));
-        cmd.append(" --label ").append(ShellQuote.quote("orchard.plot.id=" + target.targetId()));
+        cmd.append(" --label ").append(ShellQuote.quote(ContainerLabels.label(target.targetId())));
 
         // Runtime flags (issue #29)
         if (Boolean.TRUE.equals(seed.privileged())) {
@@ -793,8 +795,8 @@ public class FruitGrower {
 
     private void inContainer(ExecTarget target, String containerId, String command)
             throws IOException, InterruptedException {
-        executeSsh(target.runner(), target.runtime().cli() + " exec " + ShellQuote.quote(containerId)
-            + " /bin/sh -c " + ShellQuote.quote(command));
+        executeSsh(target.runner(),
+            ShellQuote.join(ContainerExec.of(target.runtime().cli(), containerId).shell(command).argv()));
     }
 
     private String executeSsh(CommandRunner runner, String command)

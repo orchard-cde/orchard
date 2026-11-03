@@ -75,7 +75,7 @@ class ContainerVineTest {
         assertThat(out).isEqualTo("out");
         assertThat(local.commands).containsExactly(
             psCommand("docker"),
-            "docker exec 'abc' /bin/sh -c 'ls -la'");
+            "'docker' 'exec' 'abc' '/bin/sh' '-c' 'ls -la'");
     }
 
     @Test
@@ -85,7 +85,7 @@ class ContainerVineTest {
 
         assertThat(local.commands).containsExactly(
             psCommand("docker"),
-            "docker exec -u 'dev user' 'abc' /bin/sh -c 'id'");
+            "'docker' 'exec' '-u' 'dev user' 'abc' '/bin/sh' '-c' 'id'");
     }
 
     @Test
@@ -93,7 +93,7 @@ class ContainerVineTest {
         RecordingRunner local = new RecordingRunner();
         new ContainerVine(plot(ContainerRuntime.DOCKER), local).commands().execute("id");
 
-        assertThat(local.commands.get(1)).isEqualTo("docker exec 'abc' /bin/sh -c 'id'").doesNotContain(" -u ");
+        assertThat(local.commands.get(1)).isEqualTo("'docker' 'exec' 'abc' '/bin/sh' '-c' 'id'").doesNotContain("'-u'");
     }
 
     @Test
@@ -131,7 +131,7 @@ class ContainerVineTest {
 
         assertThat(local.commands).containsExactly(
             psCommand("podman"),
-            "podman exec 'abc' /bin/sh -c 'id'");
+            "'podman' 'exec' 'abc' '/bin/sh' '-c' 'id'");
     }
 
     @Test
@@ -139,7 +139,7 @@ class ContainerVineTest {
         RecordingRunner local = new RecordingRunner();
         new ContainerVine(plot(ContainerRuntime.DOCKER), local).commands().execute("echo 'x'");
 
-        assertThat(local.commands.get(1)).isEqualTo("docker exec 'abc' /bin/sh -c 'echo '\\''x'\\'''");
+        assertThat(local.commands.get(1)).isEqualTo("'docker' 'exec' 'abc' '/bin/sh' '-c' 'echo '\\''x'\\'''");
     }
 
     @Test
@@ -149,7 +149,7 @@ class ContainerVineTest {
         new ContainerVine(plot(ContainerRuntime.DOCKER), local).commands().executeStreaming("tail", lines::add, 5);
 
         assertThat(lines).containsExactly("line");
-        assertThat(local.commands.get(1)).isEqualTo("docker exec 'abc' /bin/sh -c 'tail'");
+        assertThat(local.commands.get(1)).isEqualTo("'docker' 'exec' 'abc' '/bin/sh' '-c' 'tail'");
     }
 
     @Test
@@ -159,7 +159,7 @@ class ContainerVineTest {
 
         assertThat(vine.commands().readFile("/etc/a b")).contains("out");
         assertThat(local.commands.get(1))
-            .isEqualTo("docker exec 'abc' /bin/sh -c " + ShellQuote.quote("cat '/etc/a b'"));
+            .isEqualTo("'docker' 'exec' 'abc' '/bin/sh' '-c' " + ShellQuote.quote("cat '/etc/a b'"));
 
         local.psFailure = new IOException("down");
         assertThat(vine.commands().readFile("/etc/x")).isEmpty();

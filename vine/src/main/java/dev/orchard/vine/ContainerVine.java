@@ -4,6 +4,7 @@ import dev.orchard.core.model.ContainerPlot;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -21,7 +22,7 @@ public final class ContainerVine implements Vine {
     private final CommandRunner runner;
 
     public ContainerVine(ContainerPlot plot, CommandRunner local) {
-        this.runner = new ExecRunner(plot.runtime().cli(), plot.id().toString(), plot.remoteUser(), local);
+        this.runner = new ExecRunner(plot.runtime().cli(), plot.id(), plot.remoteUser(), local);
     }
 
     @Override
@@ -29,7 +30,7 @@ public final class ContainerVine implements Vine {
         return runner;
     }
 
-    private record ExecRunner(String cli, String plotId, String remoteUser, CommandRunner local)
+    private record ExecRunner(String cli, UUID plotId, String remoteUser, CommandRunner local)
             implements CommandRunner {
 
         @Override
@@ -62,18 +63,12 @@ public final class ContainerVine implements Vine {
         }
 
         private String execCommand(String command) throws IOException, InterruptedException {
-            String id = resolveContainer();
-            String user = remoteUser == null ? "" : "-u " + ShellQuote.quote(remoteUser) + " ";
-            return cli + " exec " + user + ShellQuote.quote(id) + " /bin/sh -c " + ShellQuote.quote(command);
+            return ShellQuote.join(ContainerExec.of(cli, resolveContainer()).user(remoteUser).shell(command).argv());
         }
 
         private String resolveContainer() throws IOException, InterruptedException {
-            String filter = ShellQuote.quote("label=orchard.plot.id=" + plotId);
-            String out = local.execute(cli + " ps -q --filter " + filter).trim();
-            if (out.isEmpty()) {
-                throw new IOException("no running fruit for plot " + plotId);
-            }
-            return out.lines().findFirst().orElseThrow();
+            return ContainerLabels.containerIds(local, cli, plotId, false).stream().findFirst()
+                .orElseThrow(() -> new IOException("no running fruit for plot " + plotId));
         }
     }
 }

@@ -2,6 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ContainerLabels;
 import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.ShellQuote;
 import org.slf4j.Logger;
@@ -66,7 +67,7 @@ public class DevcontainerCli {
             + composePathArg(target)
             + " --id-label " + ShellQuote.quote("orchard.fruit.id=" + fruitId)
             + " --id-label " + ShellQuote.quote("orchard.fruit.name=" + containerName)
-            + " --id-label " + ShellQuote.quote("orchard.plot.id=" + target.targetId());
+            + " --id-label " + ShellQuote.quote(ContainerLabels.label(target.targetId()));
 
         AtomicReference<String> outcomeLine = new AtomicReference<>();
         runner.executeStreaming(cmd, line -> {

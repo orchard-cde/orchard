@@ -166,7 +166,7 @@ class ContainerGroveProviderTest {
 
         assertThat(provider.inspect(plot).get().state()).isEqualTo(PlotState.ROOTED);
         assertThat(local.commands).contains("docker ps -q --filter 'label=orchard.plot.id=" + plot.id()
-            + "' --filter status=running");
+            + "' --filter 'status=running'");
     }
 
     @Test
@@ -300,7 +300,7 @@ class ContainerGroveProviderTest {
 
         assertThat(provider.host(plot)).isSameAs(local);
         assertThat(local.commands).contains("docker info");
-        assertThat(local.commands).anyMatch(c -> c.startsWith("docker exec ") && c.endsWith("'true'"));
+        assertThat(local.commands).anyMatch(c -> c.startsWith("'docker' 'exec' ") && c.endsWith("'true'"));
     }
 
     @Test
