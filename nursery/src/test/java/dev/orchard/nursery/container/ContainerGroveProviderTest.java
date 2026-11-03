@@ -165,16 +165,17 @@ class ContainerGroveProviderTest {
         local.on(c -> c.startsWith("docker ps -q"), "abc123\n");
 
         assertThat(provider.inspect(plot).get().state()).isEqualTo(PlotState.ROOTED);
-        assertThat(local.commands).contains("docker ps -q --filter 'label=orchard.plot.id=" + plot.id()
-            + "' --filter 'status=running'");
+        assertThat(local.commands).contains("docker ps -q --filter 'label=orchard.plot.id=" + plot.id() + "'");
     }
 
     @Test
     void inspect_stoppedContainer_isDormant() throws Exception {
         local.on(c -> c.contains("[ -d "), "present");
         local.on(c -> c.startsWith("docker ps -q"), "");
+        local.on(c -> c.startsWith("docker ps -aq"), "stopped1\n");
 
         assertThat(provider.inspect(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("docker ps -aq"));
     }
 
     @Test

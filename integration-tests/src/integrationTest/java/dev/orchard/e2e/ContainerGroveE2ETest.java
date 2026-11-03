@@ -10,6 +10,7 @@ import dev.orchard.core.model.PlotState;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.trellis.OrchardApplication;
+import dev.orchard.vine.ContainerLabels;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -149,7 +150,7 @@ class ContainerGroveE2ETest {
 
     private static String containersLabelled(ContainerPlot plot) throws Exception {
         Process process = new ProcessBuilder(plot.runtime().cli(), "ps", "-aq",
-            "--filter", "label=orchard.plot.id=" + plot.id())
+            "--filter", ContainerLabels.filter(plot.id()))
             .redirectErrorStream(true).start();
         String out = new String(process.getInputStream().readAllBytes()).trim();
         assertThat(process.waitFor()).as("%s ps exit code (output: %s)", plot.runtime().cli(), out).isZero();

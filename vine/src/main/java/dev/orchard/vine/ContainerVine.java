@@ -67,7 +67,7 @@ public final class ContainerVine implements Vine {
         }
 
         private String resolveContainer() throws IOException, InterruptedException {
-            return ContainerLabels.containerIds(local, cli, plotId, false).stream().findFirst()
+            return ContainerLabels.containerIds(local, cli, plotId, false, DEFAULT_TIMEOUT_SECONDS).stream().findFirst()
                 .orElseThrow(() -> new IOException("no running fruit for plot " + plotId));
         }
     }

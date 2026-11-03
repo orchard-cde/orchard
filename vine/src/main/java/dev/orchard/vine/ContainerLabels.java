@@ -21,25 +21,12 @@ public final class ContainerLabels {
         return "label=" + label(plotId);
     }
 
-    /** Ids of the plot's containers, via {@code <cli> ps -q} or, with {@code includeStopped}, {@code ps -aq}. */
-    public static List<String> containerIds(CommandRunner runner, String cli, UUID plotId, boolean includeStopped)
-            throws IOException, InterruptedException {
-        return parse(runner.execute(psCommand(cli, plotId, includeStopped, null)));
-    }
-
-    /**
-     * Like {@link #containerIds(CommandRunner, String, UUID, boolean)} with a timeout, and, when
-     * {@code status} is non-null, an extra {@code --filter status=<status>}.
-     */
+    /** Ids of the plot's running containers via {@code <cli> ps -q}, or of all of them with {@code includeStopped}. */
     public static List<String> containerIds(CommandRunner runner, String cli, UUID plotId, boolean includeStopped,
-                                            String status, long timeoutSeconds)
+                                            long timeoutSeconds)
             throws IOException, InterruptedException {
-        return parse(runner.execute(psCommand(cli, plotId, includeStopped, status), timeoutSeconds));
-    }
-
-    private static String psCommand(String cli, UUID plotId, boolean includeStopped, String status) {
         String command = cli + (includeStopped ? " ps -aq" : " ps -q") + " --filter " + ShellQuote.quote(filter(plotId));
-        return status == null ? command : command + " --filter " + ShellQuote.quote("status=" + status);
+        return parse(runner.execute(command, timeoutSeconds));
     }
 
     private static List<String> parse(String out) {

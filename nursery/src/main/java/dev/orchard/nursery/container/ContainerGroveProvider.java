@@ -130,7 +130,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
                     return container.withState(PlotState.WITHERED);
                 }
                 List<String> running = ContainerLabels.containerIds(local, container.runtime().cli(), container.id(),
-                    false, "running", PROBE_TIMEOUT_SECONDS);
+                    false, PROBE_TIMEOUT_SECONDS);
                 return container.withState(running.isEmpty() ? PlotState.DORMANT : PlotState.ROOTED);
             } catch (IOException e) {
                 throw new CompletionException(e);
@@ -150,7 +150,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
             try {
                 if (container.runtime() != null) {
                     String cli = container.runtime().cli();
-                    for (String id : ContainerLabels.containerIds(local, cli, container.id(), true, null,
+                    for (String id : ContainerLabels.containerIds(local, cli, container.id(), true,
                             TEARDOWN_TIMEOUT_SECONDS)) {
                         local.execute(cli + " rm -f " + ShellQuote.quote(id), TEARDOWN_TIMEOUT_SECONDS);
                     }
