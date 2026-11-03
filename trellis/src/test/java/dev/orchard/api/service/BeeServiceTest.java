@@ -57,6 +57,8 @@ class BeeServiceTest {
     private final UUID groveId = UUID.randomUUID();
     private final UUID cultivatorId = UUID.randomUUID();
 
+    private static final String VM_WORKSPACE = "/vm/provider-workspace";
+
     @BeforeEach
     void setUp() {
         beeService = new BeeService(beeKeeperRegistry, beeRepository, groveRepository,
@@ -69,6 +71,7 @@ class BeeServiceTest {
         Vine vine = mock(Vine.class);
         when(providerRegistry.require(any())).thenReturn(provider);
         when(provider.vine(any())).thenReturn(vine);
+        lenient().when(provider.workspacePath(any())).thenReturn(VM_WORKSPACE);
         when(vine.commands()).thenReturn(mock(CommandRunner.class));
     }
 
@@ -167,7 +170,7 @@ class BeeServiceTest {
             CreateBeeRequest request = new CreateBeeRequest(BeeType.CLAUDE_CODE, null, null);
             beeService.attachBee(groveId, cultivatorId, request);
 
-            verify(keeper, timeout(500)).install(any(Bee.class), any(BeeSpec.class), any(CommandRunner.class), eq("/workspace"));
+            verify(keeper, timeout(500)).install(any(Bee.class), any(BeeSpec.class), any(CommandRunner.class), eq(VM_WORKSPACE));
         }
     }
 
@@ -249,7 +252,7 @@ class BeeServiceTest {
 
             beeService.wake(beeId);
 
-            verify(keeper, timeout(500)).release(eq(bee), any(CommandRunner.class), eq("/workspace"));
+            verify(keeper, timeout(500)).release(eq(bee), any(CommandRunner.class), eq(VM_WORKSPACE));
         }
     }
 
@@ -753,7 +756,7 @@ class BeeServiceTest {
     }
 
     @Test
-    void vmPlot_rootIsWorkspace() {
+    void vmPlot_rootIsTheProvidersWorkspacePath() {
         setupFlourishingGrove();
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         stubCommandRunner();
@@ -764,8 +767,8 @@ class BeeServiceTest {
 
         attachRunningCallbacks();
 
-        verify(keeper, timeout(500)).install(any(), any(), any(), eq("/workspace"));
-        verify(keeper, timeout(2000)).release(any(), any(), eq("/workspace"));
+        verify(keeper, timeout(500)).install(any(), any(), any(), eq(VM_WORKSPACE));
+        verify(keeper, timeout(2000)).release(any(), any(), eq(VM_WORKSPACE));
         verify(fruitRepository, never()).findByGroveId(any());
     }
 

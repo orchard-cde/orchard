@@ -32,7 +32,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class BeeService {
 
     private static final Logger log = LoggerFactory.getLogger(BeeService.class);
-    private static final String VM_WORKSPACE_ROOT = "/workspace";
 
     private final BeeKeeperRegistry beeKeeperRegistry;
     private final BeeRepository beeRepository;
@@ -344,7 +343,7 @@ public class BeeService {
 
     private String workspaceRootFor(GroveEntity groveEntity) {
         return switch (groveEntity.plot()) {
-            case VmPlot vm -> VM_WORKSPACE_ROOT;
+            case VmPlot vm -> providerRegistry.require(vm.providerId()).workspacePath(vm);
             case ContainerPlot container -> fruitRepository.findByGroveId(groveEntity.getId()).stream()
                 .findFirst()
                 .map(FruitEntity::toModel)
