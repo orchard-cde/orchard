@@ -19,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -54,7 +53,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     @Override
     public boolean isAvailable() {
         try {
-            return resolveRuntime().isPresent();
+            return ContainerRuntimes.resolve(local).isPresent();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -73,7 +72,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
 
     @Override
     protected ContainerRuntime launch(ContainerPlot plot) throws Exception {
-        ContainerRuntime runtime = resolveRuntime().orElseThrow(() -> new IllegalStateException(
+        ContainerRuntime runtime = ContainerRuntimes.resolve(local).orElseThrow(() -> new IllegalStateException(
             "no container engine reachable: docker info and podman info both failed"));
         local.execute("mkdir -p " + ShellQuote.quote(plot.workspacePath().toString()));
         return runtime;
@@ -169,40 +168,6 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     @Override
     public void close() {
         executor.shutdown();
-    }
-
-    /**
-     * Prefers the podman CLI whenever a Podman engine is reachable, even through a {@code docker}
-     * CLI pointed at it: the Docker-compat API can pull the wrong architecture variant.
-     */
-    private Optional<ContainerRuntime> resolveRuntime() throws InterruptedException {
-        boolean dockerUp = succeeds("docker info");
-        if (dockerUp && !dockerFrontsPodman()) {
-            return Optional.of(ContainerRuntime.DOCKER);
-        }
-        if (succeeds("podman info")) {
-            return Optional.of(ContainerRuntime.PODMAN);
-        }
-        return dockerUp ? Optional.of(ContainerRuntime.DOCKER) : Optional.empty();
-    }
-
-    private boolean dockerFrontsPodman() throws InterruptedException {
-        try {
-            return local.execute("docker version --format '{{json .Server.Components}}'", PROBE_TIMEOUT_SECONDS)
-                .contains("Podman Engine");
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private boolean succeeds(String command) throws InterruptedException {
-        try {
-            local.execute(command, PROBE_TIMEOUT_SECONDS);
-            return true;
-        } catch (IOException e) {
-            log.debug("{} failed: {}", command, e.getMessage());
-            return false;
-        }
     }
 
     /**
