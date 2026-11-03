@@ -133,16 +133,6 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
     /** The workspace folder as seen by the {@link #hostFor host} channel. */
     protected abstract String workspacePathFor(P plot);
 
-    /**
-     * @throws IllegalStateException unless the plot is {@link PlotState#DORMANT}
-     */
-    protected static void requireDormant(Plot plot) {
-        if (plot.state() != PlotState.DORMANT) {
-            throw new IllegalStateException(
-                "Only a DORMANT plot can be watered; plot " + plot.id() + " is " + plot.state());
-        }
-    }
-
     @Override
     public final CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit) {
         return fruitGrower.grow(execTarget(plot), fruit);

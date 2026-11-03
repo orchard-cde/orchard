@@ -19,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -451,17 +450,6 @@ class QemuGroveProviderTest {
         assertThat(stub.lastProcess.isAlive()).isFalse();
         assertThat(vmDir.resolve("qemu.pid")).doesNotExist();
         assertThat(p.inspect(plot).join().state()).isEqualTo(PlotState.DORMANT);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PlotState.class, names = "DORMANT", mode = EnumSource.Mode.EXCLUDE)
-    void water_notDormant_throwsIllegalState(PlotState state) {
-        StubCommands stub = new StubCommands();
-        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
-
-        assertThatThrownBy(() -> p.water(newPlot().withState(state)))
-            .isInstanceOf(IllegalStateException.class);
-        assertThat(stub.calls).isEmpty();
     }
 
     @Test

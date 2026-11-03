@@ -17,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -1068,15 +1069,16 @@ class GroveServiceTest {
         verify(ownerProvider, never()).plantSubstrate(any());
     }
 
-    @Test
-    void startGrove_refusedWhilePlotNotDormant() {
-        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.ROOTED, FruitState.RIPE);
+    @ParameterizedTest
+    @EnumSource(value = PlotState.class, names = "DORMANT", mode = EnumSource.Mode.EXCLUDE)
+    void startGrove_refusedWhilePlotNotDormant(PlotState plotState) {
+        Grove grove = ownerGrove(GroveState.DORMANT, plotState, FruitState.RIPE);
         stubStored(grove);
 
         assertThatThrownBy(() -> groveService.startGrove(grove.id()))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("DORMANT")
-            .hasMessageContaining("ROOTED");
+            .hasMessageContaining(plotState.name());
         verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
         verifyNoInteractions(ownerProvider);
     }

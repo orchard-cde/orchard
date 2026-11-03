@@ -110,7 +110,6 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     @Override
     public CompletableFuture<Plot> water(Plot plot) {
         ContainerPlot container = narrow(plot);
-        requireDormant(container);
         return CompletableFuture.completedFuture(container.withState(PlotState.ROOTED));
     }
 

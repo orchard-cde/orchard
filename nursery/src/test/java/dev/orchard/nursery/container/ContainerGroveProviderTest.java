@@ -134,12 +134,6 @@ class ContainerGroveProviderTest {
     }
 
     @Test
-    void water_notDormant_throwsOnCallingThread() {
-        assertThatThrownBy(() -> provider.water(planted(PlotState.ROOTED)))
-            .isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test
     void water_dormant_isRooted() throws Exception {
         assertThat(provider.water(planted(PlotState.DORMANT)).get().state()).isEqualTo(PlotState.ROOTED);
     }
