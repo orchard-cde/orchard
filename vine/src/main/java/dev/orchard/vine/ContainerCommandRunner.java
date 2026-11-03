@@ -12,7 +12,7 @@ import java.util.function.Consumer;
  * devcontainer CLI starts itself. Only {@code unix://} and {@code tcp://} are accepted; TLS for
  * {@code tcp://} is not supported yet.
  */
-public final class ContainerCommandRunner implements CommandRunner {
+public class ContainerCommandRunner implements CommandRunner {
 
     private final Map<String, String> engineEnv;
     private final LocalCommandRunner delegate;

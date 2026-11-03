@@ -7,7 +7,6 @@ import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.nursery.FruitGrower;
-import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.ContainerCommandRunner;
 import dev.orchard.vine.ContainerVine;
 import org.junit.jupiter.api.AfterEach;
@@ -310,11 +309,15 @@ class ContainerGroveProviderTest {
         assertThat(provider.getProviderId()).isEqualTo("container");
     }
 
-    private static final class ScriptedRunner implements CommandRunner {
+    private static final class ScriptedRunner extends ContainerCommandRunner {
         final List<String> commands = new ArrayList<>();
         private final Map<Predicate<String>, String> outputs = new LinkedHashMap<>();
         private final List<Predicate<String>> failures = new ArrayList<>();
         boolean throwRuntime;
+
+        ScriptedRunner() {
+            super(null);
+        }
 
         void on(Predicate<String> match, String output) {
             outputs.put(match, output);

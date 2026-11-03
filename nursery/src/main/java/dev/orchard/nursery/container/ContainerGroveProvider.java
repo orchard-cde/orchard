@@ -10,6 +10,7 @@ import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.nursery.AbstractGroveProvider;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ContainerCommandRunner;
 import dev.orchard.vine.ContainerLabels;
 import dev.orchard.vine.ContainerVine;
 import dev.orchard.vine.ShellQuote;
@@ -28,7 +29,7 @@ import java.util.concurrent.Executors;
 
 /**
  * Grove provider whose substrate is the local machine: a bind-mounted workspace directory and the
- * local docker or podman engine. Plots are reached through a local {@link CommandRunner}.
+ * local docker or podman engine. Plots are reached through a {@link ContainerCommandRunner}.
  */
 public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot, ContainerRuntime>
         implements AutoCloseable {
@@ -39,12 +40,12 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     private static final long TEARDOWN_TIMEOUT_SECONDS = 120;
 
     private final ContainerConfig config;
-    private final CommandRunner local;
+    private final ContainerCommandRunner engine;
 
-    public ContainerGroveProvider(ContainerConfig config, FruitGrower fruitGrower, CommandRunner local) {
+    public ContainerGroveProvider(ContainerConfig config, FruitGrower fruitGrower, ContainerCommandRunner engine) {
         super(ContainerPlot.class, Executors.newVirtualThreadPerTaskExecutor(), fruitGrower);
         this.config = config;
-        this.local = local;
+        this.engine = engine;
     }
 
     @Override
@@ -55,7 +56,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     @Override
     public boolean isAvailable() {
         try {
-            return ContainerRuntimes.resolve(local).isPresent();
+            return ContainerRuntimes.resolve(engine).isPresent();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -74,9 +75,9 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
 
     @Override
     protected ContainerRuntime launch(ContainerPlot plot) throws Exception {
-        ContainerRuntime runtime = ContainerRuntimes.resolve(local).orElseThrow(() -> new IllegalStateException(
+        ContainerRuntime runtime = ContainerRuntimes.resolve(engine).orElseThrow(() -> new IllegalStateException(
             "no container engine reachable: docker info and podman info both failed"));
-        local.execute("mkdir -p " + ShellQuote.quote(plot.workspacePath().toString()));
+        engine.execute("mkdir -p " + ShellQuote.quote(plot.workspacePath().toString()));
         return runtime;
     }
 
@@ -88,12 +89,12 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
 
     @Override
     protected Vine vineFor(ContainerPlot plot) {
-        return new ContainerVine(plot, local);
+        return new ContainerVine(plot, engine);
     }
 
     @Override
     protected CommandRunner hostFor(ContainerPlot plot) {
-        return local;
+        return engine;
     }
 
     @Override
@@ -124,12 +125,12 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
         ContainerPlot container = narrow(plot);
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String present = local.execute("if [ -d " + ShellQuote.quote(container.workspacePath().toString())
+                String present = engine.execute("if [ -d " + ShellQuote.quote(container.workspacePath().toString())
                     + " ]; then echo present; else echo missing; fi", PROBE_TIMEOUT_SECONDS).trim();
                 if (!present.equals("present")) {
                     return container.withState(PlotState.WITHERED);
                 }
-                List<String> running = ContainerLabels.containerIds(local, container.runtime().cli(), container.id(),
+                List<String> running = ContainerLabels.containerIds(engine, container.runtime().cli(), container.id(),
                     false, PROBE_TIMEOUT_SECONDS);
                 return container.withState(running.isEmpty() ? PlotState.DORMANT : PlotState.ROOTED);
             } catch (IOException e) {
@@ -150,12 +151,12 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
             try {
                 if (container.runtime() != null) {
                     String cli = container.runtime().cli();
-                    for (String id : ContainerLabels.containerIds(local, cli, container.id(), true,
+                    for (String id : ContainerLabels.containerIds(engine, cli, container.id(), true,
                             TEARDOWN_TIMEOUT_SECONDS)) {
-                        local.execute(cli + " rm -f " + ShellQuote.quote(id), TEARDOWN_TIMEOUT_SECONDS);
+                        engine.execute(cli + " rm -f " + ShellQuote.quote(id), TEARDOWN_TIMEOUT_SECONDS);
                     }
                 }
-                local.execute("rm -rf " + ShellQuote.quote(plotDir.toString()),
+                engine.execute("rm -rf " + ShellQuote.quote(plotDir.toString()),
                     TEARDOWN_TIMEOUT_SECONDS);
             } catch (IOException e) {
                 throw new CompletionException(e);

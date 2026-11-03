@@ -21,8 +21,8 @@ public final class ContainerVine implements Vine {
 
     private final CommandRunner runner;
 
-    public ContainerVine(ContainerPlot plot, CommandRunner local) {
-        this.runner = new ExecRunner(plot.runtime().cli(), plot.id(), plot.remoteUser(), local);
+    public ContainerVine(ContainerPlot plot, ContainerCommandRunner engine) {
+        this.runner = new ExecRunner(plot.runtime().cli(), plot.id(), plot.remoteUser(), engine);
     }
 
     @Override
@@ -30,7 +30,7 @@ public final class ContainerVine implements Vine {
         return runner;
     }
 
-    private record ExecRunner(String cli, UUID plotId, String remoteUser, CommandRunner local)
+    private record ExecRunner(String cli, UUID plotId, String remoteUser, ContainerCommandRunner engine)
             implements CommandRunner {
 
         @Override
@@ -40,13 +40,13 @@ public final class ContainerVine implements Vine {
 
         @Override
         public String execute(String command, long timeoutSeconds) throws IOException, InterruptedException {
-            return local.execute(execCommand(command), timeoutSeconds);
+            return engine.execute(execCommand(command), timeoutSeconds);
         }
 
         @Override
         public void executeStreaming(String command, Consumer<String> lineConsumer, long timeoutSeconds)
                 throws IOException, InterruptedException {
-            local.executeStreaming(execCommand(command), lineConsumer, timeoutSeconds);
+            engine.executeStreaming(execCommand(command), lineConsumer, timeoutSeconds);
         }
 
         @Override
@@ -67,7 +67,7 @@ public final class ContainerVine implements Vine {
         }
 
         private String resolveContainer() throws IOException, InterruptedException {
-            return ContainerLabels.containerIds(local, cli, plotId, false, DEFAULT_TIMEOUT_SECONDS).stream().findFirst()
+            return ContainerLabels.containerIds(engine, cli, plotId, false, DEFAULT_TIMEOUT_SECONDS).stream().findFirst()
                 .orElseThrow(() -> new IOException("no running fruit for plot " + plotId));
         }
     }

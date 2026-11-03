@@ -31,11 +31,15 @@ class ContainerVineTest {
         return cli + " ps -q --filter 'label=orchard.plot.id=" + plotId + "'";
     }
 
-    private static final class RecordingRunner implements CommandRunner {
+    private static final class RecordingRunner extends ContainerCommandRunner {
         final List<String> commands = new ArrayList<>();
         final List<Long> timeouts = new ArrayList<>();
         String psAnswer = "abc\n";
         IOException psFailure;
+
+        RecordingRunner() {
+            super(null);
+        }
 
         @Override
         public String execute(String command) throws IOException {
