@@ -8,7 +8,7 @@ plugins {
     // resolve. A floating plugin version means an upstream mistake breaks this build with no commit
     // of ours. Bump deliberately.
     id("org.openrewrite.rewrite") version "7.39.0"
-    id("me.champeau.jmh") version "0.7.3" apply false
+    id("me.champeau.jmh") version "0.7.4" apply false
 }
 
 rewrite {
