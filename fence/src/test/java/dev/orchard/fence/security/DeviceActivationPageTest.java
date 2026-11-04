@@ -49,4 +49,12 @@ class DeviceActivationPageTest {
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/oauth2/device_verification?user_code=ABCD-EFGH"));
     }
+
+    @Test
+    void deviceVerificationLandsOnASuccessPage() throws Exception {
+        mockMvc.perform(get("/").param("success", ""))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/html"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("return to your terminal")));
+    }
 }
