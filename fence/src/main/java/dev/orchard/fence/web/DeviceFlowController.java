@@ -12,15 +12,18 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.net.URI;
 
 /**
- * The device flow's browser pages. {@link #PATH} is the {@code verification_uri}: Spring Authorization
- * Server's own verification endpoint rejects requests without a {@code user_code}, so a bare visit here
- * gets a code-entry form and {@code verification_uri_complete} ({@code ?user_code=...}) is forwarded
- * straight on. {@code /?success} is where Spring Authorization Server redirects once the device is approved.
+ * The device flow's browser pages, all under {@link #PATH}, the {@code verification_uri}. Spring Authorization
+ * Server's own verification endpoint rejects requests without a {@code user_code}, so a bare visit here gets a
+ * code-entry form and {@code verification_uri_complete} ({@code ?user_code=...}) is forwarded straight on. Spring
+ * redirects to {@link #APPROVED_PATH} once the device is approved and to {@link #ERROR_PATH} when the code is
+ * invalid or expired.
  */
 @Controller
 public class DeviceFlowController {
 
     public static final String PATH = "/activate";
+    public static final String APPROVED_PATH = PATH + "/approved";
+    public static final String ERROR_PATH = PATH + "?error";
 
     private static final String VERIFICATION_ENDPOINT = "/oauth2/device_verification";
 
@@ -34,14 +37,16 @@ public class DeviceFlowController {
             </head>
             <body>
             <h1>Activate your device</h1>
-            <form method="get" action="%s">
+            %s<form method="get" action="%s">
             <label for="user_code">Enter the code shown in your terminal</label>
             <input id="user_code" name="user_code" autocomplete="off" autofocus required>
             <button type="submit">Continue</button>
             </form>
             </body>
             </html>
-            """.formatted(VERIFICATION_ENDPOINT);
+            """;
+
+    private static final String INVALID_CODE = "<p role=\"alert\">That code is invalid or has expired. Try again.</p>\n";
 
     private static final String APPROVED = """
             <!doctype html>
@@ -59,9 +64,10 @@ public class DeviceFlowController {
             """;
 
     @GetMapping(value = PATH, produces = MediaType.TEXT_HTML_VALUE)
-    ResponseEntity<String> activate(@RequestParam(name = "user_code", required = false) String userCode) {
+    ResponseEntity<String> activate(@RequestParam(name = "user_code", required = false) String userCode,
+                                    @RequestParam(name = "error", required = false) String error) {
         if (userCode == null || userCode.isBlank()) {
-            return ResponseEntity.ok(FORM);
+            return ResponseEntity.ok(FORM.formatted(error == null ? "" : INVALID_CODE, VERIFICATION_ENDPOINT));
         }
         String target = UriComponentsBuilder.fromPath(VERIFICATION_ENDPOINT)
                 .queryParam("user_code", userCode)
@@ -71,7 +77,7 @@ public class DeviceFlowController {
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(target)).build();
     }
 
-    @GetMapping(value = "/", params = "success", produces = MediaType.TEXT_HTML_VALUE)
+    @GetMapping(value = APPROVED_PATH, produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
     String approved() {
         return APPROVED;

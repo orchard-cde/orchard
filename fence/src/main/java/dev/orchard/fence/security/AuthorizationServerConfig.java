@@ -24,6 +24,8 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
 @Configuration
@@ -63,6 +65,10 @@ public class AuthorizationServerConfig {
                 // always requires consent unless a prior consent record exists; wire it
                 // up explicitly so trowel-cli's requireAuthorizationConsent(false) is honored.
                 .deviceVerificationEndpoint(deviceVerification -> deviceVerification
+                        .deviceVerificationResponseHandler(
+                                new SimpleUrlAuthenticationSuccessHandler(DeviceFlowController.APPROVED_PATH))
+                        .errorResponseHandler(
+                                new SimpleUrlAuthenticationFailureHandler(DeviceFlowController.ERROR_PATH))
                         .authenticationProviders(providers -> providers.forEach(provider -> {
                             if (provider instanceof OAuth2DeviceVerificationAuthenticationProvider deviceVerificationProvider) {
                                 deviceVerificationProvider.setAuthorizationConsentRequired(context ->
