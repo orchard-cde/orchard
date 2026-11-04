@@ -92,6 +92,8 @@ trowel grove connect <grove-id>
 
 You can also connect directly with VS Code Remote SSH using the SSH config from `trowel grove show`.
 
+`IdentitiesOnly=yes` still offers identities configured in `~/.ssh/config` (such as a `Host *` `IdentityFile`) alongside the target's key.
+
 ## Clearing a Grove
 
 When you're done with a workspace:

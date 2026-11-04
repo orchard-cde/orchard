@@ -14,9 +14,12 @@ import dev.orchard.nursery.azure.AzureConfig;
 import dev.orchard.nursery.azure.AzureVmGroveProvider;
 import dev.orchard.nursery.gcp.GoogleComputeConfig;
 import dev.orchard.nursery.gcp.GoogleComputeGroveProvider;
+import dev.orchard.nursery.container.ContainerConfig;
+import dev.orchard.nursery.container.ContainerGroveProvider;
 import dev.orchard.nursery.qemu.QemuConfig;
 import dev.orchard.nursery.qemu.QemuGroveProvider;
 import dev.orchard.nursery.qemu.QemuPlatformDefaults;
+import dev.orchard.vine.ContainerCommandRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -165,6 +168,7 @@ public class NurseryConfig {
     public ProviderRegistry providerRegistry(
             @Value("${orchard.nursery.provider:qemu}") String defaultProvider,
             QemuConfig qemuConfig,
+            ContainerConfig containerConfig,
             DevcontainerCliConfig devcontainerCliConfig,
             FruitGrower fruitGrower,
             org.springframework.beans.factory.ObjectProvider<Ec2GroveProvider> ec2GroveProvider,
@@ -178,6 +182,12 @@ public class NurseryConfig {
         qemuProvider.reattachSurvivingVms();
         registry.register(qemuProvider);
         log.info("Registered grove provider: {}", qemuProvider.getProviderId());
+
+        ContainerGroveProvider containerProvider =
+            new ContainerGroveProvider(containerConfig, fruitGrower,
+                new ContainerCommandRunner(containerConfig.engineUrl()));
+        registry.register(containerProvider);
+        log.info("Registered grove provider: {}", containerProvider.getProviderId());
 
         ec2GroveProvider.ifAvailable(provider -> {
             registry.register(provider);
@@ -238,6 +248,7 @@ public class NurseryConfig {
     private String resolveProviderId(String shortName) {
         return switch (shortName) {
             case "qemu" -> ProviderType.QEMU_LOCAL.id();
+            case "container" -> ProviderType.CONTAINER.id();
             case "aws", "ec2", "aws-ec2" -> ProviderType.AWS_EC2.id();
             case "gcp", "gce", "gcp-compute" -> ProviderType.GCP_COMPUTE.id();
             case "azure", "azure-vm" -> ProviderType.AZURE_VM.id();

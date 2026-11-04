@@ -8,6 +8,7 @@ springBoot {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":vine"))
     implementation("net.i2p.crypto:eddsa:0.3.0")
     implementation("org.apache.sshd:sshd-core:2.20.1")
     implementation("org.springframework.boot:spring-boot-restclient")

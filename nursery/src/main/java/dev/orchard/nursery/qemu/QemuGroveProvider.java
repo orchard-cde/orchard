@@ -112,7 +112,6 @@ public class QemuGroveProvider extends AbstractVmGroveProvider<QemuGroveProvider
     @Override
     public CompletableFuture<Plot> water(Plot plot) {
         VmPlot vm = narrow(plot);
-        requireDormant(vm);
         ProcessHandle tracked = runningVms.get(vm.id());
         if (tracked != null && tracked.isAlive()) {
             throw new IllegalStateException(

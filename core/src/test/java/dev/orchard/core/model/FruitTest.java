@@ -20,6 +20,28 @@ class FruitTest {
     }
 
     @Test
+    void withRemoteEnv_setsBothAndKeepsOtherFields() {
+        Fruit fruit = Fruit.bud(groveId, seedlingId, testSeed()).withComposeProjectName("p");
+
+        Fruit updated = fruit.withRemoteEnv("/workspaces/repo", "vscode");
+
+        assertThat(updated.workspaceFolder()).isEqualTo("/workspaces/repo");
+        assertThat(updated.remoteUser()).isEqualTo("vscode");
+        assertThat(updated.composeProjectName()).isEqualTo("p");
+        assertThat(updated.id()).isEqualTo(fruit.id());
+        assertThat(fruit.workspaceFolder()).isNull();
+    }
+
+    @Test
+    void withers_carryRemoteEnv() {
+        Fruit fruit = Fruit.bud(groveId, seedlingId, testSeed()).withRemoteEnv("/w", "u");
+
+        assertThat(fruit.withState(FruitState.RIPE).workspaceFolder()).isEqualTo("/w");
+        assertThat(fruit.withContainerDetails("c", List.of()).remoteUser()).isEqualTo("u");
+        assertThat(fruit.withComposeProjectName("p").workspaceFolder()).isEqualTo("/w");
+    }
+
+    @Test
     void bud_usesSeedNameAsContainerName() {
         Seed seed = Seed.devcontainer().name("my-container").image("ubuntu").build();
         Fruit fruit = Fruit.bud(groveId, seedlingId, seed);

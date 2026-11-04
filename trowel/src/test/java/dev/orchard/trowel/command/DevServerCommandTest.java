@@ -843,4 +843,203 @@ class DevServerCommandTest {
             gateway.destroyForcibly();
         }
     }
+
+    @Test
+    void buildCommand_defaultProviderQemu() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setCultivatorIdForTest(null);
+
+        assertThat(start.buildCommand(Path.of("/bin/orchard-server")))
+            .contains("--orchard.nursery.provider=qemu");
+    }
+
+    @Test
+    void buildCommand_providerContainer() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        new CommandLine(start).parseArgs("--provider", "container");
+
+        assertThat(start.buildCommand(Path.of("/bin/orchard-server")))
+            .contains("--orchard.nursery.provider=container")
+            .doesNotContain("--orchard.nursery.provider=qemu");
+    }
+
+    @Test
+    void buildCommand_passesGatewaySshPort() {
+        DevServerCommand.Start start = new DevServerCommand.Start();
+        start.setGatewaySshPortForTest(12222);
+
+        assertThat(start.buildCommand(Path.of("/bin/orchard-server")))
+            .contains("--orchard.gateway.ssh-port=12222");
+    }
+
+    private static dev.orchard.trowel.client.OrchardClient.SshPublicKeyResponse keyResponse(String name, String publicKey) {
+        return new dev.orchard.trowel.client.OrchardClient.SshPublicKeyResponse(
+            java.util.UUID.randomUUID(), name, publicKey, "SHA256:test", "2026-10-30T00:00:00Z");
+    }
+
+    @Test
+    void provisionKey_noKey_generatesRegistersAndRecords() throws Exception {
+        var client = org.mockito.Mockito.mock(dev.orchard.trowel.client.OrchardClient.class);
+        org.mockito.Mockito.when(client.listSshPublicKeys()).thenReturn(java.util.List.of());
+        org.mockito.Mockito.when(client.registerSshPublicKey(
+            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+            .thenReturn(keyResponse("dev-server", "x"));
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        start.provisionKey(client);
+
+        Path pub = dev.orchard.trowel.ssh.SshKeyPaths.publicKey("dev-server");
+        assertThat(dev.orchard.trowel.ssh.SshKeyPaths.privateKey("dev-server")).exists();
+        org.mockito.Mockito.verify(client).registerSshPublicKey("dev-server", Files.readString(pub).trim());
+        var config = dev.orchard.trowel.config.ConfigLoader.load();
+        assertThat(config.targets().get(config.active()).sshKey()).isEqualTo("dev-server");
+        assertThat(config.targets().get("local").server()).isEqualTo("http://localhost:17778");
+    }
+
+    @Test
+    void provisionKey_alreadyRegisteredPublicLine_doesNotRegisterAgain() throws Exception {
+        dev.orchard.trowel.ssh.SshKeyStore.loadOrCreate("dev-server");
+        String line = Files.readString(dev.orchard.trowel.ssh.SshKeyPaths.publicKey("dev-server")).trim();
+        var client = org.mockito.Mockito.mock(dev.orchard.trowel.client.OrchardClient.class);
+        org.mockito.Mockito.when(client.listSshPublicKeys()).thenReturn(java.util.List.of(keyResponse("dev-server", line)));
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        start.provisionKey(client);
+
+        org.mockito.Mockito.verify(client, org.mockito.Mockito.never())
+            .registerSshPublicKey(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        var config = dev.orchard.trowel.config.ConfigLoader.load();
+        assertThat(config.targets().get(config.active()).sshKey()).isEqualTo("dev-server");
+    }
+
+    @Test
+    void provisionKey_existingKey_noop() throws Exception {
+        dev.orchard.trowel.ssh.SshKeyStore.loadOrCreate("mine");
+        Path priv = dev.orchard.trowel.ssh.SshKeyPaths.privateKey("mine");
+        byte[] before = Files.readAllBytes(priv);
+        var local = dev.orchard.trowel.config.OrchardConfig.withDefault().targets().get("local");
+        var targets = new java.util.LinkedHashMap<String, dev.orchard.trowel.config.OrchardConfig.Target>();
+        targets.put("local", new dev.orchard.trowel.config.OrchardConfig.Target(
+            local.server(), local.cultivator(), null, null, null, null, "mine"));
+        dev.orchard.trowel.config.ConfigLoader.save(new dev.orchard.trowel.config.OrchardConfig("local", targets));
+        var client = org.mockito.Mockito.mock(dev.orchard.trowel.client.OrchardClient.class);
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        start.provisionKey(client);
+
+        org.mockito.Mockito.verifyNoInteractions(client);
+        assertThat(dev.orchard.trowel.ssh.SshKeyPaths.privateKey("dev-server")).doesNotExist();
+        assertThat(Files.readAllBytes(priv)).isEqualTo(before);
+        assertThat(dev.orchard.trowel.config.ConfigLoader.load().targets().get("local").sshKey()).isEqualTo("mine");
+    }
+
+    @Test
+    void provisionKey_unauthorized_printsHintAndContinues() throws Exception {
+        var client = org.mockito.Mockito.mock(dev.orchard.trowel.client.OrchardClient.class);
+        org.mockito.Mockito.when(client.listSshPublicKeys())
+            .thenThrow(new java.io.IOException("Server returned 401: "));
+        org.mockito.Mockito.when(client.registerSshPublicKey(
+            org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+            .thenThrow(new java.io.IOException("Server returned 401: "));
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        start.provisionKey(client);
+
+        assertThat(outContent.toString())
+            .contains("connect needs a registered key: run trowel login, then trowel ssh-key add");
+        var config = dev.orchard.trowel.config.ConfigLoader.load();
+        assertThat(config == null || config.targets().values().stream().allMatch(t -> t.sshKey() == null)).isTrue();
+    }
+
+    private static void saveActiveTarget(String server) throws java.io.IOException {
+        var targets = new java.util.LinkedHashMap<String, dev.orchard.trowel.config.OrchardConfig.Target>();
+        targets.put("prod", new dev.orchard.trowel.config.OrchardConfig.Target(server, "c-1"));
+        dev.orchard.trowel.config.ConfigLoader.save(new dev.orchard.trowel.config.OrchardConfig("prod", targets));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"https://orchard.example.com", "http://localhost:9999"})
+    void provisionKey_activeTargetIsAnotherServer_skipsSilently(String server) throws Exception {
+        saveActiveTarget(server);
+        var client = org.mockito.Mockito.mock(dev.orchard.trowel.client.OrchardClient.class);
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        start.provisionKey(client);
+
+        org.mockito.Mockito.verifyNoInteractions(client);
+        assertThat(outContent.toString()).isEmpty();
+        assertThat(errContent.toString()).doesNotContain("key").doesNotContain("could not");
+        assertThat(dev.orchard.trowel.ssh.SshKeyPaths.privateKey("dev-server")).doesNotExist();
+        assertThat(dev.orchard.trowel.config.ConfigLoader.load().targets().get("prod").sshKey()).isNull();
+    }
+
+    @Test
+    void provisionKey_activeTargetIsThisDevServer_provisions() throws Exception {
+        saveActiveTarget("http://localhost:17778");
+        var client = org.mockito.Mockito.mock(dev.orchard.trowel.client.OrchardClient.class);
+        org.mockito.Mockito.when(client.listSshPublicKeys()).thenReturn(java.util.List.of());
+        DevServerCommand.Start start = new DevServerCommand.Start();
+
+        start.provisionKey(client);
+
+        org.mockito.Mockito.verify(client).registerSshPublicKey(
+            org.mockito.ArgumentMatchers.eq("dev-server"), org.mockito.ArgumentMatchers.anyString());
+        assertThat(dev.orchard.trowel.config.ConfigLoader.load().targets().get("prod").sshKey()).isEqualTo("dev-server");
+    }
+
+    /** Records provisioning instead of calling a server, and answers the core health wait as told. */
+    private static final class ForegroundStart extends DevServerCommand.Start {
+        final boolean coreHealthy;
+        final java.util.List<String> calls = new java.util.ArrayList<>();
+
+        ForegroundStart(boolean coreHealthy) {
+            this.coreHealthy = coreHealthy;
+        }
+
+        @Override
+        boolean waitForHealth(Process process, int port, String healthPath, int timeoutSeconds) {
+            calls.add("health:" + port + healthPath + ":" + timeoutSeconds);
+            return coreHealthy;
+        }
+
+        @Override
+        void provisionKey(dev.orchard.trowel.client.OrchardClient client) {
+            calls.add("provision");
+        }
+    }
+
+    @Test
+    void foreground_coreAndGatewayHealthy_provisionsKeyAfterCoreHealth() throws Exception {
+        ForegroundStart start = new ForegroundStart(true);
+        Process gateway = new ProcessBuilder("sleep", "60").start();
+        try {
+            start.provisionKeyOnceHealthy(null, gateway);
+        } finally {
+            gateway.destroyForcibly();
+        }
+
+        assertThat(start.calls).containsExactly("health:17778/api/health:30", "provision");
+    }
+
+    @Test
+    void foreground_coreUnhealthy_doesNotProvision() throws Exception {
+        ForegroundStart start = new ForegroundStart(false);
+        Process gateway = new ProcessBuilder("sleep", "60").start();
+        try {
+            start.provisionKeyOnceHealthy(null, gateway);
+        } finally {
+            gateway.destroyForcibly();
+        }
+
+        assertThat(start.calls).doesNotContain("provision");
+    }
+
+    @Test
+    void foreground_noGateway_doesNotProvision() {
+        ForegroundStart start = new ForegroundStart(true);
+
+        start.provisionKeyOnceHealthy(null, null);
+
+        assertThat(start.calls).isEmpty();
+    }
 }

@@ -23,7 +23,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -258,25 +257,13 @@ class Ec2GroveProviderTest {
             .hasRootCauseMessage("ssh timeout");
     }
 
-    @ParameterizedTest
-    @EnumSource(value = PlotState.class, mode = EnumSource.Mode.EXCLUDE, names = "DORMANT")
-    void water_notDormant_throwsIllegalState(PlotState state) {
-        VmPlot plot = dormantPlot(22).withState(state);
-        Ec2GroveProvider provider = providerWith(configWith(Ec2Config.IpMode.AUTO));
-
-        assertThatThrownBy(() -> provider.water(plot))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining(state.name());
-        verifyNoInteractions(ops, waiter);
-    }
-
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"water", "dormant", "uproot", "inspect"})
     void ownedMethod_containerPlot_isRefusedOnTheCallingThread(String method) {
         Ec2GroveProvider provider = providerWith(configWith(Ec2Config.IpMode.AUTO));
         ContainerPlot container = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
             "c-1", PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"),
-            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048));
+            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048), null);
         Runnable call = switch (method) {
             case "water" -> () -> provider.water(container);
             case "dormant" -> () -> provider.dormant(container);

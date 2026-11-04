@@ -10,8 +10,10 @@ import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.roots.entity.BeeEntity;
+import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.BeeRepository;
+import dev.orchard.roots.repository.FruitRepository;
 import dev.orchard.roots.repository.GroveRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,16 +39,19 @@ public class BeeService {
     private final CredentialResolver credentialResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final ProviderRegistry providerRegistry;
+    private final FruitRepository fruitRepository;
 
     public BeeService(BeeKeeperRegistry beeKeeperRegistry, BeeRepository beeRepository,
             GroveRepository groveRepository, CredentialResolver credentialResolver,
-            ApplicationEventPublisher eventPublisher, ProviderRegistry providerRegistry) {
+            ApplicationEventPublisher eventPublisher, ProviderRegistry providerRegistry,
+            FruitRepository fruitRepository) {
         this.beeKeeperRegistry = beeKeeperRegistry;
         this.beeRepository = beeRepository;
         this.groveRepository = groveRepository;
         this.credentialResolver = credentialResolver;
         this.eventPublisher = eventPublisher;
         this.providerRegistry = providerRegistry;
+        this.fruitRepository = fruitRepository;
     }
 
     @Transactional
@@ -68,6 +73,7 @@ public class BeeService {
         Map<String, String> mergedConfig = new HashMap<>(configOverrides);
         mergedConfig.putAll(credentials);
 
+        String workspaceRoot = workspaceRootFor(groveEntity);
         BeeSpec spec = new BeeSpec(request.beeType(), request.version(), mergedConfig);
         Bee bee = Bee.hatching(groveId, spec);
 
@@ -80,7 +86,7 @@ public class BeeService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                CompletableFuture.runAsync(() -> provisionBee(beeToProvision, keeper, runner));
+                CompletableFuture.runAsync(() -> provisionBee(beeToProvision, keeper, runner, workspaceRoot));
             }
         });
 
@@ -125,10 +131,11 @@ public class BeeService {
                 return bee;
             }
 
+            String workspaceRoot = workspaceRootFor(groveEntity);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(() -> releaseBee(bee, keeper, runner));
+                    CompletableFuture.runAsync(() -> releaseBee(bee, keeper, runner, workspaceRoot));
                 }
             });
 
@@ -229,10 +236,10 @@ public class BeeService {
                 + "removal was attempted; state now: " + entity.getState());
     }
 
-    private void provisionBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {
+    private void provisionBee(Bee bee, BeeKeeper keeper, CommandRunner runner, String workspaceRoot) {
         BeeSpec spec = bee.spec();
-        installBee(bee, keeper, spec, runner)
-            .thenCompose(releasedBee -> releaseBee(releasedBee, keeper, runner))
+        installBee(bee, keeper, spec, runner, workspaceRoot)
+            .thenCompose(releasedBee -> releaseBee(releasedBee, keeper, runner, workspaceRoot))
             .exceptionally(ex -> {
                 log.error("Bee provisioning failed for bee {}", bee.id(), ex);
                 updateBeeState(bee.id(), BeeState.SMOKED, bee.state());
@@ -240,15 +247,17 @@ public class BeeService {
             });
     }
 
-    private CompletableFuture<Bee> installBee(Bee bee, BeeKeeper keeper, BeeSpec spec, CommandRunner runner) {
-        return keeper.install(bee, spec, runner).thenCompose(installedBee -> {
+    private CompletableFuture<Bee> installBee(Bee bee, BeeKeeper keeper, BeeSpec spec, CommandRunner runner,
+            String workspaceRoot) {
+        return keeper.install(bee, spec, runner, workspaceRoot).thenCompose(installedBee -> {
             updateBeeState(bee.id(), BeeState.HIBERNATING, bee.state());
             return CompletableFuture.completedFuture(installedBee);
         });
     }
 
-    private CompletableFuture<Bee> releaseBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {
-        return keeper.release(bee, runner).thenCompose(releasedBee -> {
+    private CompletableFuture<Bee> releaseBee(Bee bee, BeeKeeper keeper, CommandRunner runner,
+            String workspaceRoot) {
+        return keeper.release(bee, runner, workspaceRoot).thenCompose(releasedBee -> {
             BeeState previousState = BeeState.HIBERNATING;
             BeeEntity entity = beeRepository.findById(bee.id()).orElseThrow();
             entity.setState(BeeState.BUZZING);
@@ -330,6 +339,17 @@ public class BeeService {
             return null;
         }
         return commandRunnerFor(plot);
+    }
+
+    private String workspaceRootFor(GroveEntity groveEntity) {
+        return switch (groveEntity.plot()) {
+            case VmPlot vm -> providerRegistry.require(vm.providerId()).workspacePath(vm);
+            case ContainerPlot container -> fruitRepository.findByGroveId(groveEntity.getId()).stream()
+                .findFirst()
+                .map(FruitEntity::toModel)
+                .map(Fruit::workspaceFolder)
+                .orElseThrow(() -> new IllegalStateException("container grove has no fruit workspace yet"));
+        };
     }
 
     private CommandRunner commandRunnerFor(Plot plot) {

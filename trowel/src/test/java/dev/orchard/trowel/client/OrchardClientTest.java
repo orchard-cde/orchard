@@ -532,6 +532,19 @@ class OrchardClientTest {
             .hasMessageContaining("401");
     }
 
+    // -- getAuthConfig tests --
+
+    @Test
+    void getAuthConfig_sendsUnauthenticatedGetAndDeserializesIssuer() throws Exception {
+        server.createContext("/api/auth/config", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            respond(exchange, 200, "{\"issuer\":\"https://fence.example.test\"}");
+        });
+
+        assertThat(authClient.getAuthConfig().issuer()).isEqualTo("https://fence.example.test");
+    }
+
     // -- registerSshPublicKey tests --
 
     @Test

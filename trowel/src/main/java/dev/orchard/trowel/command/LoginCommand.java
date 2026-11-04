@@ -3,11 +3,14 @@ package dev.orchard.trowel.command;
 import dev.orchard.trowel.Trowel;
 import dev.orchard.trowel.auth.AuthorizationPendingException;
 import dev.orchard.trowel.auth.FenceClient;
+import dev.orchard.trowel.auth.NoAuthProvider;
 import dev.orchard.trowel.auth.SlowDownException;
 import dev.orchard.trowel.client.OrchardClient;
 import dev.orchard.trowel.config.ConfigLoader;
 import dev.orchard.trowel.config.OrchardConfig;
 import picocli.CommandLine.Command;
+import tools.jackson.core.JacksonException;
+import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Option;
 
 import java.io.IOException;
@@ -21,20 +24,59 @@ import java.util.concurrent.TimeUnit;
 )
 public class LoginCommand implements Callable<Integer> {
 
-    @Option(names = {"--fence-server"}, description = "Fence server URL (default: ${FENCE_SERVER_URL:-https://fence.orchard.dev})")
+    @ParentCommand
+    Trowel parent;
+
+    @Option(names = {"--fence-server"}, description = "Fence server URL (default: $FENCE_SERVER_URL, else the issuer published by the Orchard server)")
     private String fenceServerUrl;
 
     @Option(names = {"--no-browser"}, description = "Do not attempt to open browser")
     private boolean noBrowser;
 
+    private static final int MAX_REASON = 200;
+
+    static String resolveFenceServer(String flag, String env, String serverUrl) throws IOException {
+        if (flag != null) {
+            return flag;
+        }
+        if (env != null) {
+            return env;
+        }
+        String reason = null;
+        try {
+            String issuer = new OrchardClient(serverUrl, new NoAuthProvider()).getAuthConfig().issuer();
+            if (issuer != null && !issuer.isBlank()) {
+                return issuer;
+            }
+        } catch (IOException | JacksonException | IllegalArgumentException e) {
+            reason = describe(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            reason = "interrupted";
+        }
+        throw new IOException("server " + serverUrl
+            + " publishes no fence issuer; pass --fence-server or set FENCE_SERVER_URL"
+            + (reason != null ? " (" + reason + ")" : ""));
+    }
+
+    private static String describe(Exception e) {
+        String message = e.getMessage() != null ? e.getMessage().replaceAll("\\s+", " ").strip() : "";
+        if (message.isEmpty()) {
+            return e.getClass().getSimpleName();
+        }
+        return message.length() > MAX_REASON ? message.substring(0, MAX_REASON) + "..." : message;
+    }
+
     @Override
     public Integer call() {
+        String fenceUrl;
         try {
-            String fenceUrl = fenceServerUrl != null ? fenceServerUrl : System.getenv("FENCE_SERVER_URL");
-            if (fenceUrl == null) {
-                fenceUrl = Trowel.DEFAULT_FENCE_SERVER;
-            }
-
+            fenceUrl = resolveFenceServer(fenceServerUrl, System.getenv("FENCE_SERVER_URL"), parent.getServerUrl());
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+            return 1;
+        }
+        try {
             String clientId = Trowel.CLIENT_ID;
 
             FenceClient fenceClient = new FenceClient(fenceUrl, clientId);
@@ -47,9 +89,9 @@ public class LoginCommand implements Callable<Integer> {
             System.out.println();
             System.out.println("Open this URL in your browser:");
             System.out.println();
-            System.out.println("  " + deviceAuth.verificationUri());
+            System.out.println("  " + deviceAuth.browserUri());
             System.out.println();
-            System.out.println("Enter this code when prompted:");
+            System.out.println("Confirm this code matches (enter it if prompted):");
             System.out.println();
             System.out.println("  " + deviceAuth.userCode());
             System.out.println();
@@ -60,11 +102,11 @@ public class LoginCommand implements Callable<Integer> {
                     String osName = System.getProperty("os.name", "").toLowerCase();
                     ProcessBuilder pb;
                     if (osName.contains("mac") || osName.contains("darwin")) {
-                        pb = new ProcessBuilder("open", deviceAuth.verificationUri());
+                        pb = new ProcessBuilder("open", deviceAuth.browserUri());
                     } else if (osName.contains("win")) {
-                        pb = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", deviceAuth.verificationUri());
+                        pb = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", deviceAuth.browserUri());
                     } else {
-                        pb = new ProcessBuilder("xdg-open", deviceAuth.verificationUri());
+                        pb = new ProcessBuilder("xdg-open", deviceAuth.browserUri());
                     }
                     pb.redirectErrorStream(true);
                     pb.start();
@@ -73,12 +115,12 @@ public class LoginCommand implements Callable<Integer> {
                 }
             }
 
-            var tokenResponse = pollForToken(fenceClient, deviceAuth.deviceCode(), deviceAuth.interval());
+            var tokenResponse = pollForToken(fenceClient, deviceAuth.deviceCode(), deviceAuth.pollIntervalSeconds());
 
             System.out.println();
             System.out.println("Authenticated! Fetching user info...");
 
-            var orchardClient = new OrchardClient(getOrchardServerUrl(), () -> "Bearer " + tokenResponse.accessToken());
+            var orchardClient = new OrchardClient(parent.getServerUrl(), () -> "Bearer " + tokenResponse.accessToken());
             var cultivator = orchardClient.getCurrentCultivator();
 
             persistLoginResult(tokenResponse, fenceUrl, cultivator.id());
@@ -119,7 +161,8 @@ public class LoginCommand implements Callable<Integer> {
     private void persistLoginResult(FenceClient.TokenResponse tokenResponse, String fenceUrl, String cultivatorId)
             throws IOException {
         OrchardConfig config = ConfigLoader.load();
-        String activeName = config != null ? config.active() : "local";
+        String explicitName = parent.getTargetName();
+        String activeName = explicitName != null ? explicitName : config != null ? config.active() : "local";
         var targets = new LinkedHashMap<String, OrchardConfig.Target>();
 
         if (config != null && config.targets() != null) {
@@ -137,26 +180,10 @@ public class LoginCommand implements Callable<Integer> {
             fenceUrl,
             tokenResponse.accessToken(),
             tokenResponse.refreshToken(),
-            expiresAt
+            expiresAt,
+            existing != null ? existing.sshKey() : null
         ));
 
         ConfigLoader.save(new OrchardConfig(activeName, targets));
-    }
-
-    private String getOrchardServerUrl() {
-        String env = System.getenv("ORCHARD_SERVER_URL");
-        if (env != null) {
-            return env;
-        }
-
-        OrchardConfig config = ConfigLoader.load();
-        if (config != null) {
-            OrchardConfig.Target target = config.activeTarget();
-            if (target != null && target.server() != null) {
-                return target.server();
-            }
-        }
-
-        return "http://localhost:17778";
     }
 }

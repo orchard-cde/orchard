@@ -104,22 +104,4 @@ public record Grove(
             ? Optional.of(vm)
             : Optional.empty();
     }
-
-    public String getSshConnectionString() {
-        VmPlot vm = sshReachableVm().orElse(null);
-        if (vm == null) {
-            return null;
-        }
-        String keyPath = resolveSshKeyPath();
-        return "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s -p %d cultivator@%s".formatted(
-            keyPath, vm.sshPort(), vm.host());
-    }
-
-    private static String resolveSshKeyPath() {
-        String keyPath = System.getProperty("orchard.ssh.key-path");
-        if (keyPath != null && !keyPath.isBlank()) {
-            return keyPath;
-        }
-        return "%s/.ssh/orchard_ed25519".formatted(System.getProperty("user.home"));
-    }
 }

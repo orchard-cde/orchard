@@ -29,6 +29,9 @@ class OpencodeBeeKeeperTest {
 
     @Mock private CommandRunner runner;
 
+    private static final String ROOT = "/workspace";
+    private static final String BINARY = "/home/dev/.opencode/bin/opencode";
+
     private OpencodeBeeKeeper keeper;
     private final UUID groveId = UUID.randomUUID();
 
@@ -50,9 +53,9 @@ class OpencodeBeeKeeperTest {
     @Test
     void install_binaryAlreadyPresent_skipsInstallScript() throws Exception {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
-        when(runner.execute("command -v opencode")).thenReturn("/usr/local/bin/opencode");
+        when(runner.execute(contains("command -v opencode"))).thenReturn("/usr/local/bin/opencode");
 
-        Bee result = keeper.install(bee, bee.spec(), runner).join();
+        Bee result = keeper.install(bee, bee.spec(), runner, ROOT).join();
 
         assertThat(result).isEqualTo(bee);
         verify(runner, never()).execute(contains("curl"));
@@ -61,43 +64,117 @@ class OpencodeBeeKeeperTest {
     @Test
     void install_binaryMissing_runsInstallScript() throws Exception {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
-        when(runner.execute("command -v opencode")).thenThrow(new IOException("not found"));
+        when(runner.execute(contains("command -v opencode")))
+            .thenThrow(new IOException("not found")).thenReturn(BINARY);
         when(runner.execute(contains("curl"))).thenReturn("");
 
-        keeper.install(bee, bee.spec(), runner).join();
+        keeper.install(bee, bee.spec(), runner, ROOT).join();
 
-        verify(runner).execute(contains("install.sh"));
+        verify(runner).execute(argThat(cmd -> cmd.contains("https://opencode.ai/install")
+            && cmd.contains("-o /tmp/opencode-install.sh") && cmd.contains("&& bash /tmp/opencode-install.sh")));
+    }
+
+    @Test
+    void install_installerFails_throws() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        when(runner.execute(contains("command -v opencode"))).thenThrow(new IOException("not found"));
+        when(runner.execute(contains("curl"))).thenThrow(new IOException("curl: (22) 404"));
+
+        assertThatThrownBy(() -> keeper.install(bee, bee.spec(), runner, ROOT).join())
+            .hasCauseInstanceOf(BeeProvisioningException.class);
+        verify(runner, never()).execute(contains("mkdir -p"));
+    }
+
+    @Test
+    void install_binaryStillMissingAfterInstall_throws() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        when(runner.execute(contains("command -v opencode"))).thenThrow(new IOException("not found"));
+        when(runner.execute(contains("curl"))).thenReturn("");
+
+        assertThatThrownBy(() -> keeper.install(bee, bee.spec(), runner, ROOT).join())
+            .hasCauseInstanceOf(BeeProvisioningException.class);
     }
 
     @Test
     void install_writesConfigWithGroveAndBeeIds() throws Exception {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
-        when(runner.execute("command -v opencode")).thenReturn("/usr/local/bin/opencode");
+        when(runner.execute(contains("command -v opencode"))).thenReturn("/usr/local/bin/opencode");
 
-        keeper.install(bee, bee.spec(), runner).join();
+        keeper.install(bee, bee.spec(), runner, ROOT).join();
 
         verify(runner).execute(argThat(cmd ->
-            cmd.contains("mkdir -p /workspace/.opencode") && cmd.contains("opencode.jsonc")));
+            cmd.contains("mkdir -p '/workspace/.opencode'") && cmd.contains("opencode.jsonc")));
+    }
+
+    @Test
+    void install_writesConfigUnderWorkspaceRoot() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        when(runner.execute(contains("command -v opencode"))).thenReturn("/usr/local/bin/opencode");
+
+        keeper.install(bee, bee.spec(), runner, "/workspaces/repo").join();
+
+        verify(runner).execute(argThat(cmd ->
+            cmd.contains("mkdir -p '/workspaces/repo/.opencode'")
+                && cmd.contains("> '/workspaces/repo/.opencode/opencode.jsonc'")));
+    }
+
+    @Test
+    void release_cdsIntoWorkspaceRoot() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        stubLaunch("1\n");
+
+        keeper.release(bee, runner, "/workspaces/my repo").join();
+
+        verify(runner).execute(startsWith("cd '/workspaces/my repo' && nohup '" + BINARY + "' serve"));
     }
 
     @Test
     void install_commandFailure_wrapsInBeeProvisioningException() throws Exception {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
-        when(runner.execute("command -v opencode")).thenReturn("/usr/local/bin/opencode");
+        when(runner.execute(contains("command -v opencode"))).thenReturn("/usr/local/bin/opencode");
         when(runner.execute(contains("mkdir -p"))).thenThrow(new IOException("disk full"));
 
-        assertThatThrownBy(() -> keeper.install(bee, bee.spec(), runner).join())
+        assertThatThrownBy(() -> keeper.install(bee, bee.spec(), runner, ROOT).join())
             .hasCauseInstanceOf(BeeProvisioningException.class);
     }
 
     @Test
     void release_startsProcessAndCapturesPid() throws Exception {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
-        when(runner.execute(contains("nohup opencode serve"))).thenReturn("12345\n");
+        stubLaunch("12345\n");
 
-        Bee result = keeper.release(bee, runner).join();
+        Bee result = keeper.release(bee, runner, ROOT).join();
 
         assertThat(result.processId()).isEqualTo("12345");
+        verify(runner).execute(argThat(cmd -> cmd.contains("nohup '" + BINARY + "' serve")));
+        verify(runner).execute(argThat(cmd -> cmd.contains("curl") && cmd.contains("kill -0 12345")), anyLong());
+    }
+
+    @Test
+    void release_serverNeverStarts_throwsWithLogTail() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        stubLaunch("12345\n");
+        when(runner.execute(contains("curl -sS"), anyLong())).thenThrow(new IOException("exit 1"));
+        when(runner.execute(startsWith("tail -n"))).thenReturn("boom: cannot bind\n");
+
+        assertThatThrownBy(() -> keeper.release(bee, runner, ROOT).join())
+            .hasCauseInstanceOf(BeeProvisioningException.class)
+            .hasMessageContaining("boom: cannot bind");
+    }
+
+    @Test
+    void release_binaryNotFound_throws() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        when(runner.execute(contains("command -v opencode"))).thenThrow(new IOException("not found"));
+
+        assertThatThrownBy(() -> keeper.release(bee, runner, ROOT).join())
+            .hasCauseInstanceOf(BeeProvisioningException.class);
+        verify(runner, never()).execute(contains("nohup"));
+    }
+
+    private void stubLaunch(String pid) throws Exception {
+        when(runner.execute(contains("command -v opencode"))).thenReturn(BINARY + "\n");
+        when(runner.execute(contains("nohup"))).thenReturn(pid);
     }
 
     @Test
@@ -105,7 +182,7 @@ class OpencodeBeeKeeperTest {
         BeeSpec spec = new BeeSpec(BeeType.OPENCODE, null, Map.of("mode", "interactive"));
         Bee bee = Bee.hatching(groveId, spec);
 
-        Bee result = keeper.release(bee, runner).join();
+        Bee result = keeper.release(bee, runner, ROOT).join();
 
         assertThat(result.processId()).isNull();
         verify(runner, never()).execute(contains("nohup"));
@@ -134,7 +211,8 @@ class OpencodeBeeKeeperTest {
     void inspect_processAliveAndResponsive_returnsHealthy() throws Exception {
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE)).withProcessId("12345");
         when(runner.execute("kill -0 12345")).thenReturn("");
-        when(runner.execute(eq("opencode --version"), anyLong())).thenReturn("1.0.0");
+        when(runner.execute(contains("command -v opencode"))).thenReturn(BINARY);
+        when(runner.execute(eq("'" + BINARY + "' --version"), anyLong())).thenReturn("1.0.0");
 
         BeeHealth health = keeper.inspect(bee, runner).join();
 
@@ -157,7 +235,7 @@ class OpencodeBeeKeeperTest {
         Bee bee = Bee.hatching(groveId, new BeeSpec(BeeType.OPENCODE, "1.0.0",
             Map.of("theme", "dark")));
 
-        String json = keeper.renderConfig(bee, bee.spec());
+        String json = keeper.renderConfig(bee, bee.spec(), ROOT);
 
         assertThat(json)
             .contains("\"workspace_root\" : \"/workspace\"")

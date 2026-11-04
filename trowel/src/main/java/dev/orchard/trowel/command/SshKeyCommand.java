@@ -7,8 +7,13 @@ import dev.orchard.trowel.ssh.SshKeyPaths;
 import dev.orchard.trowel.ssh.SshKeyStore;
 import picocli.CommandLine;
 
+import dev.orchard.trowel.config.ConfigLoader;
+import dev.orchard.trowel.config.OrchardConfig;
+
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
@@ -45,6 +50,12 @@ public class SshKeyCommand implements Callable<Integer> {
         public Integer call() {
             try {
                 String publicLine;
+                OrchardConfig planned = null;
+                boolean configCreated = false;
+                if (path == null) {
+                    configCreated = ConfigLoader.load() == null;
+                    planned = planSshKey(name, parent.parent.getTargetName(), parent.parent.getServerUrl());
+                }
                 if (path != null) {
                     publicLine = Files.readString(Path.of(path)).trim();
                 } else {
@@ -54,6 +65,12 @@ public class SshKeyCommand implements Callable<Integer> {
 
                 OrchardClient client = new OrchardClient(parent.parent.getServerUrl(), parent.parent.getAuthProvider());
                 SshPublicKeyResponse created = client.registerSshPublicKey(name, publicLine);
+                if (planned != null) {
+                    ConfigLoader.save(planned);
+                    if (configCreated) {
+                        System.out.println("Created trowel config at " + ConfigLoader.tomlFile());
+                    }
+                }
 
                 System.out.println("Registered SSH key '" + created.name() + "'");
                 System.out.println("  fingerprint: " + created.fingerprint());
@@ -63,11 +80,46 @@ public class SshKeyCommand implements Callable<Integer> {
                     System.out.println("  key file:    " + SshKeyPaths.privateKey(name));
                 }
                 return 0;
+            } catch (TargetNotFoundException e) {
+                System.err.println(e.getMessage());
+                return 1;
             } catch (Exception e) {
                 System.err.println("Failed to register SSH key: " + e.getMessage());
                 return 1;
             }
         }
+    }
+
+    static final class TargetNotFoundException extends RuntimeException {
+        TargetNotFoundException(String message) {
+            super(message);
+        }
+    }
+
+    static OrchardConfig loadOrDefault(String serverUrl) {
+        OrchardConfig config = ConfigLoader.load();
+        if (config == null) {
+            OrchardConfig.Target local = OrchardConfig.withDefault().targets().get("local");
+            var targets = new LinkedHashMap<String, OrchardConfig.Target>();
+            targets.put("local", new OrchardConfig.Target(serverUrl, local.cultivator()));
+            config = new OrchardConfig("local", targets);
+        }
+        return config;
+    }
+
+    static OrchardConfig planSshKey(String keyName, String explicitTarget, String serverUrl) {
+        OrchardConfig config = loadOrDefault(serverUrl);
+        String targetName = explicitTarget != null ? explicitTarget : config.active();
+        OrchardConfig.Target existing = config.targets() == null ? null : config.targets().get(targetName);
+        if (existing == null) {
+            throw new TargetNotFoundException("could not record SSH key '" + keyName + "': target '" + targetName
+                + "' not found in config; run: trowel config target add " + targetName + " --server <url> --cultivator <id>");
+        }
+        var targets = new LinkedHashMap<>(config.targets());
+        targets.put(targetName, new OrchardConfig.Target(
+            existing.server(), existing.cultivator(), existing.fenceServer(), existing.accessToken(),
+            existing.refreshToken(), existing.expiresAt(), keyName));
+        return new OrchardConfig(config.active(), targets);
     }
 
     @CommandLine.Command(name = "list", aliases = {"ls"}, description = "List registered SSH keys")

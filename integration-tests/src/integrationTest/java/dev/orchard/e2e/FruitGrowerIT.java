@@ -1,6 +1,7 @@
 package dev.orchard.e2e;
 
 import dev.orchard.core.model.DevfileSeed;
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
@@ -111,7 +112,7 @@ class FruitGrowerIT {
      * correlation.
      */
     private ExecTarget execTarget() {
-        return new ExecTarget(commands(), "/workspace", plot.id());
+        return new ExecTarget(commands(), "/workspace", plot.id(), ContainerRuntime.DOCKER);
     }
 
     private void waitForCloudInit() {

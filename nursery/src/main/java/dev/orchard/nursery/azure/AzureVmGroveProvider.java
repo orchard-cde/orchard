@@ -7,6 +7,7 @@ import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.AbstractVmGroveProvider;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +74,11 @@ public class AzureVmGroveProvider extends AbstractVmGroveProvider<Void> {
 
     @Override
     public CompletableFuture<Plot> inspect(Plot plot) {
+        throw new UnsupportedOperationException("Azure VM provider not yet implemented");
+    }
+
+    @Override
+    protected CommandRunner hostFor(VmPlot plot) {
         throw new UnsupportedOperationException("Azure VM provider not yet implemented");
     }
 

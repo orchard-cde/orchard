@@ -42,6 +42,10 @@ management:
       show-details: always
 
 orchard:
+  gateway:
+    ssh-host: localhost
+    ssh-port: 2222
+
   security:
     oauth2:
       # Set to true to enable JWT authentication. When false (default), all
@@ -49,8 +53,11 @@ orchard:
       enabled: false
 
   nursery:
-    # Default provider: qemu, aws, gcp, azure
+    # Default provider: qemu, container, aws, gcp, azure
     provider: qemu
+
+    # container:
+    #   workspace-root: ${user.home}/.orchard/plots
 
     # Feature-flag gating the new devcontainer-CLI grow path (issue #74).
     # When true (default), FruitGrower delegates to @devcontainers/cli on the

@@ -4,12 +4,15 @@ import dev.orchard.core.model.SeedSpec;
 import dev.orchard.trowel.Trowel;
 import dev.orchard.trowel.client.OrchardClient;
 import dev.orchard.trowel.client.OrchardClient.GroveResponse;
+import dev.orchard.trowel.ssh.SshKeyPaths;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -307,12 +310,19 @@ public class GroveCommand implements Callable<Integer> {
                     return 1;
                 }
 
+                List<String> argv;
+                try {
+                    argv = connectArgv(grove.sshConnectionString(), SshKeyPaths.keysDir(), parent.parent.getSshKeyName());
+                } catch (IllegalStateException e) {
+                    System.err.println(e.getMessage());
+                    return 1;
+                }
+
                 System.out.println("Connecting to grove: " + grove.name());
-                System.out.println("Command: " + grove.sshConnectionString());
+                System.out.println("Command: " + String.join(" ", argv));
                 System.out.println();
 
-                String[] sshParts = grove.sshConnectionString().split(" ");
-                ProcessBuilder pb = new ProcessBuilder(sshParts);
+                ProcessBuilder pb = new ProcessBuilder(argv);
                 pb.inheritIO();
                 Process process = pb.start();
                 return process.waitFor();
@@ -322,6 +332,16 @@ public class GroveCommand implements Callable<Integer> {
                 return 1;
             }
         }
+    }
+
+    static List<String> connectArgv(String connectionString, Path keysDir, String keyName) {
+        Path key = keyName == null ? null : keysDir.resolve(keyName);
+        if (key == null || !Files.isRegularFile(key)) {
+            throw new IllegalStateException("no SSH key provisioned for this target; run: trowel ssh-key add");
+        }
+        List<String> parts = new ArrayList<>(List.of(connectionString.split(" ")));
+        parts.addAll(1, List.of("-i", key.toString(), "-o", "IdentitiesOnly=yes"));
+        return parts;
     }
 
     static void printPlot(OrchardClient.PlotInfo plot) {

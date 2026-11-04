@@ -1,5 +1,8 @@
 package dev.orchard.nursery;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
@@ -9,7 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Registry that manages available GroveProviders, one per substrate.
  * Allows lookup by provider ID and designates a default provider.
  */
-public class ProviderRegistry {
+public class ProviderRegistry implements AutoCloseable {
+
+    private static final Logger log = LoggerFactory.getLogger(ProviderRegistry.class);
 
     private final Map<String, GroveProvider> providers = new ConcurrentHashMap<>();
     private String defaultProviderId;
@@ -87,5 +92,19 @@ public class ProviderRegistry {
      */
     public boolean hasProvider(String providerId) {
         return providers.containsKey(providerId);
+    }
+
+    /** Closes every registered provider that holds resources, logging and continuing past failures. */
+    @Override
+    public void close() {
+        for (GroveProvider provider : providers.values()) {
+            if (provider instanceof AutoCloseable closeable) {
+                try {
+                    closeable.close();
+                } catch (Exception e) {
+                    log.warn("Failed to close grove provider {}", provider.getProviderId(), e);
+                }
+            }
+        }
     }
 }

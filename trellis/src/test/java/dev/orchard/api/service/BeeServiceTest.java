@@ -13,6 +13,8 @@ import dev.orchard.vine.Vine;
 import dev.orchard.roots.entity.BeeEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.BeeRepository;
+import dev.orchard.roots.entity.FruitEntity;
+import dev.orchard.roots.repository.FruitRepository;
 import dev.orchard.roots.repository.GroveRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,16 +50,19 @@ class BeeServiceTest {
     @Mock private CredentialResolver credentialResolver;
     @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private ProviderRegistry providerRegistry;
+    @Mock private FruitRepository fruitRepository;
 
     private BeeService beeService;
 
     private final UUID groveId = UUID.randomUUID();
     private final UUID cultivatorId = UUID.randomUUID();
 
+    private static final String VM_WORKSPACE = "/vm/provider-workspace";
+
     @BeforeEach
     void setUp() {
         beeService = new BeeService(beeKeeperRegistry, beeRepository, groveRepository,
-            credentialResolver, eventPublisher, providerRegistry);
+            credentialResolver, eventPublisher, providerRegistry, fruitRepository);
     }
 
     /** Stubs the registry -> default provider -> vine -> commands chain that {@code commandRunnerFor} walks. */
@@ -66,6 +71,7 @@ class BeeServiceTest {
         Vine vine = mock(Vine.class);
         when(providerRegistry.require(any())).thenReturn(provider);
         when(provider.vine(any())).thenReturn(vine);
+        lenient().when(provider.workspacePath(any())).thenReturn(VM_WORKSPACE);
         when(vine.commands()).thenReturn(mock(CommandRunner.class));
     }
 
@@ -150,7 +156,7 @@ class BeeServiceTest {
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         stubCommandRunner();
         Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE));
-        when(keeper.install(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        when(keeper.install(any(), any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
 
         try (MockedStatic<TransactionSynchronizationManager> tsm =
                 mockStatic(TransactionSynchronizationManager.class)) {
@@ -164,7 +170,7 @@ class BeeServiceTest {
             CreateBeeRequest request = new CreateBeeRequest(BeeType.CLAUDE_CODE, null, null);
             beeService.attachBee(groveId, cultivatorId, request);
 
-            verify(keeper, timeout(500)).install(any(Bee.class), any(BeeSpec.class), any(CommandRunner.class));
+            verify(keeper, timeout(500)).install(any(Bee.class), any(BeeSpec.class), any(CommandRunner.class), eq(VM_WORKSPACE));
         }
     }
 
@@ -232,7 +238,7 @@ class BeeServiceTest {
         lenient().when(groveEntity.plot()).thenReturn(plotOwnedBy("p"));
         when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
-        when(keeper.release(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        when(keeper.release(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
         stubCommandRunner();
 
         try (MockedStatic<TransactionSynchronizationManager> tsm =
@@ -246,7 +252,7 @@ class BeeServiceTest {
 
             beeService.wake(beeId);
 
-            verify(keeper, timeout(500)).release(eq(bee), any(CommandRunner.class));
+            verify(keeper, timeout(500)).release(eq(bee), any(CommandRunner.class), eq(VM_WORKSPACE));
         }
     }
 
@@ -334,7 +340,7 @@ class BeeServiceTest {
         }
 
         verifyNoInteractions(providerRegistry);
-        verify(keeper, never()).release(any(), any());
+        verify(keeper, never()).release(any(), any(), any());
     }
 
     @Test
@@ -586,7 +592,7 @@ class BeeServiceTest {
         lenient().when(groveEntity.plot()).thenReturn(plotOwnedBy("p"));
         when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
         when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
-        when(keeper.release(any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        when(keeper.release(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
         stubCommandRunner();
 
         try (MockedStatic<TransactionSynchronizationManager> tsm =
@@ -747,6 +753,88 @@ class BeeServiceTest {
 
         verify(owner).vine(any());
         verify(providerRegistry, never()).getDefault();
+    }
+
+    @Test
+    void vmPlot_rootIsTheProvidersWorkspacePath() {
+        setupFlourishingGrove();
+        BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        stubCommandRunner();
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE));
+        when(keeper.install(any(), any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        when(keeper.release(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        when(beeRepository.findById(any())).thenReturn(Optional.of(mock(BeeEntity.class)));
+
+        attachRunningCallbacks();
+
+        verify(keeper, timeout(500)).install(any(), any(), any(), eq(VM_WORKSPACE));
+        verify(keeper, timeout(2000)).release(any(), any(), eq(VM_WORKSPACE));
+        verify(fruitRepository, never()).findByGroveId(any());
+    }
+
+    @Test
+    void containerPlot_rootIsFruitWorkspaceFolder_andRunnerIsVine() {
+        ContainerPlot plot = containerPlot();
+        GroveEntity groveEntity = mock(GroveEntity.class);
+        when(groveEntity.plot()).thenReturn(plot);
+        when(groveEntity.getId()).thenReturn(groveId);
+        when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
+        when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
+        FruitEntity fruit = mock(FruitEntity.class);
+        when(fruit.toModel()).thenReturn(Fruit.bud(groveId, plot.id(), Seed.devcontainer().name("t").image("ubuntu").build())
+            .withRemoteEnv("/workspaces/repo", "vscode"));
+        when(fruitRepository.findByGroveId(groveId)).thenReturn(List.of(fruit));
+        BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        GroveProvider provider = mock(GroveProvider.class);
+        Vine vine = mock(Vine.class);
+        CommandRunner vineRunner = mock(CommandRunner.class);
+        when(providerRegistry.require(any())).thenReturn(provider);
+        when(provider.vine(plot)).thenReturn(vine);
+        when(vine.commands()).thenReturn(vineRunner);
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE));
+        when(keeper.install(any(), any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        when(keeper.release(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(bee));
+        when(beeRepository.findById(any())).thenReturn(Optional.of(mock(BeeEntity.class)));
+
+        attachRunningCallbacks();
+
+        verify(keeper, timeout(500)).install(any(), any(), same(vineRunner), eq("/workspaces/repo"));
+        verify(keeper, timeout(2000)).release(any(), same(vineRunner), eq("/workspaces/repo"));
+    }
+
+    @Test
+    void containerPlot_withoutFruitWorkspace_throws() {
+        ContainerPlot plot = containerPlot();
+        GroveEntity groveEntity = mock(GroveEntity.class);
+        when(groveEntity.plot()).thenReturn(plot);
+        when(groveEntity.getId()).thenReturn(groveId);
+        when(groveRepository.findById(groveId)).thenReturn(Optional.of(groveEntity));
+        when(groveEntity.getState()).thenReturn(GroveState.FLOURISHING);
+        when(fruitRepository.findByGroveId(groveId)).thenReturn(List.of());
+        setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+
+        assertThatThrownBy(() -> beeService.attachBee(groveId, cultivatorId,
+            new CreateBeeRequest(BeeType.CLAUDE_CODE, null, null)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("container grove has no fruit workspace yet");
+    }
+
+    private void attachRunningCallbacks() {
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            tsm.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
+                .thenAnswer(invocation -> {
+                    ((TransactionSynchronization) invocation.getArgument(0)).afterCommit();
+                    return null;
+                });
+            beeService.attachBee(groveId, cultivatorId, new CreateBeeRequest(BeeType.CLAUDE_CODE, null, null));
+        }
+    }
+
+    private ContainerPlot containerPlot() {
+        return new ContainerPlot(UUID.randomUUID(), groveId, "p", "c-1", PlotState.ROOTED,
+            Instant.now(), Instant.now(), java.nio.file.Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
+            new ContainerSpec(2, 2048), null);
     }
 
     private VmPlot plotOwnedBy(String providerId) {

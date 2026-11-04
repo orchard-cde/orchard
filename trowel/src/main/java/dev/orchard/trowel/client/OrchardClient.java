@@ -211,6 +211,18 @@ public class OrchardClient {
         return objectMapper.readValue(response.body(), CultivatorResponse.class);
     }
 
+    public AuthConfigResponse getAuthConfig() throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/api/auth/config"))
+            .timeout(Duration.ofSeconds(10))
+            .GET()
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), AuthConfigResponse.class);
+    }
+
     public SshPublicKeyResponse registerSshPublicKey(String name, String publicKey)
             throws IOException, InterruptedException {
         String body = objectMapper.writeValueAsString(new CreateSshPublicKeyRequest(name, publicKey));
@@ -302,6 +314,7 @@ public class OrchardClient {
     ) {}
     public record FruitInfo(UUID id, String state, String containerId, String containerName, String serviceName) {}
     public record HealthResponse(String status, String name, String version) {}
+    public record AuthConfigResponse(String issuer) {}
     public record CultivatorResponse(String id, String email, String displayName) {}
 
     public record BeeResponse(

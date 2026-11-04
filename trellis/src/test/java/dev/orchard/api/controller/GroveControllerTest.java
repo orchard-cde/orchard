@@ -1,5 +1,6 @@
 package dev.orchard.api.controller;
 
+import dev.orchard.api.service.GatewayGroveService;
 import dev.orchard.api.service.GroveService;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
@@ -39,13 +40,16 @@ class GroveControllerTest {
     @MockitoBean
     private GroveService groveService;
 
+    @MockitoBean
+    private GatewayGroveService gatewayGroveService;
+
     @Test
     void sshConfig_containerPlot_returns409() throws Exception {
         Grove grove = grove();
         when(groveService.getGrove(grove.id())).thenReturn(Optional.of(grove.withPlot(
             new ContainerPlot(UUID.randomUUID(), grove.id(), "docker", "c-1", PlotState.ROOTED,
                 Instant.now(), Instant.now(), Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
-                new ContainerSpec(2, 4096)))));
+                new ContainerSpec(2, 4096), null))));
 
         mockMvc.perform(get("/api/groves/{groveId}/ssh-config", grove.id()))
             .andExpect(status().isConflict());

@@ -5,6 +5,7 @@ import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -140,6 +141,29 @@ class ProviderRegistryTest {
         assertThat(new StubProvider("x").sizes()).isSameAs(PlotSizes.DEFAULT);
     }
 
+    @Test
+    void close_closesAutoCloseableProviders_andContinuesOnFailure() {
+        java.util.List<String> closed = new java.util.ArrayList<>();
+        registry.register(new ClosingProvider("a", () -> { throw new IllegalStateException("boom"); }));
+        registry.register(new ClosingProvider("b", () -> closed.add("b")));
+        registry.register(new StubProvider("plain"));
+
+        registry.close();
+
+        assertThat(closed).containsExactly("b");
+    }
+
+    private static final class ClosingProvider extends StubProvider implements AutoCloseable {
+        private final Runnable onClose;
+
+        ClosingProvider(String id, Runnable onClose) {
+            super(id);
+            this.onClose = onClose;
+        }
+
+        @Override public void close() { onClose.run(); }
+    }
+
     private static class StubProvider implements GroveProvider {
         private final String providerId;
 
@@ -161,6 +185,8 @@ class ProviderRegistryTest {
         @Override public CompletableFuture<Fruit> pickFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
         @Override public CompletableFuture<Fruit> ripenFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
         @Override public Vine vine(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CommandRunner host(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public String workspacePath(Plot s) { throw new UnsupportedOperationException(); }
         @Override public void verifyDevcontainerCli(Plot s, String expectedVersion) { throw new UnsupportedOperationException(); }
     }
 }

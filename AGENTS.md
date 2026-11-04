@@ -13,7 +13,7 @@ Everything in this project uses orchard/gardening terminology:
 | **Orchard** | The entire platform | Root project name |
 | **Grove** | A workspace | A plot plus the fruit growing on it |
 | **Cultivator** | A user/developer | Who tends the groves |
-| **Plot** | The substrate a grove is planted in: a VM, or later a container host | `Plot` — sealed: `VmPlot`, `ContainerPlot`; holds one or more fruit |
+| **Plot** | The substrate a grove is planted in: a VM, or the local container engine | `Plot` — sealed: `VmPlot`, `ContainerPlot`; holds one or more fruit |
 | **Seedling** | What is planted into a plot | Described by `SeedlingSpec` (plot configuration plus metadata) |
 | **Sapling** | A `ROOTED` plot, ready to grow fruit | `PlotState.ROOTED` — the provider has an operational substrate |
 | **Fruit** | A devcontainer instance | Running development environment, grown on a plot |
@@ -26,7 +26,8 @@ Everything in this project uses orchard/gardening terminology:
 | **Roots** | Persistence layer | Database/storage |
 | **Trellis** | The Spring Boot application server | Support structure wiring all modules together |
 | **Greenhouse** | Prebuild service | Pre-built images and caching |
-| **Vine** | Substrate-agnostic exec/attach seam | A conduit that carries commands into a grove; one impl per substrate (SSH today) |
+| **Vine** | Substrate-agnostic exec seam | `GroveProvider.vine(Plot)`: carries commands into the grove; `docker exec`/`podman exec` for container groves, SSH for VMs |
+| **Host** | Where git and the docker/devcontainer CLIs run | `GroveProvider.host(Plot)`: the VM over SSH, or the local machine for a container grove. `vine` reaches into the grove, `host` runs beside it |
 | **Apiary** | AI assistant integration | BeeKeeper extension point — OpenCode, Claude, Gemini, Codex |
 | **Fence** | Authentication subsystem | The boundary; OAuth2/OIDC device flow + token issuance |
 | **Gateway** | SSH jumphost relaying to groves | Not yet gardening-named — see #223 |
@@ -44,7 +45,7 @@ orchard/
 ├── apiary/     # AI assistant integration - BeeKeeper extension point
 ├── fence/      # Authentication subsystem - OAuth2/OIDC device flow + token issuance
 ├── trellis/    # Spring Boot app entry point (port 8080) + REST controllers, services, DTOs
-├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to VM plots
+├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to VM plots and exec sessions into container groves
 └── trowel/     # Picocli CLI application
 ```
 
@@ -60,7 +61,7 @@ path looks like two modules but is one. `integration-tests/` also exists, holdin
 - **Framework**: Spring Boot 4.1
 - **Database**: PostgreSQL with Flyway migrations
 - **CLI**: Picocli 4.7.6
-- **VM Provider**: QEMU (local), AWS EC2 (GCP and Azure stubbed)
+- **Grove providers**: QEMU (local VM), container (local docker/podman via the devcontainer CLI; `orchard.nursery.provider: container`, `orchard.nursery.container.workspace-root` defaults to `${user.home}/.orchard/plots`, `orchard.nursery.container.engine-url` (`unix://` or `tcp://`) defaults to the environment's engine), AWS EC2 (GCP and Azure stubbed)
 
 ## Key Patterns
 
@@ -73,7 +74,7 @@ All domain objects are Java records with factory methods:
 ### State Machines
 Each entity has a state enum with gardening-themed states:
 - `GroveState`: PREPARING → PLANTING → GROWING → FLOURISHING (or BLIGHTED); stop → DORMANT, start → PLANTING; clear → CLEARING → CLEARED (or ORPHANED)
-- `PlotState`: GERMINATING → SPROUTING → ROOTED → WILTING → DORMANT | WITHERED (or BLIGHTED on provisioning failure); water → DORMANT back to ROOTED.
+- `PlotState`: GERMINATING → SPROUTING → ROOTED → WILTING → DORMANT | WITHERED (or BLIGHTED on provisioning failure); water returns DORMANT to ROOTED.
 - `FruitState`: BUDDING → RIPENING → RIPE (or ROTTED)
 
 ### Async Provisioning
@@ -101,7 +102,7 @@ runs them. Before declaring a feature complete, run both of these and report the
 
 ```bash
 ./gradlew build
-./gradlew :integration-tests:integrationTest -Porchard.e2e.require-qemu=true
+./gradlew :integration-tests:integrationTest -Porchard.e2e.require-qemu=true -Porchard.e2e.require-container=true
 ```
 
 The integration suite boots real QEMU VMs and plants this repository (its `.devcontainer`, from
@@ -112,6 +113,7 @@ downloads the base image on first run. Prerequisites: `qemu-system-*` and `qemu-
 (with podman, set `DOCKER_HOST` to the podman socket, `TESTCONTAINERS_RYUK_DISABLED=true`, and
 `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` — LocalStack bind-mounts the socket,
 and the path must be the one inside the podman machine, not the host-side `DOCKER_HOST` path).
+`ContainerGroveE2ETest` plants the same fixture on the container provider; `-Porchard.e2e.require-container=true` makes a missing prerequisite fail instead of skipping. Prerequisites: a reachable docker or podman engine and `npm install -g @devcontainers/cli@0.87.0`.
 Every test must pass; any failure is a regression.
 
 ## Database

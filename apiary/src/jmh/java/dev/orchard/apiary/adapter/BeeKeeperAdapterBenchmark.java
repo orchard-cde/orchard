@@ -38,6 +38,8 @@ import java.util.concurrent.TimeUnit;
 @Fork(1)
 public class BeeKeeperAdapterBenchmark {
 
+    private static final String WORKSPACE_ROOT = "/workspace";
+
     private OpencodeBeeKeeper keeper;
     private StubCommandRunner runner;
     private BeeKeeperRegistry registry;
@@ -72,22 +74,22 @@ public class BeeKeeperAdapterBenchmark {
 
     @Benchmark
     public String renderConfig() throws Exception {
-        return keeper.renderConfig(headlessBee, spec);
+        return keeper.renderConfig(headlessBee, spec, WORKSPACE_ROOT);
     }
 
     @Benchmark
     public Bee install() {
-        return keeper.install(headlessBee, spec, runner).join();
+        return keeper.install(headlessBee, spec, runner, WORKSPACE_ROOT).join();
     }
 
     @Benchmark
     public Bee releaseHeadless() {
-        return keeper.release(headlessBee, runner).join();
+        return keeper.release(headlessBee, runner, WORKSPACE_ROOT).join();
     }
 
     @Benchmark
     public Bee releaseInteractive() {
-        return keeper.release(interactiveBee, runner).join();
+        return keeper.release(interactiveBee, runner, WORKSPACE_ROOT).join();
     }
 
     @Benchmark

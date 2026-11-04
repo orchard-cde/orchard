@@ -12,15 +12,15 @@ import org.springframework.security.oauth2.server.authorization.client.Registere
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 
 /**
- * Validates the {@code client_id} extracted by {@link DeviceClientAuthenticationConverter}
+ * Validates the {@code client_id} extracted by {@link PublicClientAuthenticationConverter}
  * against the registered client repository, confirming it names a real, public
  * ({@link ClientAuthenticationMethod#NONE}) client.
  */
-public final class DeviceClientAuthenticationProvider implements AuthenticationProvider {
+public final class PublicClientAuthenticationProvider implements AuthenticationProvider {
 
     private final RegisteredClientRepository registeredClientRepository;
 
-    public DeviceClientAuthenticationProvider(RegisteredClientRepository registeredClientRepository) {
+    public PublicClientAuthenticationProvider(RegisteredClientRepository registeredClientRepository) {
         this.registeredClientRepository = registeredClientRepository;
     }
 

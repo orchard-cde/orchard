@@ -5,6 +5,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+import dev.orchard.fence.web.DeviceFlowController;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,6 +24,8 @@ import org.springframework.security.oauth2.server.authorization.token.OAuth2Toke
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
 @Configuration
@@ -41,26 +44,31 @@ public class AuthorizationServerConfig {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 new OAuth2AuthorizationServerConfigurer();
 
-        // trowel-cli is a public client (no client secret) and can't authenticate via any
-        // of Spring Authorization Server's built-in methods; both the device authorization
-        // request and the device-code-grant token request only ever carry a client_id.
-        DeviceClientAuthenticationConverter deviceClientAuthenticationConverter =
-                new DeviceClientAuthenticationConverter(
+        // trowel-cli and orchard-ui are public clients (no client secret) and can't
+        // authenticate via any of Spring Authorization Server's built-in methods; the device
+        // authorization, device-code and refresh-token requests only ever carry a client_id.
+        PublicClientAuthenticationConverter publicClientAuthenticationConverter =
+                new PublicClientAuthenticationConverter(
                         authorizationServerSettings.getDeviceAuthorizationEndpoint(),
                         authorizationServerSettings.getTokenEndpoint());
-        DeviceClientAuthenticationProvider deviceClientAuthenticationProvider =
-                new DeviceClientAuthenticationProvider(registeredClientRepository);
+        PublicClientAuthenticationProvider publicClientAuthenticationProvider =
+                new PublicClientAuthenticationProvider(registeredClientRepository);
 
         authorizationServerConfigurer
                 .clientAuthentication(clientAuthentication -> clientAuthentication
-                        .authenticationConverter(deviceClientAuthenticationConverter)
-                        .authenticationProvider(deviceClientAuthenticationProvider))
-                .deviceAuthorizationEndpoint(Customizer.withDefaults())
+                        .authenticationConverter(publicClientAuthenticationConverter)
+                        .authenticationProvider(publicClientAuthenticationProvider))
+                .deviceAuthorizationEndpoint(deviceAuthorization -> deviceAuthorization
+                        .verificationUri(DeviceFlowController.PATH))
                 // Unlike the authorization_code flow, Spring's device-verification
                 // provider ignores ClientSettings#isRequireAuthorizationConsent() and
                 // always requires consent unless a prior consent record exists; wire it
                 // up explicitly so trowel-cli's requireAuthorizationConsent(false) is honored.
                 .deviceVerificationEndpoint(deviceVerification -> deviceVerification
+                        .deviceVerificationResponseHandler(
+                                new SimpleUrlAuthenticationSuccessHandler(DeviceFlowController.APPROVED_PATH))
+                        .errorResponseHandler(
+                                new SimpleUrlAuthenticationFailureHandler(DeviceFlowController.ERROR_PATH))
                         .authenticationProviders(providers -> providers.forEach(provider -> {
                             if (provider instanceof OAuth2DeviceVerificationAuthenticationProvider deviceVerificationProvider) {
                                 deviceVerificationProvider.setAuthorizationConsentRequired(context ->

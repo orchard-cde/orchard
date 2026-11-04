@@ -3,6 +3,7 @@ package dev.orchard.gateway.auth;
 import dev.orchard.core.model.SshPublicKey;
 import dev.orchard.gateway.api.GatewayKey;
 import dev.orchard.gateway.api.GatewayRoute;
+import dev.orchard.gateway.api.RouteKind;
 import dev.orchard.gateway.api.TrellisApiClient;
 import dev.orchard.gateway.service.GroveResolver;
 import org.apache.sshd.common.config.keys.PublicKeyEntry;
@@ -45,7 +46,7 @@ class KeyAuthenticatorTest {
 
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "127.0.0.1", 22, "FLOURISHING");
+        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
 
         KeyPair pair = ed25519KeyPair();
@@ -68,7 +69,7 @@ class KeyAuthenticatorTest {
 
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "127.0.0.1", 22, "FLOURISHING");
+        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
 
         KeyPair registered = ed25519KeyPair();
@@ -113,7 +114,7 @@ class KeyAuthenticatorTest {
 
         UUID groveId = UUID.randomUUID();
         UUID cultivatorId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "127.0.0.1", 22, "FLOURISHING");
+        GatewayRoute route = new GatewayRoute(groveId, cultivatorId, "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         when(resolver.resolve(groveId.toString())).thenReturn(Optional.of(route));
         when(trellis.listKeys(cultivatorId)).thenThrow(new IllegalStateException("trellis unreachable"));
 

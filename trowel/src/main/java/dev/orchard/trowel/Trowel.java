@@ -43,7 +43,6 @@ import java.util.concurrent.Callable;
 public class Trowel implements Callable<Integer> {
 
     public static final String CLIENT_ID = "trowel-cli";
-    public static final String DEFAULT_FENCE_SERVER = "https://fence.orchard.dev";
 
     @Option(names = {"-s", "--server"}, description = "Orchard server URL")
     private String serverUrl;
@@ -125,6 +124,11 @@ public class Trowel implements Callable<Integer> {
         return new NoAuthProvider();
     }
 
+    public String getSshKeyName() {
+        OrchardConfig.Target target = resolveConfigTarget();
+        return target != null ? target.sshKey() : null;
+    }
+
     /** Returns the --target flag value or ORCHARD_TARGET env var, or null if neither is set. */
     public String getTargetName() {
         if (targetName != null) {
@@ -133,7 +137,7 @@ public class Trowel implements Callable<Integer> {
         return System.getenv("ORCHARD_TARGET");
     }
 
-    OrchardConfig.Target resolveConfigTarget() {
+    public OrchardConfig.Target resolveConfigTarget() {
         OrchardConfig config = ConfigLoader.load();
         if (config == null || config.targets() == null) {
             return null;

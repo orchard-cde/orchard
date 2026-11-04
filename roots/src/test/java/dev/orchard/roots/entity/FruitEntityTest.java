@@ -17,4 +17,15 @@ class FruitEntityTest {
 
         assertThat(FruitEntity.fromModel(fruit).toModel().composeProjectName()).isEqualTo("p1");
     }
+
+    @Test
+    void roundTrip_preservesWorkspaceFolderAndRemoteUser() {
+        Seed seed = Seed.devcontainer().image("ubuntu").build();
+        Fruit fruit = Fruit.bud(UUID.randomUUID(), UUID.randomUUID(), seed).withRemoteEnv("/workspaces/repo", "vscode");
+
+        Fruit restored = FruitEntity.fromModel(fruit).toModel();
+
+        assertThat(restored.workspaceFolder()).isEqualTo("/workspaces/repo");
+        assertThat(restored.remoteUser()).isEqualTo("vscode");
+    }
 }

@@ -22,6 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class SshKeyCommandTest {
 
@@ -98,6 +99,79 @@ class SshKeyCommandTest {
         assertThat(SshKeyPaths.publicKey("default")).exists();
         assertThat(hits).anyMatch(h -> h.startsWith("POST /api/ssh-keys"));
         assertThat(hits).anyMatch(h -> h.contains("\"publicKey\":\"ssh-ed25519 "));
+    }
+
+    private void writeLocalConfig(String sshKey) throws Exception {
+        var targets = new java.util.LinkedHashMap<String, dev.orchard.trowel.config.OrchardConfig.Target>();
+        targets.put("local", new dev.orchard.trowel.config.OrchardConfig.Target(
+            serverUrl(), "c-uuid", null, null, null, null, sshKey));
+        dev.orchard.trowel.config.ConfigLoader.save(new dev.orchard.trowel.config.OrchardConfig("local", targets));
+    }
+
+    private String savedSshKey() {
+        return dev.orchard.trowel.config.ConfigLoader.load().targets().get("local").sshKey();
+    }
+
+    @Test
+    void sshKeyAdd_generated_setsTargetSshKey() throws Exception {
+        writeLocalConfig(null);
+
+        run("ssh-key", "add", "--name", "dev-server");
+
+        assertThat(savedSshKey()).isEqualTo("dev-server");
+    }
+
+    private int runExit(String... args) {
+        java.io.PrintStream err = System.err;
+        System.setErr(new PrintStream(new ByteArrayOutputStream()));
+        try {
+            return new CommandLine(new Trowel()).execute(args);
+        } finally {
+            System.setErr(err);
+        }
+    }
+
+    @Test
+    void sshKeyAdd_noConfig_recordsKey() {
+        String out = run("--server", serverUrl(), "ssh-key", "add", "--name", "dev-server");
+
+        assertThat(out).contains("Created trowel config at");
+        var config = dev.orchard.trowel.config.ConfigLoader.load();
+        assertThat(config.active()).isEqualTo("local");
+        assertThat(config.targets().get("local").sshKey()).isEqualTo("dev-server");
+        assertThat(config.targets().get("local").server()).isEqualTo(serverUrl());
+    }
+
+    @Test
+    void sshKeyAdd_noConfig_defaultServer_recordsLocalhost() {
+        assumeTrue(System.getenv("ORCHARD_SERVER_URL") == null);
+        var planned = SshKeyCommand.planSshKey("dev-server", null, new Trowel().getServerUrl());
+
+        var target = planned.targets().get("local");
+        assertThat(target.server()).isEqualTo("http://localhost:17778");
+        assertThat(target.sshKey()).isEqualTo("dev-server");
+    }
+
+    @Test
+    void sshKeyAdd_unknownTarget_failsLoudly() throws Exception {
+        writeLocalConfig(null);
+
+        int exit = runExit("--server", serverUrl(), "--target", "nope", "ssh-key", "add");
+
+        assertThat(exit).isNotZero();
+        assertThat(savedSshKey()).isNull();
+        assertThat(hits).isEmpty();
+    }
+
+    @Test
+    void sshKeyAdd_withPath_leavesSshKeyUnchanged() throws Exception {
+        writeLocalConfig("kept");
+        Path existingKey = tempDir.resolve("imported.pub");
+        Files.writeString(existingKey, "ssh-ed25519 AAAAimported imported@elsewhere\n");
+
+        run("ssh-key", "add", "--name", "imported", "--path", existingKey.toString());
+
+        assertThat(savedSshKey()).isEqualTo("kept");
     }
 
     @Test

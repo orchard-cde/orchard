@@ -36,7 +36,7 @@ public record GroveResponse(
         return fruits != null && !fruits.isEmpty() ? fruits.getFirst() : null;
     }
 
-    public static GroveResponse fromModel(Grove grove) {
+    public static GroveResponse fromModel(Grove grove, String sshConnectionString) {
         List<FruitInfo> fruitInfos = List.of();
         if (grove.fruits() != null && !grove.fruits().isEmpty()) {
             fruitInfos = grove.fruits().stream()
@@ -57,7 +57,7 @@ public record GroveResponse(
             grove.branch(),
             grove.commitSha(),
             grove.state(),
-            grove.getSshConnectionString(),
+            sshConnectionString,
             grove.plot() == null ? null : PlotInfo.from(grove.plot()),
             fruitInfos,
             grove.plantedAt(),

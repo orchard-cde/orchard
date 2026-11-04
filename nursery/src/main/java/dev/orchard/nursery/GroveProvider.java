@@ -1,11 +1,13 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 
@@ -50,8 +52,8 @@ public interface GroveProvider {
     CompletableFuture<Plot> plantSubstrate(Plot draft);
 
     /**
-     * Powers a {@link PlotState#DORMANT} plot back on over its existing disk. Throws
-     * {@link IllegalStateException} on the calling thread for any other plot state. The future
+     * Powers a {@link PlotState#DORMANT} plot back on over its existing disk; callers pass only
+     * DORMANT plots ({@code GroveService.startGrove} enforces it). The future
      * resolves to the plot {@link PlotState#ROOTED} with a refreshed endpoint once it is reachable,
      * and completes exceptionally if it could not be started.
      */
@@ -104,10 +106,20 @@ public interface GroveProvider {
     CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit);
 
     /**
-     * How to reach into this grove. Available before the substrate is routable — provisioning and
-     * diagnostic callers depend on that.
+     * How to reach into this grove's workload. Available before the substrate is routable for a
+     * VM — provisioning and diagnostic callers depend on that. For a container plot it needs a
+     * running fruit.
      */
     Vine vine(Plot plot);
+
+    /**
+     * The channel to where the container and devcontainer CLIs run and the workspace lives: the VM
+     * itself, or the local machine for a container plot.
+     */
+    CommandRunner host(Plot plot);
+
+    /** The workspace folder as seen by the {@link #host} channel. */
+    String workspacePath(Plot plot);
 
     /**
      * Verifies the devcontainer CLI on the substrate. Called after the substrate is reachable and
@@ -127,7 +139,7 @@ public interface GroveProvider {
      * in-progress install. See issue #148.
      *
      * <p>{@link #verifyDevcontainerCli(Plot, String)} delegates here with an explicit
-     * {@link CommandRunner} obtained from its {@link #vine}. This static is the sole production
+     * {@link CommandRunner} obtained from its {@link #host}. This static is the sole production
      * path — it takes the {@link CommandRunner} as a plain per-call argument, the same seam
      * {@link DevcontainerCli} uses.
      *
@@ -144,8 +156,13 @@ public interface GroveProvider {
         } catch (SeedlingProvisioningException sse) {
             throw sse;
         } catch (Exception e) {
+            String remedy = switch (plot) {
+                case VmPlot vm -> "check cloud-init logs";
+                case ContainerPlot container ->
+                    "install it with: npm install -g @devcontainers/cli@" + expectedVersion;
+            };
             throw new SeedlingProvisioningException(
-                "Plot " + plot.id() + " missing devcontainer CLI — check cloud-init logs", e);
+                "Plot " + plot.id() + " missing devcontainer CLI — " + remedy, e);
         }
     }
 }

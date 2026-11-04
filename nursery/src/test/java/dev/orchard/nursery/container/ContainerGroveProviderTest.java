@@ -1,0 +1,494 @@
+package dev.orchard.nursery.container;
+
+import dev.orchard.core.model.ContainerPlot;
+import dev.orchard.core.model.ContainerRuntime;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.ProviderType;
+import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.nursery.FruitGrower;
+import dev.orchard.vine.ContainerCommandRunner;
+import dev.orchard.vine.ContainerVine;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+
+class ContainerGroveProviderTest {
+
+    @TempDir
+    Path root;
+
+    private ScriptedRunner local;
+    private ContainerGroveProvider provider;
+
+    @BeforeEach
+    void setUp() {
+        local = new ScriptedRunner();
+        provider = new ContainerGroveProvider(new ContainerConfig(root, null), mock(FruitGrower.class), local);
+    }
+
+    @AfterEach
+    void tearDown() {
+        provider.close();
+    }
+
+    private static SeedlingSpec spec() {
+        return new SeedlingSpec("n/a", 2, 2048, 20, null);
+    }
+
+    private ContainerPlot draft() {
+        return (ContainerPlot) provider.reserve(UUID.randomUUID(), spec());
+    }
+
+    private ContainerPlot planted(PlotState state) {
+        ContainerPlot d = draft();
+        return new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(), state,
+            Instant.now(), Instant.now(), d.workspacePath(), ContainerRuntime.DOCKER, d.spec(), null);
+    }
+
+    @Test
+    void draft_fields() {
+        ContainerPlot plot = draft();
+
+        assertThat(plot.state()).isEqualTo(PlotState.GERMINATING);
+        assertThat(plot.runtime()).isNull();
+        assertThat(plot.spec().cpuCores()).isEqualTo(2);
+        assertThat(plot.spec().memoryMb()).isEqualTo(2048);
+        assertThat(plot.providerId()).isEqualTo("container");
+    }
+
+    @Test
+    void draft_workspaceDirNamedAfterPlot() {
+        ContainerPlot plot = draft();
+
+        assertThat(plot.workspacePath())
+            .isEqualTo(root.resolve(plot.id().toString()).resolve(plot.id().toString()));
+    }
+
+    @Test
+    void twoPlots_distinctComposeProjectBasenames() {
+        assertThat(draft().workspacePath().getFileName()).isNotEqualTo(draft().workspacePath().getFileName());
+    }
+
+    @Test
+    void launch_dockerOk_isDocker() throws Exception {
+        local.on(c -> c.equals("docker info"), "ok");
+
+        Plot planted = provider.plantSubstrate(draft()).get();
+
+        assertThat(planted.state()).isEqualTo(PlotState.ROOTED);
+        assertThat(((ContainerPlot) planted).runtime()).isEqualTo(ContainerRuntime.DOCKER);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("podman"));
+    }
+
+    @Test
+    void launch_bothFail_blighted() throws Exception {
+        local.fail(c -> c.endsWith(" info"));
+
+        Plot planted = provider.plantSubstrate(draft()).get();
+
+        assertThat(planted.state()).isEqualTo(PlotState.BLIGHTED);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("mkdir"));
+    }
+
+    @Test
+    void launch_workspaceRootWithSpace_quotesMkdir() throws Exception {
+        Path spaced = root.resolve("with space");
+        provider.close();
+        provider = new ContainerGroveProvider(new ContainerConfig(spaced, null), mock(FruitGrower.class), local);
+        ContainerPlot plot = draft();
+
+        provider.plantSubstrate(plot).get();
+
+        assertThat(local.commands).contains("mkdir -p '" + plot.workspacePath() + "'");
+    }
+
+    @Test
+    void ready_setsRuntimeAndHandle() throws Exception {
+        ContainerPlot plot = draft();
+
+        ContainerPlot ready = (ContainerPlot) provider.plantSubstrate(plot).get();
+
+        assertThat(ready.runtime()).isEqualTo(ContainerRuntime.DOCKER);
+        assertThat(ready.providerInstanceId()).isEqualTo(plot.id().toString());
+    }
+
+    @Test
+    void water_dormant_isRooted() throws Exception {
+        assertThat(provider.water(planted(PlotState.DORMANT)).get().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    private static final String PLOT_PS = "docker ps -q --filter 'label=orchard.plot.id=";
+    private static final String PLOT_PS_ALL = "docker ps -aq --filter 'label=orchard.plot.id=";
+    private static final String PROJECT_PS = "docker ps -q --filter 'label=com.docker.compose.project=proj'";
+    private static final String PROJECT_PS_ALL = "docker ps -aq --filter 'label=com.docker.compose.project=proj'";
+
+    private void primaryInProject(String primary) {
+        local.on(c -> c.startsWith(PLOT_PS_ALL), primary + "\n");
+        local.on(c -> c.startsWith("docker inspect") && c.contains("com.docker.compose.project")
+            && c.endsWith("'" + primary + "'"), "proj\n");
+    }
+
+    private static final String IMAGE_INSPECT = "docker inspect --format '{{.Config.Image}}' ";
+
+    @Test
+    void dormant_nothingRunning_isDormantWithoutStop() throws Exception {
+        assertThat(provider.dormant(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("docker stop"));
+    }
+
+    @Test
+    void dormant_stopsPrimaryAndComposeSidecars_thenDormant() throws Exception {
+        primaryInProject("primary");
+        local.on(c -> c.startsWith(PLOT_PS), "primary\n", "");
+        local.on(c -> c.equals(PROJECT_PS), "primary\nside\n", "");
+
+        assertThat(provider.dormant(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).containsOnlyOnce("docker stop 'primary' 'side'");
+        assertThat(local.commands.indexOf("docker stop 'primary' 'side'"))
+            .isLessThan(local.commands.lastIndexOf(PROJECT_PS));
+    }
+
+    @Test
+    void dormant_stoppedPrimaryRunningSidecar_stopsSidecar() throws Exception {
+        primaryInProject("primary");
+        local.on(c -> c.equals(PROJECT_PS), "side\n", "");
+
+        assertThat(provider.dormant(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).contains("docker stop 'side'");
+    }
+
+    @Test
+    void dormant_containerStillRunning_completesExceptionally() {
+        local.on(c -> c.startsWith(PLOT_PS), "primary\n");
+
+        assertThatThrownBy(() -> provider.dormant(planted(PlotState.ROOTED)).get())
+            .isInstanceOf(ExecutionException.class)
+            .hasMessageContaining("still has running containers");
+        assertThat(local.commands).contains("docker stop 'primary'");
+    }
+
+    @Test
+    void dormant_stopFails_completesExceptionally() {
+        local.on(c -> c.startsWith(PLOT_PS), "primary\n");
+        local.fail(c -> c.startsWith("docker stop"));
+
+        assertThatThrownBy(() -> provider.dormant(planted(PlotState.ROOTED)).get())
+            .isInstanceOf(ExecutionException.class);
+    }
+
+    @Test
+    void dormant_engineDown_completesExceptionally() {
+        local.fail(c -> c.startsWith("docker ps"));
+
+        assertThatThrownBy(() -> provider.dormant(planted(PlotState.ROOTED)).get())
+            .isInstanceOf(ExecutionException.class);
+    }
+
+    @Test
+    void inspect_missingDir_withered() throws Exception {
+        local.on(c -> c.contains("[ -d "), "missing");
+
+        assertThat(provider.inspect(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.WITHERED);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("docker ps"));
+    }
+
+    @Test
+    void inspect_runningContainer_rooted() throws Exception {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        local.on(c -> c.contains("[ -d "), "present");
+        local.on(c -> c.startsWith("docker ps -q"), "abc123\n");
+
+        assertThat(provider.inspect(plot).get().state()).isEqualTo(PlotState.ROOTED);
+        assertThat(local.commands).contains("docker ps -q --filter 'label=orchard.plot.id=" + plot.id() + "'");
+    }
+
+    @Test
+    void inspect_stoppedContainer_isDormant() throws Exception {
+        local.on(c -> c.contains("[ -d "), "present");
+        local.on(c -> c.startsWith("docker ps -q"), "");
+        local.on(c -> c.startsWith("docker ps -aq"), "stopped1\n");
+
+        assertThat(provider.inspect(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+    }
+
+    @Test
+    void inspect_stoppedPrimaryRunningComposeSidecar_rooted() throws Exception {
+        local.on(c -> c.contains("[ -d "), "present");
+        primaryInProject("primary");
+        local.on(c -> c.equals(PROJECT_PS), "side\n");
+
+        assertThat(provider.inspect(planted(PlotState.DORMANT)).get().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    @Test
+    void inspect_wholeComposeProjectStopped_isDormant() throws Exception {
+        local.on(c -> c.contains("[ -d "), "present");
+        primaryInProject("primary");
+
+        assertThat(provider.inspect(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).contains(PROJECT_PS);
+    }
+
+    @Test
+    void uproot_onlyRemovesThisPlotsContainers() throws Exception {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        local.on(c -> c.startsWith("docker ps -aq"), "c1\nc2\n");
+
+        provider.uproot(plot).get();
+
+        String projectOf = "docker inspect --format '{{index .Config.Labels \"com.docker.compose.project\"}}' ";
+        assertThat(local.commands).containsExactly(
+            "docker ps -aq --filter 'label=orchard.plot.id=" + plot.id() + "'",
+            IMAGE_INSPECT + "'c1'",
+            projectOf + "'c1'",
+            projectOf + "'c2'",
+            "docker rm -f 'c1'",
+            "docker rm -f 'c2'",
+            "rm -rf '" + root.resolve(plot.id().toString()) + "'");
+    }
+
+    @Test
+    void uproot_composeProject_removesItsContainersNetworksAndVolumes() throws Exception {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        primaryInProject("primary");
+        local.on(c -> c.equals(PROJECT_PS_ALL), "side\n");
+        local.on(c -> c.startsWith("docker network ls -q --filter 'label=com.docker.compose.project=proj'"), "net1\n");
+        local.on(c -> c.startsWith("docker volume ls -q --filter 'label=com.docker.compose.project=proj'"), "vol1\n");
+
+        provider.uproot(plot).get();
+
+        assertThat(local.commands).containsSubsequence(
+            "docker rm -f 'primary'",
+            "docker rm -f 'side'",
+            "docker network rm 'net1'",
+            "docker volume rm -f 'vol1'",
+            "rm -rf '" + root.resolve(plot.id().toString()) + "'");
+    }
+
+    @Test
+    void uproot_rootOwnedFiles_clearsThemAsRootFromTheFruitImageThenRetries() throws Exception {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        String plotDir = root.resolve(plot.id().toString()).toString();
+        local.on(c -> c.startsWith(PLOT_PS_ALL), "c1\n");
+        local.on(c -> c.startsWith(IMAGE_INSPECT), "vsc-it's-img\n");
+        AtomicInteger rmAttempts = new AtomicInteger();
+        local.fail(c -> c.startsWith("rm -rf") && rmAttempts.incrementAndGet() == 1);
+
+        provider.uproot(plot).get();
+
+        String clear = "docker run --rm --pull never --network none -u 0 -v '" + plotDir + ":/plot'"
+            + " --entrypoint /bin/sh 'vsc-it'\\''s-img' -c 'rm -rf /plot/..?* /plot/.[!.]* /plot/*'";
+        assertThat(local.commands).containsSubsequence("docker rm -f 'c1'", "rm -rf '" + plotDir + "'", clear,
+            "rm -rf '" + plotDir + "'");
+    }
+
+    @Test
+    void uproot_rootClearDoesNotHelp_failsNamingTheDirectoryToRemoveByHand() {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        local.on(c -> c.startsWith(PLOT_PS_ALL), "c1\n");
+        local.on(c -> c.startsWith(IMAGE_INSPECT), "img\n");
+        local.fail(c -> c.startsWith("rm -rf"));
+
+        assertThatThrownBy(() -> provider.uproot(plot).get())
+            .isInstanceOf(ExecutionException.class)
+            .hasMessageContaining("could not remove plot directory " + root.resolve(plot.id().toString()))
+            .hasMessageContaining("needs removing by hand");
+        assertThat(local.commands).filteredOn(c -> c.startsWith("rm -rf")).hasSize(2);
+        assertThat(local.commands).anyMatch(c -> c.startsWith("docker run --rm"));
+    }
+
+    @Test
+    void uproot_engineDown_completesExceptionally() {
+        local.fail(c -> c.startsWith("docker ps"));
+
+        assertThatThrownBy(() -> provider.uproot(planted(PlotState.DORMANT)).get())
+            .isInstanceOf(ExecutionException.class);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("rm -rf"));
+    }
+
+    @Test
+    void uproot_nullRuntime_skipsContainersAndRemovesDir() throws Exception {
+        ContainerPlot d = draft();
+
+        provider.uproot(d).get();
+
+        assertThat(local.commands).containsExactly("rm -rf '" + root.resolve(d.id().toString()) + "'");
+    }
+
+    @Test
+    void uproot_usesPersistedPathNotCurrentConfig() throws Exception {
+        Path otherRoot = root.resolve("other");
+        ContainerPlot d = draft();
+        ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
+            PlotState.DORMANT, Instant.now(), Instant.now(),
+            otherRoot.resolve(d.id().toString()).resolve(d.id().toString()), ContainerRuntime.DOCKER, d.spec(), null);
+
+        provider.uproot(plot).get();
+
+        assertThat(local.commands).contains("rm -rf '" + otherRoot.resolve(d.id().toString()) + "'");
+        assertThat(local.commands).noneMatch(c -> c.startsWith("rm -rf") && c.contains(root + "/" + d.id()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/workspace", "/tmp/x/workspace", "/tmp/x/ID", "/tmp/ID/workspace", "/tmp/OTHER/ID",
+        "/tmp/ID/OTHER", "REL"})
+    void uproot_unexpectedPath_refusesAndDeletesNothing(String path) {
+        ContainerPlot d = draft();
+        String id = d.id().toString();
+        String workspace = path.equals("REL") ? "rel/" + id + "/" + id
+            : path.replace("OTHER", UUID.randomUUID().toString()).replace("ID", id);
+        ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
+            PlotState.DORMANT, Instant.now(), Instant.now(), Path.of(workspace), ContainerRuntime.DOCKER, d.spec(), null);
+
+        assertThatThrownBy(() -> provider.uproot(plot).get())
+            .isInstanceOf(ExecutionException.class)
+            .hasRootCauseInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("refusing to delete unexpected plot directory");
+        assertThat(local.commands).noneMatch(c -> c.startsWith("rm -rf"));
+    }
+
+    @Test
+    void uproot_rmFails_completesExceptionally() {
+        local.on(c -> c.startsWith("docker ps -aq"), "c1\n");
+        local.fail(c -> c.startsWith("docker rm -f"));
+
+        assertThatThrownBy(() -> provider.uproot(planted(PlotState.DORMANT)).get())
+            .isInstanceOf(ExecutionException.class);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("rm -rf"));
+    }
+
+    @Test
+    void uproot_rmRfFails_noContainerImage_failsNamingTheDirectoryToRemoveByHand() {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        local.fail(c -> c.startsWith("rm -rf"));
+
+        assertThatThrownBy(() -> provider.uproot(plot).get())
+            .isInstanceOf(ExecutionException.class)
+            .hasMessageContaining("could not remove plot directory " + root.resolve(plot.id().toString()))
+            .hasMessageContaining("needs removing by hand");
+        assertThat(local.commands).noneMatch(c -> c.startsWith("docker run"));
+    }
+
+    @Test
+    void isAvailable_neverThrows() {
+        local.throwRuntime = true;
+        assertThat(provider.isAvailable()).isFalse();
+    }
+
+    @Test
+    void isAvailable_dockerOk_true() {
+        assertThat(provider.isAvailable()).isTrue();
+    }
+
+    @Test
+    void vine_isContainerVine() {
+        assertThat(provider.vine(planted(PlotState.ROOTED))).isInstanceOf(ContainerVine.class);
+    }
+
+    @Test
+    void host_isLocalRunner() {
+        assertThat(provider.host(planted(PlotState.ROOTED))).isSameAs(local);
+    }
+
+    @Test
+    void hostChannel_carriesConfiguredEngineEnv() throws Exception {
+        provider.close();
+        provider = new ContainerGroveProvider(new ContainerConfig(root, "unix:///tmp/x.sock"),
+            mock(FruitGrower.class), new ContainerCommandRunner("unix:///tmp/x.sock"));
+
+        assertThat(provider.host(planted(PlotState.ROOTED)).execute("printenv DOCKER_HOST").trim())
+            .isEqualTo("unix:///tmp/x.sock");
+    }
+
+    @Test
+    void hostVineAndRuntimeProbe_shareTheOneLocalRunner() throws Exception {
+        local.on(c -> c.contains(" ps -q "), "abc123");
+        ContainerPlot plot = planted(PlotState.ROOTED);
+
+        provider.isAvailable();
+        provider.vine(plot).commands().execute("true");
+
+        assertThat(provider.host(plot)).isSameAs(local);
+        assertThat(local.commands).contains("docker info");
+        assertThat(local.commands).anyMatch(c -> c.startsWith("'docker' 'exec' ") && c.endsWith("'true'"));
+    }
+
+    @Test
+    void type_isContainer() {
+        assertThat(provider.type()).isEqualTo(ProviderType.CONTAINER);
+        assertThat(provider.getProviderId()).isEqualTo("container");
+    }
+
+    private static final class ScriptedRunner extends ContainerCommandRunner {
+        final List<String> commands = new ArrayList<>();
+        private final Map<Predicate<String>, Deque<String>> outputs = new LinkedHashMap<>();
+        private final List<Predicate<String>> failures = new ArrayList<>();
+        boolean throwRuntime;
+
+        ScriptedRunner() {
+            super(null);
+        }
+
+        /** Answers matching commands with each output in turn, then keeps repeating the last. */
+        void on(Predicate<String> match, String... outputs) {
+            this.outputs.put(match, new ArrayDeque<>(List.of(outputs)));
+        }
+
+        void fail(Predicate<String> match) {
+            failures.add(match);
+        }
+
+        @Override
+        public synchronized String execute(String command) throws IOException {
+            if (throwRuntime) {
+                throw new IllegalStateException("boom");
+            }
+            commands.add(command);
+            if (failures.stream().anyMatch(f -> f.test(command))) {
+                throw new IOException("exit 1: " + command);
+            }
+            return outputs.entrySet().stream().filter(e -> e.getKey().test(command))
+                .map(e -> e.getValue().size() > 1 ? e.getValue().poll() : e.getValue().peek())
+                .findFirst().orElse("");
+        }
+
+        @Override
+        public String execute(String command, long timeoutSeconds) throws IOException {
+            return execute(command);
+        }
+
+        @Override
+        public void executeStreaming(String command, Consumer<String> lineConsumer, long timeoutSeconds) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<String> readFile(String remotePath) {
+            return Optional.empty();
+        }
+    }
+}

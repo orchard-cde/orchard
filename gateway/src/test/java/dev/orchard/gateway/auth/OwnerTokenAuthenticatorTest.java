@@ -8,6 +8,7 @@ import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import dev.orchard.gateway.api.GatewayRoute;
+import dev.orchard.gateway.api.RouteKind;
 import dev.orchard.gateway.api.TrellisApiClient;
 import org.apache.sshd.server.session.ServerSession;
 import org.junit.jupiter.api.Test;
@@ -69,7 +70,7 @@ class OwnerTokenAuthenticatorTest {
         String token = sign(key, validClaims());
         TrellisApiClient trellis = mock(TrellisApiClient.class);
         UUID groveId = UUID.randomUUID();
-        GatewayRoute route = new GatewayRoute(groveId, UUID.randomUUID(), "127.0.0.1", 22, "FLOURISHING");
+        GatewayRoute route = new GatewayRoute(groveId, UUID.randomUUID(), "FLOURISHING", RouteKind.VM, "127.0.0.1", 22, null, null, null, null, null);
         when(trellis.authorizeOwner(groveId, "alice@example.com")).thenReturn(Optional.of(route));
         ServerSession session = mock(ServerSession.class);
 

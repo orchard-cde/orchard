@@ -106,7 +106,6 @@ public class Ec2GroveProvider extends AbstractVmGroveProvider<String> implements
     @Override
     public CompletableFuture<Plot> water(Plot plot) {
         VmPlot vm = narrow(plot);
-        requireDormant(vm);
         return CompletableFuture.supplyAsync(() -> {
             String instanceId = vm.providerInstanceId();
             operations.startInstance(instanceId);

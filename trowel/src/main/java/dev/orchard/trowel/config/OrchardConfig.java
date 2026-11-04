@@ -12,10 +12,11 @@ public record OrchardConfig(String active, Map<String, Target> targets) {
         String fenceServer,
         String accessToken,
         String refreshToken,
-        Long expiresAt
+        Long expiresAt,
+        String sshKey
     ) {
         public Target(String server, String cultivator) {
-            this(server, cultivator, null, null, null, null);
+            this(server, cultivator, null, null, null, null, null);
         }
     }
 

@@ -2,7 +2,7 @@ package dev.orchard.core.model;
 
 /**
  * The container CLI a plot's fruit was created with. Names the CLI invoked, not the daemon behind
- * it: a {@code docker} that is podman's compatibility shim is {@link #DOCKER}. Persisted so teardown
+ * it: when the engine behind {@code docker} is Podman, the podman CLI is preferred and the plot is {@link #PODMAN}. Persisted so teardown
  * uses the runtime that created the container, even if the host's resolution has since changed.
  */
 public enum ContainerRuntime {

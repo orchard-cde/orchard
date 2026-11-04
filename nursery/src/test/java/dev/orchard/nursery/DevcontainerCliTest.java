@@ -1,6 +1,8 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -26,7 +28,7 @@ class DevcontainerCliTest {
         CannedRunner(List<String> lines, int exitCode) { this.lines = lines; this.exitCode = exitCode; }
 
         @Override
-        public String execute(String c) { throw new UnsupportedOperationException(); }
+        public String execute(String c) throws IOException { throw new UnsupportedOperationException(); }
 
         @Override
         public String execute(String c, long timeoutSeconds) { return ""; }
@@ -70,8 +72,103 @@ class DevcontainerCliTest {
         };
     }
 
+    private static final UUID PLOT_ID = UUID.randomUUID();
+
+    private static ExecTarget target(CommandRunner runner, String workspacePath) {
+        return target(runner, workspacePath, ContainerRuntime.DOCKER);
+    }
+
+    private static ExecTarget target(CommandRunner runner, String workspacePath, ContainerRuntime runtime) {
+        return new ExecTarget(runner, workspacePath, PLOT_ID, runtime);
+    }
+
     private static DevcontainerCli cliFor() {
         return new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 0, 0));
+    }
+
+    @Test
+    void up_podman_passesDockerPath() throws Exception {
+        var calls = new ArrayList<String>();
+        cliFor().up(target(stubRunnerCapturing(calls), "/ws", ContainerRuntime.PODMAN),
+            UUID.randomUUID(), "my-fruit", line -> {});
+
+        assertThat(calls).anyMatch(c -> c.startsWith("devcontainer up") && c.contains(" --docker-path podman"));
+    }
+
+    @Test
+    void up_docker_omitsDockerPath() throws Exception {
+        var calls = new ArrayList<String>();
+        cliFor().up(target(stubRunnerCapturing(calls), "/ws"), UUID.randomUUID(), "my-fruit", line -> {});
+
+        assertThat(calls).noneMatch(c -> c.contains("--docker-path") || c.contains("--docker-compose-path"));
+    }
+
+    @Test
+    void up_podman_withPodmanCompose_passesComposePath() throws Exception {
+        var calls = new ArrayList<String>();
+        CommandRunner runner = new CannedRunner(List.of("{\"outcome\":\"success\",\"containerId\":\"abc123\"}"), 0) {
+            @Override
+            public String execute(String c) {
+                calls.add(c);
+                return "/usr/bin/podman-compose\n";
+            }
+
+            @Override
+            public void executeStreaming(String c, Consumer<String> consumer, long timeoutSeconds) throws IOException {
+                calls.add(c);
+                super.executeStreaming(c, consumer, timeoutSeconds);
+            }
+        };
+        cliFor().up(target(runner, "/ws", ContainerRuntime.PODMAN), UUID.randomUUID(), "my-fruit", line -> {});
+
+        assertThat(calls).contains("command -v podman-compose");
+        assertThat(calls).anyMatch(c -> c.startsWith("devcontainer up") && c.contains(" --docker-compose-path podman-compose"));
+    }
+
+    @Test
+    void up_podman_withoutPodmanCompose_omitsComposePath() throws Exception {
+        var calls = new ArrayList<String>();
+        CommandRunner runner = new CannedRunner(List.of("{\"outcome\":\"success\",\"containerId\":\"abc123\"}"), 0) {
+            @Override
+            public String execute(String c) throws IOException {
+                calls.add(c);
+                throw new IOException("exit 1");
+            }
+
+            @Override
+            public void executeStreaming(String c, Consumer<String> consumer, long timeoutSeconds) throws IOException {
+                calls.add(c);
+                super.executeStreaming(c, consumer, timeoutSeconds);
+            }
+        };
+        cliFor().up(target(runner, "/ws", ContainerRuntime.PODMAN), UUID.randomUUID(), "my-fruit", line -> {});
+
+        assertThat(calls).anyMatch(c -> c.startsWith("devcontainer up") && c.contains(" --docker-path podman"));
+        assertThat(calls).noneMatch(c -> c.contains("--docker-compose-path"));
+    }
+
+    @Test
+    void up_addsPlotIdLabel() throws Exception {
+        var calls = new ArrayList<String>();
+        cliFor().up(target(stubRunnerCapturing(calls), "/ws"), UUID.randomUUID(), "my-fruit", line -> {});
+
+        assertThat(calls).anyMatch(c -> c.contains(" --id-label 'orchard.plot.id=" + PLOT_ID + "'"));
+    }
+
+    @Test
+    void up_workspaceWithSpace_isQuoted() throws Exception {
+        var calls = new ArrayList<String>();
+        cliFor().up(target(stubRunnerCapturing(calls), "/tmp/a b/ws"), UUID.randomUUID(), "my-fruit", line -> {});
+
+        assertThat(calls).anyMatch(c -> c.contains("--workspace-folder '/tmp/a b/ws' "));
+    }
+
+    @Test
+    void inspectContainerName_usesRuntimeCli() throws Exception {
+        var calls = new ArrayList<String>();
+        cliFor().inspectContainerName(target(stubRunnerCapturing(calls), "/ws", ContainerRuntime.PODMAN), "abc123");
+
+        assertThat(calls).singleElement().satisfies(c -> assertThat(c).startsWith("podman inspect 'abc123'"));
     }
 
     @Test
@@ -82,8 +179,7 @@ class DevcontainerCliTest {
             "{\"outcome\":\"success\",\"containerId\":\"abc123\",\"remoteUser\":\"vscode\",\"remoteWorkspaceFolder\":\"/workspace\"}"
         ), 0);
 
-        DevcontainerCliResult result = cliFor().up(
-            runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {});
+        DevcontainerCliResult result = cliFor().up(target(runner, "/workspace"), UUID.randomUUID(), "my-fruit", line -> {});
 
         assertThat(result.containerId()).isEqualTo("abc123");
         assertThat(result.remoteUser()).isEqualTo("vscode");
@@ -97,8 +193,7 @@ class DevcontainerCliTest {
             "{\"outcome\":\"error\",\"message\":\"build failed\",\"description\":\"Dockerfile RUN exited 1\"}"
         ), 0);
 
-        assertThatThrownBy(() -> cliFor().up(
-                runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {}))
+        assertThatThrownBy(() -> cliFor().up(target(runner, "/workspace"), UUID.randomUUID(), "my-fruit", line -> {}))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .satisfies(t -> {
                 DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
@@ -114,8 +209,7 @@ class DevcontainerCliTest {
             "{\"outcome\":\"error\",\"disallowedFeatureId\":\"ghcr.io/devcontainers/features/java:1\",\"didStopContainer\":true,\"containerId\":\"xyz789\"}"
         ), 0);
 
-        assertThatThrownBy(() -> cliFor().up(
-                runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {}))
+        assertThatThrownBy(() -> cliFor().up(target(runner, "/workspace"), UUID.randomUUID(), "my-fruit", line -> {}))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .satisfies(t -> {
                 DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
@@ -133,8 +227,7 @@ class DevcontainerCliTest {
             "{\"type\":\"progress\",\"name\":\"Half-built\"}"
         ), 0);
 
-        assertThatThrownBy(() -> cliFor().up(
-                runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {}))
+        assertThatThrownBy(() -> cliFor().up(target(runner, "/workspace"), UUID.randomUUID(), "my-fruit", line -> {}))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .satisfies(t -> {
                 DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
@@ -152,7 +245,7 @@ class DevcontainerCliTest {
         CannedRunner runner = new CannedRunner(fed, 0);
 
         List<String> observed = new ArrayList<>();
-        cliFor().up(runner, "/workspace", UUID.randomUUID(), "my-fruit", observed::add);
+        cliFor().up(target(runner, "/workspace"), UUID.randomUUID(), "my-fruit", observed::add);
 
         assertThat(observed).containsExactlyElementsOf(fed);
     }
@@ -163,9 +256,20 @@ class DevcontainerCliTest {
         CommandRunner runner = stubRunnerCapturing(calls);
         var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
 
-        cli.exec(runner, "/srv/custom-workspace", "echo hi");
+        cli.exec(target(runner, "/srv/custom-workspace"), "echo hi");
 
-        assertThat(calls).anyMatch(c -> c.contains("--workspace-folder /srv/custom-workspace"));
+        assertThat(calls).anyMatch(c -> c.contains("--workspace-folder '/srv/custom-workspace'"));
+    }
+
+    @Test
+    void exec_commandIsQuotedForContainerShell() throws Exception {
+        var calls = new ArrayList<String>();
+        var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
+
+        cli.exec(target(stubRunnerCapturing(calls), "/workspace"), "echo hi; touch /tmp/x");
+
+        assertThat(calls).singleElement().satisfies(c ->
+            assertThat(c).endsWith("-- /bin/sh -c 'echo hi; touch /tmp/x'"));
     }
 
     @Test
@@ -174,9 +278,9 @@ class DevcontainerCliTest {
         CommandRunner runner = stubRunnerCapturing(calls);
         var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
 
-        cli.up(runner, "/srv/custom-workspace", UUID.randomUUID(), "my-fruit", line -> {});
+        cli.up(target(runner, "/srv/custom-workspace"), UUID.randomUUID(), "my-fruit", line -> {});
 
-        assertThat(calls).anyMatch(c -> c.contains("--workspace-folder /srv/custom-workspace"));
+        assertThat(calls).anyMatch(c -> c.contains("--workspace-folder '/srv/custom-workspace'"));
     }
 
     @Test
@@ -190,10 +294,10 @@ class DevcontainerCliTest {
             }
         };
 
-        cliFor().runUserCommands(runner, "/srv/ws", "abc123");
+        cliFor().runUserCommands(target(runner, "/srv/ws"), "abc123");
 
         assertThat(calls).containsExactly(
-            "devcontainer run-user-commands --workspace-folder /srv/ws --container-id abc123"
+            "devcontainer run-user-commands --workspace-folder '/srv/ws' --container-id 'abc123'"
                 + " --log-format json --skip-post-attach");
     }
 
@@ -206,7 +310,7 @@ class DevcontainerCliTest {
             }
         };
 
-        assertThatThrownBy(() -> cliFor().runUserCommands(runner, "/srv/ws", "abc123"))
+        assertThatThrownBy(() -> cliFor().runUserCommands(target(runner, "/srv/ws"), "abc123"))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .hasMessageContaining("postStartCommand failed");
     }
@@ -219,7 +323,7 @@ class DevcontainerCliTest {
             }
         };
 
-        assertThatThrownBy(() -> cliFor().runUserCommands(runner, "/srv/ws", "abc123"))
+        assertThatThrownBy(() -> cliFor().runUserCommands(target(runner, "/srv/ws"), "abc123"))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .satisfies(t -> {
                 DevcontainerCli.DevcontainerCliException ex = (DevcontainerCli.DevcontainerCliException) t;
@@ -237,7 +341,7 @@ class DevcontainerCliTest {
             }
         };
 
-        assertThatThrownBy(() -> cliFor().runUserCommands(runner, "/srv/ws", "abc123"))
+        assertThatThrownBy(() -> cliFor().runUserCommands(target(runner, "/srv/ws"), "abc123"))
             .isInstanceOf(DevcontainerCli.DevcontainerCliException.class)
             .satisfies(t -> {
                 CliError error = ((DevcontainerCli.DevcontainerCliException) t).error();
@@ -253,8 +357,7 @@ class DevcontainerCliTest {
                 + "\"remoteWorkspaceFolder\":\"/workspace\",\"addedInSomeLaterCli\":{\"x\":1}}"
         ), 0);
 
-        DevcontainerCliResult result = cliFor().up(
-            runner, "/workspace", UUID.randomUUID(), "my-fruit", line -> {});
+        DevcontainerCliResult result = cliFor().up(target(runner, "/workspace"), UUID.randomUUID(), "my-fruit", line -> {});
 
         assertThat(result).isEqualTo(new DevcontainerCliResult("abc123", null, "vscode", "/workspace"));
     }

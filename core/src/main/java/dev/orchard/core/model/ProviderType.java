@@ -8,7 +8,8 @@ public enum ProviderType {
     QEMU_LOCAL("qemu-local"),
     AWS_EC2("aws-ec2"),
     AZURE_VM("azure-vm"),
-    GCP_COMPUTE("gcp-compute");
+    GCP_COMPUTE("gcp-compute"),
+    CONTAINER("container");
 
     private final String id;
 

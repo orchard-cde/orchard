@@ -74,10 +74,26 @@ class AbstractGroveProviderTest {
     /** Records step order and can be told to fail at a named step. */
     private static class RecordingProvider extends AbstractVmGroveProvider<FakeLaunch> {
         final List<String> calls = new ArrayList<>();
+        final CommandRunner hostRunner = mock(CommandRunner.class);
+        final CommandRunner vineRunner = mock(CommandRunner.class);
         String throwAtStep;
 
         RecordingProvider(ExecutorService executor) {
-            super(executor, new FruitGrower());
+            this(executor, new FruitGrower());
+        }
+
+        RecordingProvider(ExecutorService executor, FruitGrower fruitGrower) {
+            super(executor, fruitGrower);
+        }
+
+        @Override
+        protected CommandRunner hostFor(VmPlot plot) {
+            return hostRunner;
+        }
+
+        @Override
+        protected Vine vineFor(VmPlot plot) {
+            return () -> vineRunner;
         }
 
         private void step(String name) {
@@ -324,6 +340,87 @@ class AbstractGroveProviderTest {
     }
 
     @Test
+    void growFruit_execTargetUsesHostRunner() {
+        FruitGrower grower = mock(FruitGrower.class);
+        when(grower.grow(any(), any())).thenReturn(new CompletableFuture<>());
+        RecordingProvider provider = new RecordingProvider(executor, grower);
+        VmPlot s = TestPlots.fake();
+
+        provider.growFruit(s, TestPlots.budded(s));
+
+        ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(grower).grow(target.capture(), any());
+        assertThat(target.getValue().runner()).isSameAs(provider.hostRunner).isNotSameAs(provider.vineRunner);
+    }
+
+    @Test
+    void compostFruit_execTargetUsesHostRunner() {
+        FruitGrower grower = mock(FruitGrower.class);
+        when(grower.compost(any(), any())).thenReturn(new CompletableFuture<>());
+        RecordingProvider provider = new RecordingProvider(executor, grower);
+        VmPlot s = TestPlots.fake();
+
+        provider.compostFruit(s, TestPlots.budded(s));
+
+        ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(grower).compost(target.capture(), any());
+        assertThat(target.getValue().runner()).isSameAs(provider.hostRunner).isNotSameAs(provider.vineRunner);
+    }
+
+    @Test
+    void pickFruit_execTargetUsesHostRunner() {
+        FruitGrower grower = mock(FruitGrower.class);
+        when(grower.pick(any(), any())).thenReturn(new CompletableFuture<>());
+        RecordingProvider provider = new RecordingProvider(executor, grower);
+        VmPlot s = TestPlots.fake();
+
+        provider.pickFruit(s, TestPlots.budded(s));
+
+        ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(grower).pick(target.capture(), any());
+        assertThat(target.getValue().runner()).isSameAs(provider.hostRunner).isNotSameAs(provider.vineRunner);
+    }
+
+    @Test
+    void ripenFruit_execTargetUsesHostRunner() {
+        FruitGrower grower = mock(FruitGrower.class);
+        when(grower.ripen(any(), any())).thenReturn(new CompletableFuture<>());
+        RecordingProvider provider = new RecordingProvider(executor, grower);
+        VmPlot s = TestPlots.fake();
+
+        provider.ripenFruit(s, TestPlots.budded(s));
+
+        ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(grower).ripen(target.capture(), any());
+        assertThat(target.getValue().runner()).isSameAs(provider.hostRunner).isNotSameAs(provider.vineRunner);
+    }
+
+    @Test
+    void execTarget_carriesRuntime() {
+        FruitGrower grower = mock(FruitGrower.class);
+        when(grower.grow(any(), any())).thenReturn(new CompletableFuture<>());
+        RecordingProvider provider = new RecordingProvider(executor, grower);
+        VmPlot s = TestPlots.fake();
+
+        provider.growFruit(s, TestPlots.budded(s));
+
+        ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(grower).grow(target.capture(), any());
+        assertThat(target.getValue().runtime()).isEqualTo(ContainerRuntime.DOCKER);
+    }
+
+    @Test
+    void verifyDevcontainerCli_runsOnHost() throws Exception {
+        RecordingProvider provider = new RecordingProvider(executor);
+        when(provider.hostRunner.execute("devcontainer --version")).thenReturn("0.87.0\n");
+
+        provider.verifyDevcontainerCli(TestPlots.fake(), "0.87.0");
+
+        verify(provider.hostRunner).execute("devcontainer --version");
+        org.mockito.Mockito.verifyNoInteractions(provider.vineRunner);
+    }
+
+    @Test
     void pickFruit_wrongPlotType_throwsIllegalArgument() {
         NoHookProvider provider = new NoHookProvider(executor);
         Fruit f = TestPlots.budded(TestPlots.fake());
@@ -357,7 +454,7 @@ class AbstractGroveProviderTest {
         VmPlot s = TestPlots.fake();
         Fruit f = TestPlots.budded(s);
 
-        when(cli.up(any(), eq("/workspace"), eq(f.id()), eq(f.containerName()), any()))
+        when(cli.up(any(), eq(f.id()), eq(f.containerName()), any()))
             .thenReturn(new DevcontainerCliResult("c-identity", null, "vscode", "/workspace"));
         when(cli.inspectContainerName(any(), eq("c-identity"))).thenReturn(f.containerName());
 
@@ -366,13 +463,14 @@ class AbstractGroveProviderTest {
         ArgumentCaptor<ExecTarget> viaFruitGrower = ArgumentCaptor.forClass(ExecTarget.class);
         verify(fruitGrowerSpy).grow(viaFruitGrower.capture(), eq(f));
 
-        ArgumentCaptor<CommandRunner> viaCli = ArgumentCaptor.forClass(CommandRunner.class);
-        verify(cli).up(viaCli.capture(), eq("/workspace"), eq(f.id()), eq(f.containerName()), any());
+        ArgumentCaptor<ExecTarget> viaCli = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(cli).up(viaCli.capture(), eq(f.id()), eq(f.containerName()), any());
 
-        assertThat(viaCli.getValue())
+        assertThat(viaCli.getValue().runner())
             .as("the CommandRunner DevcontainerCli.up() receives must be the exact same instance "
                 + "AbstractGroveProvider handed to FruitGrower.grow() — not merely one of the same type")
             .isSameAs(viaFruitGrower.getValue().runner());
+        assertThat(viaCli.getValue().workspacePath()).isEqualTo("/workspace");
     }
 
     @Test
@@ -583,7 +681,7 @@ class AbstractGroveProviderTest {
     private static ContainerPlot containerPlot() {
         return new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local", "c-1",
             PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
-            new ContainerSpec(2, 2048));
+            new ContainerSpec(2, 2048), null);
     }
 
     static Stream<Arguments> templateMethods() {
@@ -601,6 +699,10 @@ class AbstractGroveProviderTest {
                 (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.ripenFruit(c, fruit)),
             Arguments.of("vine",
                 (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.vine(c)),
+            Arguments.of("host",
+                (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.host(c)),
+            Arguments.of("workspacePath",
+                (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.workspacePath(c)),
             Arguments.of("verifyDevcontainerCli",
                 (BiConsumer<GroveProvider, ContainerPlot>) (p, c) -> p.verifyDevcontainerCli(c, "0.87.0"))
         );

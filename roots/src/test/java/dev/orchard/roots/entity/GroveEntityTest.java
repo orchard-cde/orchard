@@ -39,7 +39,7 @@ class GroveEntityTest {
         Grove grove = grove();
         ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), grove.id(), "docker", "c-123",
             PlotState.ROOTED, NOW, NOW, Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
-            new ContainerSpec(2, 4096));
+            new ContainerSpec(2, 4096), null);
 
         Plot reloaded = GroveEntity.fromModel(grove.withPlot(plot)).plot();
 

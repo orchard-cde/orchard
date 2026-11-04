@@ -8,6 +8,7 @@ import org.springframework.security.oauth2.server.authorization.client.InMemoryR
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.settings.ClientSettings;
+import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
 
 import java.util.UUID;
 
@@ -31,6 +32,7 @@ public class RegisteredClientRepositoryConfig {
                 .clientSettings(ClientSettings.builder()
                         .requireAuthorizationConsent(false)
                         .build())
+                .tokenSettings(rotatingRefreshTokens())
                 .build();
 
         RegisteredClient orchardUi = RegisteredClient.withId(UUID.randomUUID().toString())
@@ -46,6 +48,7 @@ public class RegisteredClientRepositoryConfig {
                         .requireAuthorizationConsent(false)
                         .requireProofKey(true)
                         .build())
+                .tokenSettings(rotatingRefreshTokens())
                 .build();
 
         // Confidential client: the SSH gateway authenticates with client_id +
@@ -65,5 +68,9 @@ public class RegisteredClientRepositoryConfig {
                 .build();
 
         return new InMemoryRegisteredClientRepository(trowelCli, orchardUi, orchardGateway);
+    }
+
+    private static TokenSettings rotatingRefreshTokens() {
+        return TokenSettings.builder().reuseRefreshTokens(false).build();
     }
 }

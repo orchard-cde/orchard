@@ -4,6 +4,12 @@ import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.ContainerSpec;
 import dev.orchard.core.model.Cultivator;
+import dev.orchard.core.model.Fruit;
+import dev.orchard.core.model.FruitState;
+import dev.orchard.core.model.Seed;
+import dev.orchard.trellis.config.GatewayAddress;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.GroveState;
 import dev.orchard.core.model.SeedSpec;
@@ -13,12 +19,14 @@ import dev.orchard.core.model.SeedlingSpec;
 import dev.orchard.core.model.SshPublicKey;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
+import dev.orchard.nursery.container.ContainerConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -29,6 +37,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class GatewayGroveServiceTest {
+
+    private static final ContainerConfig CONTAINER_CONFIG =
+        new ContainerConfig(Path.of("/tmp/plots"), "unix:///run/podman/podman.sock");
 
     private static final String KEY =
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINu3uCEBEcYqqjErEWRewbGZw8qrfWt/0inp+HfZR7MR test@orchard.dev";
@@ -41,7 +52,8 @@ class GatewayGroveServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new GatewayGroveService(groveService, sshPublicKeyService, cultivatorService);
+        service = new GatewayGroveService(groveService, sshPublicKeyService, cultivatorService,
+            new GatewayAddress("localhost", 2222), CONTAINER_CONFIG);
     }
 
     private static Grove routableGrove(UUID groveId, UUID cultivatorId) {
@@ -104,13 +116,145 @@ class GatewayGroveServiceTest {
         );
     }
 
+    private static ContainerPlot containerPlot(PlotState state) {
+        return new ContainerPlot(
+            UUID.randomUUID(), UUID.randomUUID(), "docker", "c-1", state, Instant.now(), Instant.now(),
+            null, ContainerRuntime.PODMAN, new ContainerSpec(2, 2048)
+        , null);
+    }
+
+    private static Fruit fruit(FruitState state, String containerId, String user, String folder) {
+        Fruit bud = Fruit.bud(UUID.randomUUID(), UUID.randomUUID(),
+            Seed.devcontainer().name("f").image("ubuntu").build());
+        return bud.withState(state).withContainerDetails(containerId, List.of()).withRemoteEnv(folder, user);
+    }
+
+    private static Grove containerGrove(GroveState state, PlotState plotState, Fruit... fruits) {
+        return groveWith(state, containerPlot(plotState)).withFruits(List.of(fruits));
+    }
+
     @Test
-    void isRoutable_containerPlot_false() {
-        ContainerPlot container = new ContainerPlot(
-            UUID.randomUUID(), UUID.randomUUID(), "docker", "c-1", PlotState.ROOTED, Instant.now(), Instant.now(),
-            null, ContainerRuntime.DOCKER, new ContainerSpec(2, 2048)
-        );
-        assertThat(service.isRoutable(groveWith(GroveState.FLOURISHING, container))).isFalse();
+    void containerGrove_routable_withKindRuntimeContainerId() {
+        Grove grove = containerGrove(GroveState.FLOURISHING, PlotState.ROOTED,
+            fruit(FruitState.RIPE, "abc123", "vscode", "/workspaces/demo"));
+        when(groveService.getGrove(grove.id())).thenReturn(Optional.of(grove));
+
+        var route = service.resolveRoute(grove.id()).orElseThrow();
+
+        assertThat(route.kind()).isEqualTo("container");
+        assertThat(route.runtime()).isEqualTo(ContainerRuntime.PODMAN);
+        assertThat(route.containerId()).isEqualTo("abc123");
+        assertThat(route.user()).isEqualTo("vscode");
+        assertThat(route.workspaceFolder()).isEqualTo("/workspaces/demo");
+        assertThat(route.host()).isNull();
+        assertThat(route.sshPort()).isNull();
+        assertThat(route.state()).isEqualTo("FLOURISHING");
+        assertThat(service.isRoutable(grove)).isTrue();
+    }
+
+    @Test
+    void engineUrl_containerRouteCarriesConfigured_vmRouteNull() {
+        Grove container = containerGrove(GroveState.FLOURISHING, PlotState.ROOTED,
+            fruit(FruitState.RIPE, "abc123", "vscode", "/w"));
+        UUID vmGroveId = UUID.randomUUID();
+        when(groveService.getGrove(container.id())).thenReturn(Optional.of(container));
+        when(groveService.getGrove(vmGroveId)).thenReturn(Optional.of(routableGrove(vmGroveId, UUID.randomUUID())));
+
+        assertThat(service.resolveRoute(container.id()).orElseThrow().engineUrl())
+            .isEqualTo("unix:///run/podman/podman.sock");
+        assertThat(service.resolveRoute(vmGroveId).orElseThrow().engineUrl()).isNull();
+    }
+
+    @Test
+    void containerGrove_dormant_notRoutable() {
+        Fruit ripe = fruit(FruitState.RIPE, "abc123", "vscode", "/w");
+        assertThat(service.isRoutable(containerGrove(GroveState.DORMANT, PlotState.ROOTED, ripe))).isFalse();
+        assertThat(service.isRoutable(containerGrove(GroveState.FLOURISHING, PlotState.DORMANT, ripe))).isFalse();
+    }
+
+    @Test
+    void containerGrove_noRipeFruit_notRoutable() {
+        assertThat(service.isRoutable(containerGrove(GroveState.FLOURISHING, PlotState.ROOTED))).isFalse();
+        assertThat(service.isRoutable(containerGrove(GroveState.FLOURISHING, PlotState.ROOTED,
+            fruit(FruitState.BUDDING, "abc123", null, null)))).isFalse();
+        assertThat(service.isRoutable(containerGrove(GroveState.FLOURISHING, PlotState.ROOTED,
+            fruit(FruitState.RIPE, null, null, null)))).isFalse();
+    }
+
+    @Test
+    void containerGrove_devfileFruit_routable_withNullUser() {
+        Grove grove = containerGrove(GroveState.FLOURISHING, PlotState.ROOTED,
+            fruit(FruitState.RIPE, "abc123", null, null));
+        when(groveService.getGrove(grove.id())).thenReturn(Optional.of(grove));
+
+        var route = service.resolveRoute(grove.id()).orElseThrow();
+
+        assertThat(route.user()).isNull();
+        assertThat(route.workspaceFolder()).isNull();
+        assertThat(route.containerId()).isEqualTo("abc123");
+    }
+
+    @Test
+    void vmGrove_route_unchanged_kindVm() {
+        UUID groveId = UUID.randomUUID();
+        when(groveService.getGrove(groveId)).thenReturn(Optional.of(routableGrove(groveId, UUID.randomUUID())));
+
+        var route = service.resolveRoute(groveId).orElseThrow();
+
+        assertThat(route.kind()).isEqualTo("vm");
+        assertThat(route.host()).isEqualTo("127.0.0.1");
+        assertThat(route.sshPort()).isEqualTo(22);
+        assertThat(route.runtime()).isNull();
+        assertThat(route.containerId()).isNull();
+    }
+
+    @Test
+    void connectionString_vmAndContainer_useGateway() {
+        Grove vm = groveWith(GroveState.FLOURISHING, vmPlot(PlotState.ROOTED, "127.0.0.1"));
+        Grove container = containerGrove(GroveState.FLOURISHING, PlotState.ROOTED,
+            fruit(FruitState.RIPE, "abc123", "vscode", "/w"));
+
+        assertThat(service.connectionString(vm)).contains("ssh -p 2222 " + vm.id() + "@localhost");
+        assertThat(service.connectionString(container)).contains("ssh -p 2222 " + container.id() + "@localhost");
+    }
+
+    @Test
+    void connectionString_followsConfiguredGatewayAddress() {
+        var custom = new GatewayGroveService(groveService, sshPublicKeyService, cultivatorService,
+            new GatewayAddress("gw.example.com", 12222), CONTAINER_CONFIG);
+        Grove vm = groveWith(GroveState.FLOURISHING, vmPlot(PlotState.ROOTED, "127.0.0.1"));
+
+        assertThat(custom.connectionString(vm)).contains("ssh -p 12222 " + vm.id() + "@gw.example.com");
+    }
+
+    @Test
+    void connectionString_neverWeakensHostChecks() {
+        Grove vm = groveWith(GroveState.FLOURISHING, vmPlot(PlotState.ROOTED, "127.0.0.1"));
+        Grove container = containerGrove(GroveState.FLOURISHING, PlotState.ROOTED,
+            fruit(FruitState.RIPE, "abc123", "vscode", "/w"));
+
+        for (Grove grove : List.of(vm, container)) {
+            assertThat(service.connectionString(grove).orElseThrow())
+                .doesNotContain("StrictHostKeyChecking", "UserKnownHostsFile", "ForwardAgent", "-i");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2, 3, 4, 5, 6, 7})
+    void connectionString_presentIffRoutable(int index) {
+        Fruit ripe = fruit(FruitState.RIPE, "abc123", "vscode", "/w");
+        List<Grove> groves = List.of(
+            groveWith(GroveState.FLOURISHING, vmPlot(PlotState.ROOTED, "127.0.0.1")),
+            groveWith(GroveState.FLOURISHING, vmPlot(PlotState.ROOTED, null)),
+            groveWith(GroveState.DORMANT, vmPlot(PlotState.ROOTED, "127.0.0.1")),
+            containerGrove(GroveState.FLOURISHING, PlotState.ROOTED, ripe),
+            containerGrove(GroveState.FLOURISHING, PlotState.DORMANT, ripe),
+            containerGrove(GroveState.DORMANT, PlotState.ROOTED, ripe),
+            containerGrove(GroveState.FLOURISHING, PlotState.ROOTED),
+            groveWith(GroveState.FLOURISHING, null));
+        Grove grove = groves.get(index);
+
+        assertThat(service.connectionString(grove).isPresent()).isEqualTo(service.isRoutable(grove));
     }
 
     @Test

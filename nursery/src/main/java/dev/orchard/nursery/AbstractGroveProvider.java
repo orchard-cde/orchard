@@ -1,9 +1,11 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.Vine;
 import org.slf4j.Logger;
@@ -122,8 +124,14 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
     /** Returns the vine for the plot. Called on every use; implementations should not assume it is cached. */
     protected abstract Vine vineFor(P plot);
 
-    /** The workspace folder as seen by whatever executes the vine's commands, not necessarily the host. */
-    protected abstract String workspacePath(P plot);
+    /** Returns the channel to where the container and devcontainer CLIs run. Called on every use. */
+    protected abstract CommandRunner hostFor(P plot);
+
+    /** The container runtime whose CLI runs on the {@link #hostFor host}. */
+    protected abstract ContainerRuntime runtime(P plot);
+
+    /** The workspace folder as seen by the {@link #hostFor host} channel. */
+    protected abstract String workspacePathFor(P plot);
 
     @Override
     public final CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit) {
@@ -147,7 +155,7 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
 
     private ExecTarget execTarget(Plot plot) {
         P narrowed = narrow(plot);
-        return new ExecTarget(vineFor(narrowed).commands(), workspacePath(narrowed), narrowed.id());
+        return new ExecTarget(hostFor(narrowed), workspacePathFor(narrowed), narrowed.id(), runtime(narrowed));
     }
 
     @Override
@@ -156,7 +164,17 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
     }
 
     @Override
+    public final CommandRunner host(Plot plot) {
+        return hostFor(narrow(plot));
+    }
+
+    @Override
+    public final String workspacePath(Plot plot) {
+        return workspacePathFor(narrow(plot));
+    }
+
+    @Override
     public final void verifyDevcontainerCli(Plot plot, String expectedVersion) {
-        GroveProvider.verifyDevcontainerCli(plot, expectedVersion, vine(plot).commands());
+        GroveProvider.verifyDevcontainerCli(plot, expectedVersion, host(plot));
     }
 }

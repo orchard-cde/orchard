@@ -16,6 +16,9 @@ import dev.orchard.roots.repository.GroveRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -400,10 +403,9 @@ class GroveServiceTest {
         Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main")
             .withPlot(VmPlot.germinate(UUID.randomUUID(), "owner", SeedlingSpec.from(VmSpec.small())));
         when(sshPublicKeyService.listForCultivator(any())).thenReturn(List.of());
-        Vine vine = mock(Vine.class);
         CommandRunner runner = mock(CommandRunner.class);
-        when(ownerProvider.vine(any())).thenReturn(vine);
-        when(vine.commands()).thenReturn(runner);
+        when(ownerProvider.host(any())).thenReturn(runner);
+        when(ownerProvider.workspacePath(any())).thenReturn("/workspace");
         when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
             CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
         when(ownerProvider.growFruit(any(), any())).thenAnswer(inv ->
@@ -413,9 +415,189 @@ class GroveServiceTest {
         groveService.provisionGrove(grove, SeedSpec.AUTO);
 
         verify(ownerProvider).plantSubstrate(any());
-        verify(ownerProvider, atLeastOnce()).vine(any());
+        verify(ownerProvider, atLeastOnce()).host(any());
         verify(ownerProvider).growFruit(any(), any());
         verifyNoInteractions(defaultProvider);
+    }
+
+    private static final String HOSTILE_BRANCH = "main;touch /tmp/pwned";
+    private static final String HOSTILE_URL = "https://x/y.git$(id)";
+
+    private List<String> provisionRecording(Plot plot, String repoUrl, String branch, String ws,
+                                            CommandRunner runner) throws Exception {
+        return provisionRecording(plot, repoUrl, branch, ws, runner, "yes");
+    }
+
+    private List<String> provisionRecording(Plot plot, String repoUrl, String branch, String ws,
+                                            CommandRunner runner, String configExists) throws Exception {
+        List<String> commands = new java.util.ArrayList<>();
+        when(runner.execute(any())).thenAnswer(inv -> {
+            String command = inv.getArgument(0);
+            commands.add(command);
+            if (command.contains("cloud-init status")) return "status: done";
+            if (command.contains("rev-parse")) return "abc123";
+            if (command.startsWith("test -f")) return configExists;
+            return "";
+        });
+        when(ownerProvider.host(any())).thenReturn(runner);
+        when(ownerProvider.workspacePath(any())).thenReturn(ws);
+        when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
+            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv ->
+            CompletableFuture.completedFuture(((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+        Grove grove = Grove.plant(UUID.randomUUID(), "test", repoUrl, branch).withPlot(plot);
+        lenient().when(sshPublicKeyService.listForCultivator(any())).thenReturn(List.of());
+
+        groveService.provisionGrove(grove, SeedSpec.AUTO);
+        return commands;
+    }
+
+    private static Plot containerPlot() {
+        return new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "owner", null,
+            PlotState.GERMINATING, Instant.now(), null, java.nio.file.Path.of("/h/ws"),
+            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048), null);
+    }
+
+    private static Plot vmPlot() {
+        return VmPlot.germinate(UUID.randomUUID(), "owner", SeedlingSpec.from(VmSpec.small()));
+    }
+
+    @Test
+    void provision_containerPlot_skipsCloudInit() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(containerPlot(),
+            "https://github.com/user/repo", "main", "/h/ws", runner);
+
+        assertThat(commands).isNotEmpty().noneMatch(c -> c.contains("cloud-init"));
+    }
+
+    @Test
+    void provision_containerPlot_persistsFruitRemoteUserOnPlot() throws Exception {
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withRemoteEnv("/workspaces/repo", "vscode").withState(FruitState.RIPE)));
+        provisionRecordingKeepingGrow(containerPlot(), mock(CommandRunner.class));
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        GroveEntity last = saved.getAllValues().getLast();
+        assertThat(last.getState()).isEqualTo(GroveState.FLOURISHING);
+        assertThat(((ContainerPlot) last.plot()).remoteUser()).isEqualTo("vscode");
+    }
+
+    @Test
+    void provision_containerPlot_fruitWithoutRemoteUser_leavesPlotUnset() throws Exception {
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+        provisionRecordingKeepingGrow(containerPlot(), mock(CommandRunner.class));
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(((ContainerPlot) saved.getAllValues().getLast().plot()).remoteUser()).isNull();
+    }
+
+    private void provisionRecordingKeepingGrow(Plot plot, CommandRunner runner) throws Exception {
+        when(runner.execute(any())).thenAnswer(inv -> {
+            String command = inv.getArgument(0);
+            if (command.contains("rev-parse")) return "abc123";
+            if (command.startsWith("test -f")) return "yes";
+            return "";
+        });
+        when(ownerProvider.host(any())).thenReturn(runner);
+        when(ownerProvider.workspacePath(any())).thenReturn("/h/ws");
+        when(ownerProvider.plantSubstrate(any())).thenAnswer(inv ->
+            CompletableFuture.completedFuture(((Plot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        Grove grove = Grove.plant(UUID.randomUUID(), "test", "https://github.com/user/repo", "main").withPlot(plot);
+
+        groveService.provisionGrove(grove, SeedSpec.AUTO);
+    }
+
+    @Test
+    void provision_vmPlot_waitsForCloudInit() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(vmPlot(),
+            "https://github.com/user/repo", "main", "/workspace", runner);
+
+        assertThat(commands.get(0)).contains("cloud-init status");
+    }
+
+    @Test
+    void clone_usesHostAndWorkspacePath() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(containerPlot(),
+            "https://github.com/user/repo", "main", "/h/ws", runner);
+
+        assertThat(commands).contains(
+            LOCKED_GIT + " clone --branch 'main' --depth 1 -- 'https://github.com/user/repo' '/h/ws'",
+            LOCKED_GIT + " -C '/h/ws' rev-parse HEAD");
+        verify(ownerProvider, never()).vine(any());
+    }
+
+    private static final String LOCKED_GIT = "env GIT_TERMINAL_PROMPT=0 GIT_CONFIG_GLOBAL=/dev/null "
+        + "GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c credential.helper=";
+
+    private static final List<String> LOCKDOWN_FLAGS = List.of("GIT_TERMINAL_PROMPT=0",
+        "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "core.hooksPath=/dev/null",
+        "credential.helper=");
+
+    @Test
+    void clone_containerPlot_runsWithSanitizedGitEnvironment() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(containerPlot(),
+            "https://github.com/user/repo", "main", "/h/ws", runner);
+
+        String clone = commands.stream().filter(c -> c.contains(" clone ")).findFirst().orElseThrow();
+        String revParse = commands.stream().filter(c -> c.contains("rev-parse")).findFirst().orElseThrow();
+        assertThat(clone).contains(LOCKDOWN_FLAGS);
+        assertThat(revParse).contains(LOCKDOWN_FLAGS);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"git@github.com:o/r.git", "/srv/repo"})
+    void clone_vmPlot_unchanged(String url) throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(vmPlot(), url, "main", "/workspace", runner);
+
+        assertThat(commands).contains("git clone --branch 'main' --depth 1 -- '" + url + "' '/workspace'");
+        assertThat(String.join("\n", commands)).doesNotContain("GIT_CONFIG_GLOBAL");
+    }
+
+    @Test
+    void clone_vmPlot_localPathStillAllowed() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(vmPlot(), "/srv/repo", "main", "/workspace", runner);
+
+        assertThat(commands).contains("git clone --branch 'main' --depth 1 -- '/srv/repo' '/workspace'");
+    }
+
+    @Test
+    void cloneRepository_quotesBranchAndUrl() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(containerPlot(), HOSTILE_URL, HOSTILE_BRANCH,
+            "/h/ws", runner);
+
+        String clone = commands.stream().filter(c -> c.contains(" clone ")).findFirst().orElseThrow();
+        assertThat(clone).contains("'" + HOSTILE_BRANCH + "'").contains("'" + HOSTILE_URL + "'");
+        assertThat(clone.replace("'" + HOSTILE_BRANCH + "'", "").replace("'" + HOSTILE_URL + "'", ""))
+            .doesNotContain(";").doesNotContain("$(");
+    }
+
+    @Test
+    void discoverSeed_readsRelativeToWorkspace() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        provisionRecording(containerPlot(), "https://github.com/user/repo", "main", "/h/ws", runner);
+
+        verify(runner).readFile("/h/ws/.devcontainer/devcontainer.json");
+        verify(runner, never()).readFile(startsWith("/workspace"));
+    }
+
+    @Test
+    void ensureDevcontainerConfig_writesUnderWorkspace() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        List<String> commands = provisionRecording(containerPlot(),
+            "https://github.com/user/repo", "main", "/h/ws", runner, "no");
+
+        assertThat(commands).anyMatch(c -> c.startsWith("mkdir -p '/h/ws/.devcontainer'")
+            && c.contains("> '/h/ws/.devcontainer/devcontainer.json'"));
     }
 
     @Test
@@ -883,15 +1065,16 @@ class GroveServiceTest {
         verify(ownerProvider, never()).plantSubstrate(any());
     }
 
-    @Test
-    void startGrove_refusedWhilePlotNotDormant() {
-        Grove grove = ownerGrove(GroveState.DORMANT, PlotState.ROOTED, FruitState.RIPE);
+    @ParameterizedTest
+    @EnumSource(value = PlotState.class, names = "DORMANT", mode = EnumSource.Mode.EXCLUDE)
+    void startGrove_refusedWhilePlotNotDormant(PlotState plotState) {
+        Grove grove = ownerGrove(GroveState.DORMANT, plotState, FruitState.RIPE);
         stubStored(grove);
 
         assertThatThrownBy(() -> groveService.startGrove(grove.id()))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("DORMANT")
-            .hasMessageContaining("ROOTED");
+            .hasMessageContaining(plotState.name());
         verify(groveRepository, never()).transitionIfState(any(), any(), any(), any());
         verifyNoInteractions(ownerProvider);
     }

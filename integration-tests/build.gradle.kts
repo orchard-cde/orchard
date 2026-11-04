@@ -61,6 +61,7 @@ tasks.register<Test>("integrationTest") {
     dependsOn(prepareQemuBaseImage)
     systemProperty("junit.jupiter.execution.timeout.default", "15m")
     systemProperty("orchard.e2e.require-qemu", providers.gradleProperty("orchard.e2e.require-qemu").getOrElse("false"))
+    systemProperty("orchard.e2e.require-container", providers.gradleProperty("orchard.e2e.require-container").getOrElse("false"))
     testLogging {
         events("skipped", "failed", "standard_error")
         exceptionFormat = TestExceptionFormat.FULL

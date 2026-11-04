@@ -14,7 +14,17 @@ class ContainerPlotTest {
     private static ContainerPlot plot(Instant readyAt) {
         return new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local", "c-1",
             PlotState.GERMINATING, Instant.now(), readyAt, Path.of("/tmp/ws"),
-            ContainerRuntime.PODMAN, new ContainerSpec(2, 2048));
+            ContainerRuntime.PODMAN, new ContainerSpec(2, 2048), "vscode");
+    }
+
+    @Test
+    void withRemoteUser_replacesOnlyRemoteUser() {
+        ContainerPlot original = plot(null);
+
+        ContainerPlot updated = original.withRemoteUser("node");
+
+        assertThat(updated.remoteUser()).isEqualTo("node");
+        assertThat(updated).usingRecursiveComparison().ignoringFields("remoteUser").isEqualTo(original);
     }
 
     @Test
@@ -34,7 +44,7 @@ class ContainerPlotTest {
     void constructor_nullProviderId_throws() {
         assertThatThrownBy(() -> new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), null, null,
             PlotState.GERMINATING, Instant.now(), null, Path.of("/tmp/ws"),
-            ContainerRuntime.PODMAN, new ContainerSpec(2, 2048)))
+            ContainerRuntime.PODMAN, new ContainerSpec(2, 2048), null))
             .isInstanceOf(NullPointerException.class).hasMessageContaining("providerId");
     }
 }

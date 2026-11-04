@@ -19,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
@@ -230,7 +229,7 @@ class QemuGroveProviderTest {
     void ownedMethod_containerPlot_isRefusedOnTheCallingThread(String method) {
         ContainerPlot container = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
             "c-1", PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"),
-            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048));
+            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048), null);
         Runnable call = switch (method) {
             case "water" -> () -> provider.water(container);
             case "dormant" -> () -> provider.dormant(container);
@@ -451,17 +450,6 @@ class QemuGroveProviderTest {
         assertThat(stub.lastProcess.isAlive()).isFalse();
         assertThat(vmDir.resolve("qemu.pid")).doesNotExist();
         assertThat(p.inspect(plot).join().state()).isEqualTo(PlotState.DORMANT);
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = PlotState.class, names = "DORMANT", mode = EnumSource.Mode.EXCLUDE)
-    void water_notDormant_throwsIllegalState(PlotState state) {
-        StubCommands stub = new StubCommands();
-        QemuGroveProvider p = providerWith(stub, Duration.ofSeconds(10));
-
-        assertThatThrownBy(() -> p.water(newPlot().withState(state)))
-            .isInstanceOf(IllegalStateException.class);
-        assertThat(stub.calls).isEmpty();
     }
 
     @Test

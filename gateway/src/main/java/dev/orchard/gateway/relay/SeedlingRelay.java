@@ -1,6 +1,8 @@
 package dev.orchard.gateway.relay;
 
 import dev.orchard.gateway.api.GatewayRoute;
+import dev.orchard.gateway.api.RouteKind;
+import dev.orchard.gateway.auth.KeyAuthenticator;
 import dev.orchard.gateway.config.GatewayProperties;
 import jakarta.annotation.PostConstruct;
 import org.apache.sshd.client.SshClient;
@@ -8,6 +10,7 @@ import org.apache.sshd.client.keyverifier.AcceptAllServerKeyVerifier;
 import org.apache.sshd.client.session.ClientSession;
 import org.apache.sshd.common.AttributeRepository;
 import org.apache.sshd.common.config.keys.loader.openssh.OpenSSHKeyPairResourceParser;
+import org.apache.sshd.server.channel.ChannelSession;
 import org.apache.sshd.server.command.Command;
 import org.apache.sshd.server.command.CommandFactory;
 import org.apache.sshd.server.session.ServerSession;
@@ -15,6 +18,7 @@ import org.apache.sshd.server.shell.ShellFactory;
 import org.apache.sshd.server.subsystem.SubsystemFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Files;
@@ -23,9 +27,10 @@ import java.security.KeyPair;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Jumphost relay. Holds the gateway→seedling SSH
- * client (username {@code cultivator}, internal key) and produces the server
- * shell/exec/subsystem factories that pump each channel through it.
+ * Jumphost relay. Produces the server shell/exec/subsystem factories, dispatching on the session's
+ * route: a VM route is pumped through the gateway→seedling SSH client (username {@code cultivator},
+ * internal key, loaded on the first VM route); a container route runs {@code <runtime> exec} on
+ * the gateway host via {@link ContainerExecCommand}.
  */
 @Component
 public class SeedlingRelay {
@@ -38,22 +43,41 @@ public class SeedlingRelay {
 
     private final SshClient sshClient;
     private final GatewayProperties properties;
+    private final ProcessLauncher launcher;
 
     private volatile KeyPair internalKey;
-    private Path internalKeyPath;
 
+    @Autowired
     public SeedlingRelay(SshClient sshClient, GatewayProperties properties) {
+        this(sshClient, properties, ProcessLauncher.processBuilder());
+    }
+
+    SeedlingRelay(SshClient sshClient, GatewayProperties properties, ProcessLauncher launcher) {
         this.sshClient = sshClient;
         this.properties = properties;
+        this.launcher = launcher;
     }
 
     @PostConstruct
     void start() {
-        this.internalKeyPath = Path.of(properties.getInternalSshKeyPath());
-        this.internalKey = loadInternalKey();
         sshClient.setServerKeyVerifier(AcceptAllServerKeyVerifier.INSTANCE);
         sshClient.start();
-        log.info("SeedlingRelay up; internal key from {}", internalKeyPath);
+        log.info("SeedlingRelay up; internal key for VM routes from {}", properties.getInternalSshKeyPath());
+    }
+
+    /** The internal key, loaded on first use and then kept; a failed load is retried on the next call. */
+    KeyPair internalKey() {
+        KeyPair key = internalKey;
+        if (key == null) {
+            synchronized (this) {
+                key = internalKey;
+                if (key == null) {
+                    key = loadInternalKey();
+                    internalKey = key;
+                }
+            }
+        }
+        return key;
     }
 
     KeyPair loadInternalKey() {
@@ -90,10 +114,11 @@ public class SeedlingRelay {
             if (cached != null && !cached.isClosed()) {
                 return cached;
             }
+            KeyPair key = internalKey();
             ClientSession client = sshClient.connect(DEFAULT_SSH_USER, route.host(), route.sshPort())
                     .verify(10, TimeUnit.SECONDS)
                     .getSession();
-            client.addPublicKeyIdentity(internalKey);
+            client.addPublicKeyIdentity(key);
             client.auth().verify(10, TimeUnit.SECONDS);
             serverSession.setAttribute(RELAY_SESSION_KEY, client);
             serverSession.addCloseFutureListener(future -> client.close(false));
@@ -103,11 +128,11 @@ public class SeedlingRelay {
     }
 
     public CommandFactory commandFactory() {
-        return (channel, command) -> new RelayCommand(this, RelayCommand.Mode.EXEC, command);
+        return (channel, command) -> command(channel, RelayCommand.Mode.EXEC, command);
     }
 
     public ShellFactory shellFactory() {
-        return channel -> new RelayCommand(this, RelayCommand.Mode.SHELL, null);
+        return channel -> command(channel, RelayCommand.Mode.SHELL, null);
     }
 
     public SubsystemFactory subsystemFactory() {
@@ -118,9 +143,17 @@ public class SeedlingRelay {
             }
 
             @Override
-            public Command createSubsystem(org.apache.sshd.server.channel.ChannelSession channel) {
-                return new RelayCommand(SeedlingRelay.this, RelayCommand.Mode.SUBSYSTEM, "sftp");
+            public Command createSubsystem(ChannelSession channel) {
+                return command(channel, RelayCommand.Mode.SUBSYSTEM, "sftp");
             }
         };
+    }
+
+    private Command command(ChannelSession channel, RelayCommand.Mode mode, String argument) {
+        GatewayRoute route = channel.getSession().getAttribute(KeyAuthenticator.ROUTE_KEY);
+        if (route != null && route.kind() == RouteKind.CONTAINER) {
+            return new ContainerExecCommand(route, mode, argument, launcher);
+        }
+        return new RelayCommand(this, mode, argument);
     }
 }

@@ -88,6 +88,20 @@ class GenericGroveProviderTest {
     }
 
     @Test
+    void growFruit_execTargetCarriesTheSubstratesRuntime() {
+        FruitGrower grower = mock(FruitGrower.class);
+        when(grower.grow(any(), any())).thenReturn(new CompletableFuture<>());
+        ContainerTestProvider provider = new ContainerTestProvider(executor, grower);
+        ContainerPlot plot = (ContainerPlot) provider.reserve(UUID.randomUUID(), spec());
+
+        provider.growFruit(plot, TestPlots.budded(plot));
+
+        ArgumentCaptor<ExecTarget> target = ArgumentCaptor.forClass(ExecTarget.class);
+        verify(grower).grow(target.capture(), any());
+        assertThat(target.getValue().runtime()).isEqualTo(ContainerRuntime.PODMAN);
+    }
+
+    @Test
     void compostFruit_usesTheSubstratesWorkspacePath() {
         FruitGrower grower = mock(FruitGrower.class);
         when(grower.compost(any(), any())).thenReturn(new CompletableFuture<>());
@@ -193,7 +207,7 @@ class GenericGroveProviderTest {
         protected ContainerPlot draft(UUID groveId, SeedlingSpec seedlingSpec) {
             return new ContainerPlot(UUID.randomUUID(), groveId, getProviderId(), null,
                 PlotState.GERMINATING, Instant.now(), null, Path.of("/tmp/orchard-ws"),
-                ContainerRuntime.PODMAN, new ContainerSpec(seedlingSpec.cpuCores(), seedlingSpec.memoryMb()));
+                ContainerRuntime.PODMAN, new ContainerSpec(seedlingSpec.cpuCores(), seedlingSpec.memoryMb()), null);
         }
 
         @Override
@@ -210,13 +224,23 @@ class GenericGroveProviderTest {
         }
 
         @Override
+        protected CommandRunner hostFor(ContainerPlot plot) {
+            return mock(CommandRunner.class);
+        }
+
+        @Override
+        protected ContainerRuntime runtime(ContainerPlot plot) {
+            return plot.runtime();
+        }
+
+        @Override
         protected Vine vineFor(ContainerPlot plot) {
             CommandRunner runner = mock(CommandRunner.class);
             return () -> runner;
         }
 
         @Override
-        protected String workspacePath(ContainerPlot plot) {
+        protected String workspacePathFor(ContainerPlot plot) {
             return plot.workspacePath().toString();
         }
 

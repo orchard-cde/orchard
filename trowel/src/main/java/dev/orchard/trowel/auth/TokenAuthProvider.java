@@ -71,8 +71,9 @@ public class TokenAuthProvider implements AuthProvider {
             oldTarget.cultivator(),
             oldTarget.fenceServer(),
             tokenResponse.accessToken(),
-            tokenResponse.refreshToken(),
-            newExpiresAt
+            tokenResponse.refreshToken() != null ? tokenResponse.refreshToken() : oldTarget.refreshToken(),
+            newExpiresAt,
+            oldTarget.sshKey()
         ));
 
         ConfigLoader.save(new OrchardConfig(config.active(), targets));

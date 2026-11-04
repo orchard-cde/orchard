@@ -16,7 +16,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 ## Features
 
 - **devcontainer Support**: Full compatibility with the `.devcontainer` specification
-- **VM-based Isolation**: Each workspace runs in its own QEMU VM with Docker
+- **VM-based Isolation**: Each workspace runs in its own QEMU VM with Docker, or on the local docker/podman engine with the container provider
 - **VS Code Remote SSH**: Connect directly from your local VS Code
 - **Web UI (Canopy)**: Manage workspaces from your browser — [separate repo](https://github.com/orchard-cde/orchard-ui)
 - **CLI (Trowel)**: Plant and manage groves from the command line
@@ -28,7 +28,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 
 - Java 25+
 - Docker & Docker Compose
-- QEMU (for local VM provisioning)
+- QEMU for `--provider qemu`, or a reachable docker or podman engine for `--provider container`; the container provider builds groves on that engine with the devcontainer CLI (`npm install -g @devcontainers/cli@0.87.0`)
 
 ### Start the Platform
 
@@ -46,6 +46,7 @@ docker compose up -d postgres
 # Start the dev server — runs orchard core (:17778) + the Canopy UI BFF (:17777)
 trowel dev-server start        # open http://localhost:17777
 trowel dev-server start --no-ui  # core only on :17778 (API only, no UI)
+trowel dev-server start --provider container  # groves on the local docker/podman engine (default: qemu)
 ```
 
 `trowel dev-server start` launches **two processes**:
@@ -231,12 +232,16 @@ spring:
 
 orchard:
   nursery:
-    provider: qemu  # qemu, aws, gcp, azure
+    provider: qemu  # qemu, container, aws, gcp, azure
   qemu:
     base-image-path: /tmp/orchard/images/base.qcow2
     vm-storage-path: ${user.home}/.orchard/data/vms
     # enable-kvm/serial-output default per-platform (KVM on Linux, HVF on macOS)
 ```
+
+The container provider runs repository-controlled commands and mounts with the trellis user's rights on the host (`initializeCommand`, devfile `preStart`, `runArgs`, `mounts`). Use it single-tenant, with trusted repositories only. Container groves clone once at plant time, on the host, with no host git configuration, credential helpers or hooks. HTTPS URLs are the default; `ssh://` and `git@host:path` URLs also work and use the trellis host's SSH setup.
+
+On any non-local deployment, set `orchard.gateway.ssh-host` to the gateway's public host.
 
 ### CLI (`~/.orchard/config.toml`)
 

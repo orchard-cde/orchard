@@ -3,6 +3,7 @@ package dev.orchard.api.controller;
 import dev.orchard.api.dto.GatewayGroveResponse;
 import dev.orchard.api.dto.GatewayKeyResponse;
 import dev.orchard.api.service.GatewayGroveService;
+import dev.orchard.core.model.ContainerRuntime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -38,14 +39,33 @@ class GatewayGroveControllerTest {
     void resolveGrove_routable_returns200() throws Exception {
         UUID groveId = UUID.randomUUID();
         when(service.resolveRoute(groveId)).thenReturn(Optional.of(
-            new GatewayGroveResponse(groveId, UUID.randomUUID(), "127.0.0.1", 22, "FLOURISHING")));
+            new GatewayGroveResponse(groveId, UUID.randomUUID(), "FLOURISHING", "vm", "127.0.0.1", 22,
+                null, null, null, null, null)));
 
         mockMvc.perform(get("/api/gateway/groves/{groveId}", groveId))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.groveId").value(groveId.toString()))
             .andExpect(jsonPath("$.host").value("127.0.0.1"))
             .andExpect(jsonPath("$.sshPort").value(22))
-            .andExpect(jsonPath("$.state").value("FLOURISHING"));
+            .andExpect(jsonPath("$.state").value("FLOURISHING"))
+            .andExpect(jsonPath("$.kind").value("vm"));
+    }
+
+    @Test
+    void resolveGrove_containerRoute_serializesRuntimeAndContainer() throws Exception {
+        UUID groveId = UUID.randomUUID();
+        when(service.resolveRoute(groveId)).thenReturn(Optional.of(
+            new GatewayGroveResponse(groveId, UUID.randomUUID(), "FLOURISHING", "container", null, null,
+                ContainerRuntime.PODMAN, "abc123", "vscode", "/workspaces/demo", "unix:///run/podman/podman.sock")));
+
+        mockMvc.perform(get("/api/gateway/groves/{groveId}", groveId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.kind").value("container"))
+            .andExpect(jsonPath("$.runtime").value("PODMAN"))
+            .andExpect(jsonPath("$.containerId").value("abc123"))
+            .andExpect(jsonPath("$.user").value("vscode"))
+            .andExpect(jsonPath("$.workspaceFolder").value("/workspaces/demo"))
+            .andExpect(jsonPath("$.engineUrl").value("unix:///run/podman/podman.sock"));
     }
 
     @Test
@@ -85,7 +105,8 @@ class GatewayGroveControllerTest {
     void authorizeOwner_owner_returns200() throws Exception {
         UUID groveId = UUID.randomUUID();
         when(service.authorizeOwner(groveId, "alice@example.com")).thenReturn(Optional.of(
-            new GatewayGroveResponse(groveId, UUID.randomUUID(), "127.0.0.1", 22, "FLOURISHING")));
+            new GatewayGroveResponse(groveId, UUID.randomUUID(), "FLOURISHING", "vm", "127.0.0.1", 22,
+                null, null, null, null, null)));
 
         mockMvc.perform(post("/api/gateway/authorize-owner")
                 .contentType(MediaType.APPLICATION_JSON)
