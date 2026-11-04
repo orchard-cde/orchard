@@ -41,15 +41,17 @@ import java.util.concurrent.Executors;
  * </ul>
  *
  * <p>{@link #pick}, {@link #ripen} and {@link #compost} run raw docker commands over the runner on
- * either path — the CLI doesn't ship a {@code down} subcommand. {@code pick} and {@code ripen} stop
- * and start the whole compose project ({@code docker compose -p <project> stop|start}) for compose
- * fruit and the single container otherwise; {@code compost} runs {@code docker compose -p <project>
- * down -v} for compose fruit, so sidecars, networks and volumes go too, and {@code docker rm -f} on
- * the fruit's container otherwise.
+ * either path — the CLI doesn't ship a {@code down} subcommand. A compose fruit's project is found
+ * by its {@link ContainerLabels#COMPOSE_PROJECT} label rather than through the compose CLI, which
+ * under podman-compose needs the compose file: {@code pick} and {@code ripen} stop and start every
+ * container of the project, and {@code compost} removes its containers, networks and volumes. A
+ * single-container fruit is stopped, started and removed by id.
  */
 public class FruitGrower {
 
     private static final Logger log = LoggerFactory.getLogger(FruitGrower.class);
+
+    private static final long ENGINE_TIMEOUT_SECONDS = 120;
 
     private final ExecutorService executor;
     private final DevcontainerCli devcontainerCli;
@@ -510,10 +512,7 @@ public class FruitGrower {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Picking fruit {}", fruit.id());
-                String command = lifecycleCommand(target, fruit, "stop");
-                if (command != null) {
-                    executeSsh(target.runner(), command);
-                }
+                lifecycle(target, fruit, "stop");
                 return fruit.withState(FruitState.PICKED);
             } catch (Exception e) {
                 log.error("Failed to pick fruit {}", fruit.id(), e);
@@ -535,10 +534,7 @@ public class FruitGrower {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 log.info("Ripening fruit {}", fruit.id());
-                String command = lifecycleCommand(target, fruit, "start");
-                if (command != null) {
-                    executeSsh(target.runner(), command);
-                }
+                lifecycle(target, fruit, "start");
                 runPostStart(target, fruit);
                 return fruit.withState(FruitState.RIPE);
             } catch (Exception e) {
@@ -551,12 +547,40 @@ public class FruitGrower {
         }, executor);
     }
 
-    private static String lifecycleCommand(ExecTarget target, Fruit fruit, String verb) {
+    /**
+     * Runs {@code stop} or {@code start} on the fruit's containers. A compose project is started in
+     * up to one pass per container, since a container sharing another's network namespace starts
+     * only once that one runs and the engine lists the project in no dependency order.
+     */
+    private void lifecycle(ExecTarget target, Fruit fruit, String verb) throws IOException, InterruptedException {
+        CommandRunner runner = target.runner();
         String cli = target.runtime().cli();
-        if (fruit.composeProjectName() != null) {
-            return cli + " compose -p " + ShellQuote.quote(fruit.composeProjectName()) + " " + verb;
+        if (fruit.composeProjectName() == null) {
+            if (fruit.containerId() != null) {
+                executeSsh(runner, cli + " " + verb + " " + ShellQuote.quote(fruit.containerId()));
+            }
+            return;
         }
-        return fruit.containerId() != null ? cli + " " + verb + " " + ShellQuote.quote(fruit.containerId()) : null;
+        List<String> ids = ContainerLabels.composeContainerIds(runner, cli, fruit.composeProjectName(), true,
+            ENGINE_TIMEOUT_SECONDS);
+        if (ids.isEmpty()) {
+            if (verb.equals("start")) {
+                throw new IOException("compose project " + fruit.composeProjectName() + " has no containers");
+            }
+            return;
+        }
+        String command = cli + " " + verb + " " + ShellQuote.join(ids);
+        int passes = verb.equals("start") ? ids.size() : 1;
+        for (int pass = 1; ; pass++) {
+            try {
+                runner.execute(command, ENGINE_TIMEOUT_SECONDS);
+                return;
+            } catch (IOException e) {
+                if (pass >= passes) {
+                    throw e;
+                }
+            }
+        }
     }
 
     private boolean cliEnabled() {
@@ -594,8 +618,8 @@ public class FruitGrower {
                 log.info("Composting fruit {}", fruit.id());
                 String cli = target.runtime().cli();
                 if (fruit.composeProjectName() != null) {
-                    executeSsh(target.runner(), cli + " compose -p " + ShellQuote.quote(fruit.composeProjectName())
-                        + " down -v");
+                    ContainerLabels.removeComposeProject(target.runner(), cli, fruit.composeProjectName(),
+                        ENGINE_TIMEOUT_SECONDS);
                 } else if (fruit.containerId() != null) {
                     executeSsh(target.runner(), cli + " rm -f " + ShellQuote.quote(fruit.containerId()));
                 }

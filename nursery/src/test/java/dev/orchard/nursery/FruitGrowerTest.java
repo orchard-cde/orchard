@@ -28,14 +28,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -335,26 +339,50 @@ class FruitGrowerTest {
         verify(runner).execute("docker stop 'cid1'");
     }
 
+    private static final String PROJECT_FILTER = "'label=com.docker.compose.project=proj'";
+
     @Test
-    void pick_compose_stopsWholeProject() throws Exception {
+    void pick_compose_stopsEveryProjectContainerByLabel() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(eq("docker ps -aq --filter " + PROJECT_FILTER), anyLong())).thenReturn("c1\nc2\n");
         Fruit fruit = runningFruit(defaultSeed()).withComposeProjectName("proj");
 
         Fruit result = plainGrower().pick(execTarget(runner), fruit).join();
 
         assertThat(result.state()).isEqualTo(FruitState.PICKED);
-        verify(runner).execute("docker compose -p 'proj' stop");
-        verify(runner, never()).execute("docker stop 'cid1'");
+        verify(runner).execute(eq("docker stop 'c1' 'c2'"), anyLong());
+        verify(runner, never()).execute(contains(" compose "));
+        verify(runner, never()).execute(contains(" compose "), anyLong());
     }
 
     @Test
-    void compost_composeFruit_runsComposeDownWithVolumes() throws Exception {
-        var runner = new RecordingRunner();
+    void pick_compose_noContainers_isPicked() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(anyString(), anyLong())).thenReturn("");
+        Fruit fruit = runningFruit(defaultSeed()).withComposeProjectName("proj");
+
+        assertThat(plainGrower().pick(execTarget(runner), fruit).join().state()).isEqualTo(FruitState.PICKED);
+        verify(runner, never()).execute(startsWith("docker stop"), anyLong());
+    }
+
+    @Test
+    void compost_composeFruit_removesProjectContainersNetworksAndVolumesByLabel() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        String filter = "'label=com.docker.compose.project=my proj'";
+        when(runner.execute(anyString(), anyLong())).thenReturn("");
+        when(runner.execute(eq("podman ps -aq --filter " + filter), anyLong())).thenReturn("c1\nc2\n");
+        when(runner.execute(eq("podman network ls -q --filter " + filter), anyLong())).thenReturn("n1\n");
+        when(runner.execute(eq("podman volume ls -q --filter " + filter), anyLong())).thenReturn("v1\n");
         Fruit fruit = runningFruit(defaultSeed()).withComposeProjectName("my proj");
 
         plainGrower().compost(target(runner, "/h/ws", ContainerRuntime.PODMAN), fruit).join();
 
-        assertThat(runner.commands).containsExactly("podman compose -p 'my proj' down -v");
+        var order = inOrder(runner);
+        order.verify(runner).execute(eq("podman rm -f 'c1' 'c2'"), anyLong());
+        order.verify(runner).execute(eq("podman network rm 'n1'"), anyLong());
+        order.verify(runner).execute(eq("podman volume rm -f 'v1'"), anyLong());
+        verify(runner, never()).execute(contains(" compose "));
+        verify(runner, never()).execute(contains(" compose "), anyLong());
     }
 
     @Test
@@ -403,17 +431,55 @@ class FruitGrowerTest {
     }
 
     @Test
-    void ripen_compose_startsWholeProject() throws Exception {
+    void ripen_compose_startsEveryProjectContainerByLabel() throws Exception {
         CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(eq("docker ps -aq --filter " + PROJECT_FILTER), anyLong())).thenReturn("c1\nc2\n");
         Fruit fruit = runningFruit(seedWithPostStart()).withComposeProjectName("proj");
 
         Fruit result = plainGrower().ripen(execTarget(runner), fruit).join();
 
         assertThat(result.state()).isEqualTo(FruitState.RIPE);
         var order = inOrder(runner);
-        order.verify(runner).execute("docker compose -p 'proj' start");
+        order.verify(runner).execute(eq("docker ps -aq --filter " + PROJECT_FILTER), anyLong());
+        order.verify(runner).execute(eq("docker start 'c1' 'c2'"), anyLong());
         order.verify(runner).execute("'docker' 'exec' 'cid1' '/bin/sh' '-c' 'echo up'");
         order.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void ripen_compose_retriesStartUntilNamespaceDependentsStart() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(eq("docker ps -aq --filter " + PROJECT_FILTER), anyLong())).thenReturn("app\ndb\n");
+        when(runner.execute(eq("docker start 'app' 'db'"), anyLong()))
+            .thenThrow(new IOException("cannot join network of a non running container"))
+            .thenReturn("");
+        Fruit fruit = runningFruit(defaultSeed()).withComposeProjectName("proj");
+
+        assertThat(plainGrower().ripen(execTarget(runner), fruit).join().state()).isEqualTo(FruitState.RIPE);
+        verify(runner, times(2)).execute(eq("docker start 'app' 'db'"), anyLong());
+    }
+
+    @Test
+    void ripen_compose_startKeepsFailing_completesExceptionallyAfterOnePassPerContainer() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(eq("docker ps -aq --filter " + PROJECT_FILTER), anyLong())).thenReturn("a\nb\nc\n");
+        when(runner.execute(startsWith("docker start"), anyLong())).thenThrow(new IOException("boom"));
+        Fruit fruit = runningFruit(defaultSeed()).withComposeProjectName("proj");
+
+        assertThatThrownBy(() -> plainGrower().ripen(execTarget(runner), fruit).join())
+            .isInstanceOf(CompletionException.class);
+        verify(runner, times(3)).execute(startsWith("docker start"), anyLong());
+    }
+
+    @Test
+    void ripen_compose_noContainers_completesExceptionally() throws Exception {
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(anyString(), anyLong())).thenReturn("");
+        Fruit fruit = runningFruit(defaultSeed()).withComposeProjectName("proj");
+
+        assertThatThrownBy(() -> plainGrower().ripen(execTarget(runner), fruit).join())
+            .isInstanceOf(CompletionException.class)
+            .hasMessageContaining("compose project proj has no containers");
     }
 
     @Test
@@ -620,6 +686,7 @@ class FruitGrowerTest {
         legacyGrower.ripen(target, runningFruit(seedWithPostStart())).join();
         legacyGrower.ripen(target, runningFruit(defaultSeed()).withComposeProjectName("proj")).join();
         legacyGrower.compost(target, runningFruit(defaultSeed())).join();
+        legacyGrower.compost(target, runningFruit(defaultSeed()).withComposeProjectName("proj")).join();
 
         assertThat(runner.commands).isNotEmpty();
         assertThat(runner.commands).noneMatch(c -> c.matches("(?s).*(^|[;&| ])'?docker'?( |$).*"));

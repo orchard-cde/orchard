@@ -4,10 +4,15 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
-/** The label that ties a fruit container to its plot, and the lookup of a plot's containers by it. */
+/**
+ * The label that ties a fruit container to its plot, the compose project label, and lookups by
+ * them. Only a fruit's primary container carries the plot label; its compose sidecars, networks and
+ * volumes are found through the project label, which Docker Compose and podman-compose both set.
+ */
 public final class ContainerLabels {
 
     public static final String PLOT_ID = "orchard.plot.id";
+    public static final String COMPOSE_PROJECT = "com.docker.compose.project";
 
     private ContainerLabels() {}
 
@@ -21,11 +26,50 @@ public final class ContainerLabels {
         return "label=" + label(plotId);
     }
 
+    /** {@code label=com.docker.compose.project=<project>}, for {@code ps}, {@code network ls} and {@code volume ls}. */
+    public static String composeFilter(String project) {
+        return "label=" + COMPOSE_PROJECT + "=" + project;
+    }
+
     /** Ids of the plot's running containers via {@code <cli> ps -q}, or of all of them with {@code includeStopped}. */
     public static List<String> containerIds(CommandRunner runner, String cli, UUID plotId, boolean includeStopped,
                                             long timeoutSeconds)
             throws IOException, InterruptedException {
-        String command = cli + (includeStopped ? " ps -aq" : " ps -q") + " --filter " + ShellQuote.quote(filter(plotId));
+        return ps(runner, cli, filter(plotId), includeStopped, timeoutSeconds);
+    }
+
+    /** Ids of the compose project's running containers, or of all of them with {@code includeStopped}. */
+    public static List<String> composeContainerIds(CommandRunner runner, String cli, String project,
+                                                   boolean includeStopped, long timeoutSeconds)
+            throws IOException, InterruptedException {
+        return ps(runner, cli, composeFilter(project), includeStopped, timeoutSeconds);
+    }
+
+    /**
+     * Removes the compose project's containers, networks and volumes by label, the equivalent of
+     * {@code compose down -v} without the compose file podman-compose needs.
+     */
+    public static void removeComposeProject(CommandRunner runner, String cli, String project, long timeoutSeconds)
+            throws IOException, InterruptedException {
+        String filter = ShellQuote.quote(composeFilter(project));
+        List<String> containers = composeContainerIds(runner, cli, project, true, timeoutSeconds);
+        if (!containers.isEmpty()) {
+            runner.execute(cli + " rm -f " + ShellQuote.join(containers), timeoutSeconds);
+        }
+        List<String> networks = parse(runner.execute(cli + " network ls -q --filter " + filter, timeoutSeconds));
+        if (!networks.isEmpty()) {
+            runner.execute(cli + " network rm " + ShellQuote.join(networks), timeoutSeconds);
+        }
+        List<String> volumes = parse(runner.execute(cli + " volume ls -q --filter " + filter, timeoutSeconds));
+        if (!volumes.isEmpty()) {
+            runner.execute(cli + " volume rm -f " + ShellQuote.join(volumes), timeoutSeconds);
+        }
+    }
+
+    private static List<String> ps(CommandRunner runner, String cli, String filter, boolean includeStopped,
+                                   long timeoutSeconds)
+            throws IOException, InterruptedException {
+        String command = cli + (includeStopped ? " ps -aq" : " ps -q") + " --filter " + ShellQuote.quote(filter);
         return parse(runner.execute(command, timeoutSeconds));
     }
 
