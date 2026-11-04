@@ -89,9 +89,9 @@ public class LoginCommand implements Callable<Integer> {
             System.out.println();
             System.out.println("Open this URL in your browser:");
             System.out.println();
-            System.out.println("  " + deviceAuth.verificationUri());
+            System.out.println("  " + deviceAuth.browserUri());
             System.out.println();
-            System.out.println("Enter this code when prompted:");
+            System.out.println("Confirm this code matches (enter it if prompted):");
             System.out.println();
             System.out.println("  " + deviceAuth.userCode());
             System.out.println();
@@ -102,11 +102,11 @@ public class LoginCommand implements Callable<Integer> {
                     String osName = System.getProperty("os.name", "").toLowerCase();
                     ProcessBuilder pb;
                     if (osName.contains("mac") || osName.contains("darwin")) {
-                        pb = new ProcessBuilder("open", deviceAuth.verificationUri());
+                        pb = new ProcessBuilder("open", deviceAuth.browserUri());
                     } else if (osName.contains("win")) {
-                        pb = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", deviceAuth.verificationUri());
+                        pb = new ProcessBuilder("rundll32", "url.dll,FileProtocolHandler", deviceAuth.browserUri());
                     } else {
-                        pb = new ProcessBuilder("xdg-open", deviceAuth.verificationUri());
+                        pb = new ProcessBuilder("xdg-open", deviceAuth.browserUri());
                     }
                     pb.redirectErrorStream(true);
                     pb.start();
