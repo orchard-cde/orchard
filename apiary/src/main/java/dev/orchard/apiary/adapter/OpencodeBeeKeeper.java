@@ -32,7 +32,14 @@ import java.util.concurrent.Executors;
 public class OpencodeBeeKeeper implements BeeKeeper {
 
     private static final String INSTALL_SCRIPT_URL =
-        "https://raw.githubusercontent.com/anomalyco/opencode/main/install.sh";
+        "https://opencode.ai/install";
+    private static final String INSTALL_SCRIPT_PATH = "/tmp/opencode-install.sh";
+    private static final String LOG_PATH = "/tmp/opencode.log";
+    private static final String INSTALL_DIR_BIN = "$HOME/.opencode/bin/opencode";
+    private static final String RESOLVE_BINARY =
+        "command -v opencode || { test -x \"" + INSTALL_DIR_BIN + "\" && echo \"" + INSTALL_DIR_BIN + "\"; }";
+    private static final int STARTUP_WAIT_SECONDS = 15;
+    private static final int LOG_TAIL_LINES = 20;
     private static final int SERVER_PORT = 4096;
     private static final String CONFIG_KEY_MODE = "mode";
     private static final String MODE_HEADLESS = "headless";
@@ -70,10 +77,13 @@ public class OpencodeBeeKeeper implements BeeKeeper {
                 return bee;
             }
             try {
+                String binary = resolveBinary(runner);
                 String pid = runner.execute(
-                    "cd " + ShellQuote.quote(workspaceRoot) + " && nohup opencode serve --port " + SERVER_PORT
-                        + " --hostname 127.0.0.1 > /tmp/opencode.log 2>&1 & echo $!");
-                return bee.withProcessId(pid.trim());
+                    "cd " + ShellQuote.quote(workspaceRoot) + " && nohup " + ShellQuote.quote(binary)
+                        + " serve --port " + SERVER_PORT + " --hostname 127.0.0.1 > " + LOG_PATH
+                        + " 2>&1 & echo $!").trim();
+                awaitServer(runner, bee, pid);
+                return bee.withProcessId(pid);
             } catch (IOException e) {
                 throw new BeeProvisioningException("Failed to start OpenCode for bee " + bee.id(), e);
             } catch (InterruptedException e) {
@@ -121,9 +131,41 @@ public class OpencodeBeeKeeper implements BeeKeeper {
 
     private void ensureBinaryInstalled(CommandRunner runner) throws IOException, InterruptedException {
         try {
-            runner.execute("command -v opencode");
+            resolveBinary(runner);
         } catch (IOException e) {
-            runner.execute("curl -fsSL " + INSTALL_SCRIPT_URL + " | sh");
+            runner.execute("curl -fsSL " + INSTALL_SCRIPT_URL + " -o " + INSTALL_SCRIPT_PATH
+                + " && bash " + INSTALL_SCRIPT_PATH + " --no-modify-path");
+            resolveBinary(runner);
+        }
+    }
+
+    private String resolveBinary(CommandRunner runner) throws IOException, InterruptedException {
+        String path = runner.execute(RESOLVE_BINARY).trim();
+        if (path.isEmpty()) {
+            throw new IOException("opencode binary not found");
+        }
+        return path;
+    }
+
+    private void awaitServer(CommandRunner runner, Bee bee, String pid)
+            throws IOException, InterruptedException {
+        try {
+            runner.execute(
+                "for i in $(seq " + STARTUP_WAIT_SECONDS + "); do"
+                    + " curl -sS -o /dev/null --max-time 2 http://127.0.0.1:" + SERVER_PORT + "/ && exit 0;"
+                    + " kill -0 " + pid + " || exit 1; sleep 1; done; exit 1",
+                STARTUP_WAIT_SECONDS * 3L);
+        } catch (IOException e) {
+            throw new BeeProvisioningException("OpenCode server for bee " + bee.id()
+                + " did not start; " + LOG_PATH + ":\n" + logTail(runner), e);
+        }
+    }
+
+    private String logTail(CommandRunner runner) throws InterruptedException {
+        try {
+            return runner.execute("tail -n " + LOG_TAIL_LINES + " " + LOG_PATH).trim();
+        } catch (IOException e) {
+            return "(log unavailable)";
         }
     }
 
@@ -168,7 +210,7 @@ public class OpencodeBeeKeeper implements BeeKeeper {
 
     private boolean isResponsive(CommandRunner runner) {
         try {
-            runner.execute("opencode --version", 5);
+            runner.execute(ShellQuote.quote(resolveBinary(runner)) + " --version", 5);
             return true;
         } catch (IOException | InterruptedException e) {
             return false;

@@ -121,6 +121,12 @@ class ContainerGroveE2ETest {
         await().atMost(GROVE_DORMANT_TIMEOUT).pollInterval(POLL_INTERVAL)
             .untilAsserted(() -> assertThat(beeState(groveId, beeId)).as("bee: hatched")
                 .isIn(BeeState.HIBERNATING, BeeState.BUZZING));
+        await().atMost(GROVE_DORMANT_TIMEOUT).pollInterval(POLL_INTERVAL)
+            .untilAsserted(() -> assertThat(beeState(groveId, beeId)).as("bee: buzzing").isEqualTo(BeeState.BUZZING));
+        String beeLog = provider.vine(plot).commands().execute("cat /tmp/opencode.log || true");
+        assertThat(provider.vine(plot).commands().execute(
+            "curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:4096/").trim())
+            .as("bee: opencode server answers inside the fruit; log: %s", beeLog).matches("\\d{3}");
 
         ResponseEntity<BeeResponse> smoked = restTemplate.postForEntity(
             "/api/groves/" + groveId + "/bees/" + beeId + "/actions/smoke", null, BeeResponse.class);
