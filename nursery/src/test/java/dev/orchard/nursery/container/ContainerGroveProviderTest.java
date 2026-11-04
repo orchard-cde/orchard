@@ -229,7 +229,24 @@ class ContainerGroveProviderTest {
         local.on(c -> c.startsWith("docker ps -aq"), "stopped1\n");
 
         assertThat(provider.inspect(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
-        assertThat(local.commands).noneMatch(c -> c.startsWith("docker ps -aq"));
+    }
+
+    @Test
+    void inspect_stoppedPrimaryRunningComposeSidecar_rooted() throws Exception {
+        local.on(c -> c.contains("[ -d "), "present");
+        primaryInProject("primary");
+        local.on(c -> c.equals(PROJECT_PS), "side\n");
+
+        assertThat(provider.inspect(planted(PlotState.DORMANT)).get().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    @Test
+    void inspect_wholeComposeProjectStopped_isDormant() throws Exception {
+        local.on(c -> c.contains("[ -d "), "present");
+        primaryInProject("primary");
+
+        assertThat(provider.inspect(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).contains(PROJECT_PS);
     }
 
     @Test

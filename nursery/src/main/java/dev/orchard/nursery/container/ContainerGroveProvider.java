@@ -150,8 +150,8 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
                 if (!present.equals("present")) {
                     return container.withState(PlotState.WITHERED);
                 }
-                List<String> running = ContainerLabels.containerIds(engine, container.runtime().cli(), container.id(),
-                    false, PROBE_TIMEOUT_SECONDS);
+                List<String> running = plotContainerIds(container.runtime().cli(), container.id(), false,
+                    PROBE_TIMEOUT_SECONDS);
                 return container.withState(running.isEmpty() ? PlotState.DORMANT : PlotState.ROOTED);
             } catch (IOException e) {
                 throw new CompletionException(e);
