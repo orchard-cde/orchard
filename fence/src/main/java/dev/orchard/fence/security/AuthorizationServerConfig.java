@@ -5,7 +5,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
-import dev.orchard.fence.web.DeviceActivationController;
+import dev.orchard.fence.web.DeviceFlowController;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -57,7 +57,7 @@ public class AuthorizationServerConfig {
                         .authenticationConverter(publicClientAuthenticationConverter)
                         .authenticationProvider(publicClientAuthenticationProvider))
                 .deviceAuthorizationEndpoint(deviceAuthorization -> deviceAuthorization
-                        .verificationUri(DeviceActivationController.PATH))
+                        .verificationUri(DeviceFlowController.PATH))
                 // Unlike the authorization_code flow, Spring's device-verification
                 // provider ignores ClientSettings#isRequireAuthorizationConsent() and
                 // always requires consent unless a prior consent record exists; wire it

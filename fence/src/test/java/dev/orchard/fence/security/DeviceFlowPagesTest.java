@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @ActiveProfiles("standalone")
 @AutoConfigureMockMvc
-class DeviceActivationPageTest {
+class DeviceFlowPagesTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -56,5 +56,11 @@ class DeviceActivationPageTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/html"))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("return to your terminal")));
+    }
+
+    @Test
+    void bareRootIsNotTheSuccessPage() throws Exception {
+        mockMvc.perform(get("/"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Device approved"))));
     }
 }
