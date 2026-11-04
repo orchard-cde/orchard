@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -147,8 +148,11 @@ class ContainerGroveProviderTest {
 
     private void primaryInProject(String primary) {
         local.on(c -> c.startsWith(PLOT_PS_ALL), primary + "\n");
-        local.on(c -> c.startsWith("docker inspect") && c.endsWith("'" + primary + "'"), "proj\n");
+        local.on(c -> c.startsWith("docker inspect") && c.contains("com.docker.compose.project")
+            && c.endsWith("'" + primary + "'"), "proj\n");
     }
+
+    private static final String IMAGE_INSPECT = "docker inspect --format '{{.Config.Image}}' ";
 
     @Test
     void dormant_nothingRunning_isDormantWithoutStop() throws Exception {
@@ -256,11 +260,65 @@ class ContainerGroveProviderTest {
 
         provider.uproot(plot).get();
 
+        String projectOf = "docker inspect --format '{{index .Config.Labels \"com.docker.compose.project\"}}' ";
         assertThat(local.commands).containsExactly(
             "docker ps -aq --filter 'label=orchard.plot.id=" + plot.id() + "'",
+            IMAGE_INSPECT + "'c1'",
+            projectOf + "'c1'",
+            projectOf + "'c2'",
             "docker rm -f 'c1'",
             "docker rm -f 'c2'",
             "rm -rf '" + root.resolve(plot.id().toString()) + "'");
+    }
+
+    @Test
+    void uproot_composeProject_removesItsContainersNetworksAndVolumes() throws Exception {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        primaryInProject("primary");
+        local.on(c -> c.equals(PROJECT_PS_ALL), "side\n");
+        local.on(c -> c.startsWith("docker network ls -q --filter 'label=com.docker.compose.project=proj'"), "net1\n");
+        local.on(c -> c.startsWith("docker volume ls -q --filter 'label=com.docker.compose.project=proj'"), "vol1\n");
+
+        provider.uproot(plot).get();
+
+        assertThat(local.commands).containsSubsequence(
+            "docker rm -f 'primary'",
+            "docker rm -f 'side'",
+            "docker network rm 'net1'",
+            "docker volume rm -f 'vol1'",
+            "rm -rf '" + root.resolve(plot.id().toString()) + "'");
+    }
+
+    @Test
+    void uproot_rootOwnedFiles_clearsThemAsRootFromTheFruitImageThenRetries() throws Exception {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        String plotDir = root.resolve(plot.id().toString()).toString();
+        local.on(c -> c.startsWith(PLOT_PS_ALL), "c1\n");
+        local.on(c -> c.startsWith(IMAGE_INSPECT), "vsc-it's-img\n");
+        AtomicInteger rmAttempts = new AtomicInteger();
+        local.fail(c -> c.startsWith("rm -rf") && rmAttempts.incrementAndGet() == 1);
+
+        provider.uproot(plot).get();
+
+        String clear = "docker run --rm --pull never --network none -u 0 -v '" + plotDir + ":/plot'"
+            + " --entrypoint /bin/sh 'vsc-it'\\''s-img' -c 'rm -rf /plot/..?* /plot/.[!.]* /plot/*'";
+        assertThat(local.commands).containsSubsequence("docker rm -f 'c1'", "rm -rf '" + plotDir + "'", clear,
+            "rm -rf '" + plotDir + "'");
+    }
+
+    @Test
+    void uproot_rootClearDoesNotHelp_failsNamingTheDirectoryToRemoveByHand() {
+        ContainerPlot plot = planted(PlotState.DORMANT);
+        local.on(c -> c.startsWith(PLOT_PS_ALL), "c1\n");
+        local.on(c -> c.startsWith(IMAGE_INSPECT), "img\n");
+        local.fail(c -> c.startsWith("rm -rf"));
+
+        assertThatThrownBy(() -> provider.uproot(plot).get())
+            .isInstanceOf(ExecutionException.class)
+            .hasMessageContaining("could not remove plot directory " + root.resolve(plot.id().toString()))
+            .hasMessageContaining("needs removing by hand");
+        assertThat(local.commands).filteredOn(c -> c.startsWith("rm -rf")).hasSize(2);
+        assertThat(local.commands).anyMatch(c -> c.startsWith("docker run --rm"));
     }
 
     @Test
@@ -324,11 +382,15 @@ class ContainerGroveProviderTest {
     }
 
     @Test
-    void uproot_rmRfFails_completesExceptionally() {
+    void uproot_rmRfFails_noContainerImage_failsNamingTheDirectoryToRemoveByHand() {
+        ContainerPlot plot = planted(PlotState.DORMANT);
         local.fail(c -> c.startsWith("rm -rf"));
 
-        assertThatThrownBy(() -> provider.uproot(planted(PlotState.DORMANT)).get())
-            .isInstanceOf(ExecutionException.class);
+        assertThatThrownBy(() -> provider.uproot(plot).get())
+            .isInstanceOf(ExecutionException.class)
+            .hasMessageContaining("could not remove plot directory " + root.resolve(plot.id().toString()))
+            .hasMessageContaining("needs removing by hand");
+        assertThat(local.commands).noneMatch(c -> c.startsWith("docker run"));
     }
 
     @Test

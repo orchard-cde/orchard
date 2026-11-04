@@ -169,15 +169,22 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
             log.info("Uprooting plot {}", container.id());
             Path plotDir = checkedPlotDir(container);
             try {
+                String cli = null;
+                String image = null;
                 if (container.runtime() != null) {
-                    String cli = container.runtime().cli();
-                    for (String id : ContainerLabels.containerIds(engine, cli, container.id(), true,
-                            TEARDOWN_TIMEOUT_SECONDS)) {
+                    cli = container.runtime().cli();
+                    List<String> primaries = ContainerLabels.containerIds(engine, cli, container.id(), true,
+                        TEARDOWN_TIMEOUT_SECONDS);
+                    image = primaries.isEmpty() ? null : imageOf(cli, primaries.getFirst());
+                    Set<String> projects = composeProjects(cli, primaries, TEARDOWN_TIMEOUT_SECONDS);
+                    for (String id : primaries) {
                         engine.execute(cli + " rm -f " + ShellQuote.quote(id), TEARDOWN_TIMEOUT_SECONDS);
                     }
+                    for (String project : projects) {
+                        ContainerLabels.removeComposeProject(engine, cli, project, TEARDOWN_TIMEOUT_SECONDS);
+                    }
                 }
-                engine.execute("rm -rf " + ShellQuote.quote(plotDir.toString()),
-                    TEARDOWN_TIMEOUT_SECONDS);
+                removePlotDir(plotDir, cli, image);
             } catch (IOException e) {
                 throw new CompletionException(e);
             } catch (InterruptedException e) {
@@ -218,19 +225,61 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
             throws IOException, InterruptedException {
         Set<String> ids = new LinkedHashSet<>(
             ContainerLabels.containerIds(engine, cli, plotId, includeStopped, timeoutSeconds));
-        for (String project : composeProjects(cli, plotId, timeoutSeconds)) {
+        List<String> primaries = ContainerLabels.containerIds(engine, cli, plotId, true, timeoutSeconds);
+        for (String project : composeProjects(cli, primaries, timeoutSeconds)) {
             ids.addAll(ContainerLabels.composeContainerIds(engine, cli, project, includeStopped, timeoutSeconds));
         }
         return List.copyOf(ids);
     }
 
-    private Set<String> composeProjects(String cli, UUID plotId, long timeoutSeconds)
+    private Set<String> composeProjects(String cli, List<String> primaries, long timeoutSeconds)
             throws IOException, InterruptedException {
         Set<String> projects = new LinkedHashSet<>();
-        for (String id : ContainerLabels.containerIds(engine, cli, plotId, true, timeoutSeconds)) {
+        for (String id : primaries) {
             ContainerLabels.composeProject(engine, cli, id, timeoutSeconds).ifPresent(projects::add);
         }
         return projects;
+    }
+
+    private String imageOf(String cli, String containerId) throws InterruptedException {
+        try {
+            String image = engine.execute(cli + " inspect --format " + ShellQuote.quote("{{.Config.Image}}") + " "
+                + ShellQuote.quote(containerId), PROBE_TIMEOUT_SECONDS).trim();
+            return image.isEmpty() ? null : image;
+        } catch (IOException e) {
+            log.warn("Could not read the image of container {}", containerId, e);
+            return null;
+        }
+    }
+
+    /**
+     * Removes the plot directory. Files the fruit wrote as container root are owned by host root
+     * under a rootful engine, so when the host {@code rm} fails the directory's contents are cleared
+     * as root by a throwaway container from the fruit's image, and the host {@code rm} retried.
+     */
+    private void removePlotDir(Path plotDir, String cli, String image) throws IOException, InterruptedException {
+        String rm = "rm -rf " + ShellQuote.quote(plotDir.toString());
+        try {
+            engine.execute(rm, TEARDOWN_TIMEOUT_SECONDS);
+            return;
+        } catch (IOException e) {
+            if (image == null) {
+                throw removeByHand(plotDir, e);
+            }
+            log.warn("Removing {} failed; clearing it as root from image {}", plotDir, image, e);
+        }
+        try {
+            engine.execute(cli + " run --rm --pull never --network none -u 0 -v "
+                + ShellQuote.quote(plotDir + ":/plot") + " --entrypoint /bin/sh " + ShellQuote.quote(image)
+                + " -c " + ShellQuote.quote("rm -rf /plot/..?* /plot/.[!.]* /plot/*"), TEARDOWN_TIMEOUT_SECONDS);
+            engine.execute(rm, TEARDOWN_TIMEOUT_SECONDS);
+        } catch (IOException e) {
+            throw removeByHand(plotDir, e);
+        }
+    }
+
+    private static IOException removeByHand(Path plotDir, IOException cause) {
+        return new IOException("could not remove plot directory " + plotDir + "; it needs removing by hand", cause);
     }
 
     private Path plotRoot(UUID id) {
