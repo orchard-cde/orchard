@@ -2,6 +2,7 @@ package dev.orchard.vine;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -43,6 +44,16 @@ public final class ContainerLabels {
                                                    boolean includeStopped, long timeoutSeconds)
             throws IOException, InterruptedException {
         return ps(runner, cli, composeFilter(project), includeStopped, timeoutSeconds);
+    }
+
+    /** The compose project the container belongs to, from its labels; works on a stopped container. */
+    public static Optional<String> composeProject(CommandRunner runner, String cli, String containerId,
+                                                  long timeoutSeconds)
+            throws IOException, InterruptedException {
+        String format = "{{index .Config.Labels \"" + COMPOSE_PROJECT + "\"}}";
+        String project = runner.execute(cli + " inspect --format " + ShellQuote.quote(format) + " "
+            + ShellQuote.quote(containerId), timeoutSeconds).trim();
+        return project.isEmpty() || project.equals("<no value>") ? Optional.empty() : Optional.of(project);
     }
 
     /**

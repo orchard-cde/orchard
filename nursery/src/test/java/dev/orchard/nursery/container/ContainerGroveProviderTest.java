@@ -19,7 +19,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -138,9 +140,68 @@ class ContainerGroveProviderTest {
         assertThat(provider.water(planted(PlotState.DORMANT)).get().state()).isEqualTo(PlotState.ROOTED);
     }
 
+    private static final String PLOT_PS = "docker ps -q --filter 'label=orchard.plot.id=";
+    private static final String PLOT_PS_ALL = "docker ps -aq --filter 'label=orchard.plot.id=";
+    private static final String PROJECT_PS = "docker ps -q --filter 'label=com.docker.compose.project=proj'";
+    private static final String PROJECT_PS_ALL = "docker ps -aq --filter 'label=com.docker.compose.project=proj'";
+
+    private void primaryInProject(String primary) {
+        local.on(c -> c.startsWith(PLOT_PS_ALL), primary + "\n");
+        local.on(c -> c.startsWith("docker inspect") && c.endsWith("'" + primary + "'"), "proj\n");
+    }
+
     @Test
-    void dormant_isDormant() throws Exception {
+    void dormant_nothingRunning_isDormantWithoutStop() throws Exception {
         assertThat(provider.dormant(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).noneMatch(c -> c.startsWith("docker stop"));
+    }
+
+    @Test
+    void dormant_stopsPrimaryAndComposeSidecars_thenDormant() throws Exception {
+        primaryInProject("primary");
+        local.on(c -> c.startsWith(PLOT_PS), "primary\n", "");
+        local.on(c -> c.equals(PROJECT_PS), "primary\nside\n", "");
+
+        assertThat(provider.dormant(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).containsOnlyOnce("docker stop 'primary' 'side'");
+        assertThat(local.commands.indexOf("docker stop 'primary' 'side'"))
+            .isLessThan(local.commands.lastIndexOf(PROJECT_PS));
+    }
+
+    @Test
+    void dormant_stoppedPrimaryRunningSidecar_stopsSidecar() throws Exception {
+        primaryInProject("primary");
+        local.on(c -> c.equals(PROJECT_PS), "side\n", "");
+
+        assertThat(provider.dormant(planted(PlotState.ROOTED)).get().state()).isEqualTo(PlotState.DORMANT);
+        assertThat(local.commands).contains("docker stop 'side'");
+    }
+
+    @Test
+    void dormant_containerStillRunning_completesExceptionally() {
+        local.on(c -> c.startsWith(PLOT_PS), "primary\n");
+
+        assertThatThrownBy(() -> provider.dormant(planted(PlotState.ROOTED)).get())
+            .isInstanceOf(ExecutionException.class)
+            .hasMessageContaining("still has running containers");
+        assertThat(local.commands).contains("docker stop 'primary'");
+    }
+
+    @Test
+    void dormant_stopFails_completesExceptionally() {
+        local.on(c -> c.startsWith(PLOT_PS), "primary\n");
+        local.fail(c -> c.startsWith("docker stop"));
+
+        assertThatThrownBy(() -> provider.dormant(planted(PlotState.ROOTED)).get())
+            .isInstanceOf(ExecutionException.class);
+    }
+
+    @Test
+    void dormant_engineDown_completesExceptionally() {
+        local.fail(c -> c.startsWith("docker ps"));
+
+        assertThatThrownBy(() -> provider.dormant(planted(PlotState.ROOTED)).get())
+            .isInstanceOf(ExecutionException.class);
     }
 
     @Test
@@ -305,7 +366,7 @@ class ContainerGroveProviderTest {
 
     private static final class ScriptedRunner extends ContainerCommandRunner {
         final List<String> commands = new ArrayList<>();
-        private final Map<Predicate<String>, String> outputs = new LinkedHashMap<>();
+        private final Map<Predicate<String>, Deque<String>> outputs = new LinkedHashMap<>();
         private final List<Predicate<String>> failures = new ArrayList<>();
         boolean throwRuntime;
 
@@ -313,8 +374,9 @@ class ContainerGroveProviderTest {
             super(null);
         }
 
-        void on(Predicate<String> match, String output) {
-            outputs.put(match, output);
+        /** Answers matching commands with each output in turn, then keeps repeating the last. */
+        void on(Predicate<String> match, String... outputs) {
+            this.outputs.put(match, new ArrayDeque<>(List.of(outputs)));
         }
 
         void fail(Predicate<String> match) {
@@ -331,7 +393,8 @@ class ContainerGroveProviderTest {
                 throw new IOException("exit 1: " + command);
             }
             return outputs.entrySet().stream().filter(e -> e.getKey().test(command))
-                .map(Map.Entry::getValue).findFirst().orElse("");
+                .map(e -> e.getValue().size() > 1 ? e.getValue().poll() : e.getValue().peek())
+                .findFirst().orElse("");
         }
 
         @Override

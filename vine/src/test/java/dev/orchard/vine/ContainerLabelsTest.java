@@ -92,6 +92,21 @@ class ContainerLabelsTest {
     }
 
     @Test
+    void composeProject_readsTheContainersProjectLabel() throws Exception {
+        ScriptedRunner runner = new ScriptedRunner(" proj \n");
+
+        assertThat(ContainerLabels.composeProject(runner, "docker", "c1", 4)).contains("proj");
+        assertThat(runner.commands).containsExactly(
+            "docker inspect --format '{{index .Config.Labels \"com.docker.compose.project\"}}' 'c1'");
+    }
+
+    @Test
+    void composeProject_noLabel_isEmpty() throws Exception {
+        assertThat(ContainerLabels.composeProject(new ScriptedRunner("\n"), "podman", "c1", 4)).isEmpty();
+        assertThat(ContainerLabels.composeProject(new ScriptedRunner("<no value>\n"), "docker", "c1", 4)).isEmpty();
+    }
+
+    @Test
     void removeComposeProject_removesContainersNetworksAndVolumesByLabel() throws Exception {
         ScriptedRunner runner = new ScriptedRunner(c -> c.contains(" ps -aq ") ? "c1\nc2\n"
             : c.contains(" network ls ") ? "n1\n" : c.contains(" volume ls ") ? "v1\nv2\n" : "");

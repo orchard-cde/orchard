@@ -21,7 +21,9 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -116,7 +118,26 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     @Override
     public CompletableFuture<Plot> dormant(Plot plot) {
         ContainerPlot container = narrow(plot);
-        return CompletableFuture.completedFuture(container.withState(PlotState.DORMANT));
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String cli = container.runtime().cli();
+                List<String> running = plotContainerIds(cli, container.id(), false, TEARDOWN_TIMEOUT_SECONDS);
+                if (!running.isEmpty()) {
+                    engine.execute(cli + " stop " + ShellQuote.join(running), TEARDOWN_TIMEOUT_SECONDS);
+                }
+                List<String> stillRunning = plotContainerIds(cli, container.id(), false, PROBE_TIMEOUT_SECONDS);
+                if (!stillRunning.isEmpty()) {
+                    throw new IllegalStateException("plot " + container.id() + " still has running containers: "
+                        + stillRunning);
+                }
+                return container.withState(PlotState.DORMANT);
+            } catch (IOException e) {
+                throw new CompletionException(e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new CompletionException(e);
+            }
+        }, executor);
     }
 
     @Override
@@ -187,6 +208,29 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
             throw new IllegalStateException("refusing to delete unexpected plot directory: " + workspace);
         }
         return dir;
+    }
+
+    /**
+     * The plot's containers: its labelled primaries and every container of their compose projects,
+     * which the primaries name in their labels whether or not they are running.
+     */
+    private List<String> plotContainerIds(String cli, UUID plotId, boolean includeStopped, long timeoutSeconds)
+            throws IOException, InterruptedException {
+        Set<String> ids = new LinkedHashSet<>(
+            ContainerLabels.containerIds(engine, cli, plotId, includeStopped, timeoutSeconds));
+        for (String project : composeProjects(cli, plotId, timeoutSeconds)) {
+            ids.addAll(ContainerLabels.composeContainerIds(engine, cli, project, includeStopped, timeoutSeconds));
+        }
+        return List.copyOf(ids);
+    }
+
+    private Set<String> composeProjects(String cli, UUID plotId, long timeoutSeconds)
+            throws IOException, InterruptedException {
+        Set<String> projects = new LinkedHashSet<>();
+        for (String id : ContainerLabels.containerIds(engine, cli, plotId, true, timeoutSeconds)) {
+            ContainerLabels.composeProject(engine, cli, id, timeoutSeconds).ifPresent(projects::add);
+        }
+        return projects;
     }
 
     private Path plotRoot(UUID id) {
