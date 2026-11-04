@@ -158,6 +158,8 @@ public class FruitGrower {
                 ports = List.of();
             }
 
+            trustWorkspace(target, result.containerId(), result.remoteWorkspaceFolder());
+
             Fruit grown = rebuildWithRealName(fruit, realName)
                 .withContainerDetails(result.containerId(), ports)
                 .withComposeProjectName(result.composeProjectName())
@@ -274,6 +276,7 @@ public class FruitGrower {
             }
 
             List<Fruit.PortMapping> ports = getPortMappings(target, containerId);
+            trustWorkspace(target, containerId, seed.workspaceFolder() != null ? seed.workspaceFolder() : "/workspace");
 
             if (seed.onCreateCommand() != null) {
                 runLifecycleCommand(seed.onCreateCommand(),
@@ -379,6 +382,7 @@ public class FruitGrower {
             // Record container details before executing lifecycle commands so the fruit
             // retains a containerId reference for cleanup even if a command fails.
             fruit = fruit.withContainerDetails(containerId, ports).withRemoteEnv("/projects", null);
+            trustWorkspace(target, containerId, "/projects");
 
             // devfile events.postStart — runs inside the container, after it starts.
             if (seed.postStartCommand() != null) {
@@ -791,6 +795,28 @@ public class FruitGrower {
             throws IOException, InterruptedException {
         String output = executeSsh(target.runner(), target.runtime().cli() + " port " + ShellQuote.quote(containerId) + " 2>/dev/null || echo ''");
         return parsePortOutput(output);
+    }
+
+    /**
+     * Marks the workspace as a git {@code safe.directory} system-wide in the fruit, so git works for any user
+     * even when the bind mount's ownership doesn't match (macOS file sharing reports the mount root as root).
+     * Best-effort: an image without git, or a failure here, never fails the grow.
+     */
+    private void trustWorkspace(ExecTarget target, String containerId, String workspaceFolder)
+            throws InterruptedException {
+        if (workspaceFolder == null) {
+            return;
+        }
+        String folder = ShellQuote.quote(workspaceFolder);
+        String command = "command -v git >/dev/null 2>&1 || exit 0; "
+            + "git config --system --get-all safe.directory 2>/dev/null | grep -qxF " + folder
+            + " || git config --system --add safe.directory " + folder;
+        try {
+            executeSsh(target.runner(),
+                ShellQuote.join(ContainerExec.of(target.runtime().cli(), containerId).user("root").shell(command).argv()));
+        } catch (IOException e) {
+            log.warn("Could not mark {} as a git safe.directory in container {}", workspaceFolder, containerId, e);
+        }
     }
 
     private void inContainer(ExecTarget target, String containerId, String command)

@@ -3,6 +3,7 @@ package dev.orchard.e2e;
 import dev.orchard.api.dto.BeeResponse;
 import dev.orchard.api.dto.CreateBeeRequest;
 import dev.orchard.api.dto.GroveResponse;
+import dev.orchard.api.service.GroveService;
 import dev.orchard.core.model.BeeState;
 import dev.orchard.core.model.BeeType;
 import dev.orchard.core.model.ContainerPlot;
@@ -61,6 +62,9 @@ class ContainerGroveE2ETest {
     @Autowired
     private ProviderRegistry providers;
 
+    @Autowired
+    private GroveService groveService;
+
     @LocalServerPort
     private int port;
 
@@ -88,6 +92,8 @@ class ContainerGroveE2ETest {
 
             assertThat(provider.vine(plot).commands().execute("cat /etc/os-release"))
                 .as("vine: os-release").contains("NAME=");
+            assertThat(provider.vine(plot).commands().execute("cd /workspaces/* && git rev-parse HEAD").trim())
+                .as("vine: git works in the workspace as the remote user").matches("[0-9a-f]{40}");
 
             smokeBee(groveId, provider, plot);
 
@@ -147,11 +153,12 @@ class ContainerGroveE2ETest {
         }
     }
 
-    private static ContainerPlot containerPlot(GroveResponse grove, PlotState state) {
-        var info = grove.plot();
-        return new ContainerPlot(info.id(), grove.id(), info.providerId(), info.id().toString(), state,
-            null, null, WORKSPACE_ROOT.resolve(info.id().toString()).resolve(info.id().toString()),
-            info.runtime(), null, null);
+    /** The persisted plot, so the vine runs as the fruit's remote user exactly as a real grove does. */
+    private ContainerPlot containerPlot(GroveResponse grove, PlotState state) {
+        ContainerPlot plot = (ContainerPlot) groveService.getGrove(grove.id()).orElseThrow().plot();
+        assertThat(plot.state()).as("plot state").isEqualTo(state);
+        assertThat(plot.remoteUser()).as("plot remote user").isNotBlank();
+        return plot;
     }
 
     private static String containersLabelled(ContainerPlot plot) throws Exception {

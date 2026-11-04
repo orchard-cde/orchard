@@ -761,6 +761,42 @@ class FruitGrowerTest {
     }
 
     @Test
+    void growViaCli_marksTheWorkspaceAGitSafeDirectoryAsRoot() throws Exception {
+        DevcontainerCli cli = mock(DevcontainerCli.class);
+        var runner = new RecordingRunner();
+        Fruit fruit = buddedFruit(defaultSeed());
+        when(cli.up(any(), eq(fruit.id()), eq(fruit.containerName()), any()))
+            .thenReturn(new DevcontainerCliResult("c123", null, "vscode", "/workspaces/app"));
+
+        new FruitGrower(cli, true, mock(ApplicationEventPublisher.class))
+            .grow(target(runner, "/h/ws", ContainerRuntime.PODMAN), fruit).get();
+
+        assertThat(runner.commands).anyMatch(c -> c.startsWith("'podman' 'exec' '-u' 'root' 'c123' '/bin/sh' '-c' ")
+            && c.contains("git config --system --add safe.directory '\\''/workspaces/app'\\''"));
+    }
+
+    @Test
+    void growViaCli_safeDirectoryFailure_stillRipens() throws Exception {
+        DevcontainerCli cli = mock(DevcontainerCli.class);
+        CommandRunner runner = mock(CommandRunner.class);
+        when(runner.execute(anyString())).thenAnswer(inv -> {
+            if (inv.<String>getArgument(0).contains("safe.directory")) {
+                throw new IOException("exit 1");
+            }
+            return "";
+        });
+        Fruit fruit = buddedFruit(defaultSeed());
+        when(cli.up(any(), eq(fruit.id()), eq(fruit.containerName()), any()))
+            .thenReturn(new DevcontainerCliResult("c123", null, "vscode", "/workspaces/app"));
+
+        Fruit result = new FruitGrower(cli, true, mock(ApplicationEventPublisher.class))
+            .grow(execTarget(runner), fruit).get();
+
+        assertThat(result.state()).isEqualTo(FruitState.RIPE);
+        verify(runner).execute(argThat((String c) -> c.contains("safe.directory")));
+    }
+
+    @Test
     void inContainer_commandWithSingleQuote_staysOneArgument() throws Exception {
         var runner = new RecordingRunner();
         var seed = Seed.devcontainer().name("n").image("img")
