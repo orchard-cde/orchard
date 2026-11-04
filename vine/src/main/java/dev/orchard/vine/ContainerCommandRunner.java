@@ -10,7 +10,7 @@ import java.util.function.Consumer;
  * blank {@code engineUrl} inherits the process environment; otherwise every command gets
  * {@code DOCKER_HOST} and {@code CONTAINER_HOST} set to it, which also reaches the CLIs the
  * devcontainer CLI starts itself. Only {@code unix://} and {@code tcp://} are accepted; TLS for
- * {@code tcp://} is not supported yet.
+ * {@code tcp://} is not supported.
  */
 public class ContainerCommandRunner implements CommandRunner {
 

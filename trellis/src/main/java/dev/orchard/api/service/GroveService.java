@@ -154,7 +154,8 @@ public class GroveService {
                 waitForCloudInit(provider, plantedPlot);
             }
 
-            // Verify devcontainer CLI was installed by cloud-init's runcmd block
+            // The pinned devcontainer CLI must be on the host channel: cloud-init installs it on a VM;
+            // a container plot uses the trellis host's.
             provider.verifyDevcontainerCli(plantedPlot, devcontainerCliConfig.version());
 
             String commitSha = cloneRepository(provider, plantedPlot, grove.repositoryUrl(), grove.branch());

@@ -420,10 +420,6 @@ class GroveServiceTest {
         verifyNoInteractions(defaultProvider);
     }
 
-    // ------------------------------------------------------------------
-    // Substrate-aware provisioning (#88)
-    // ------------------------------------------------------------------
-
     private static final String HOSTILE_BRANCH = "main;touch /tmp/pwned";
     private static final String HOSTILE_URL = "https://x/y.git$(id)";
 
