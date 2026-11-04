@@ -45,7 +45,7 @@ orchard/
 ├── apiary/     # AI assistant integration - BeeKeeper extension point
 ├── fence/      # Authentication subsystem - OAuth2/OIDC device flow + token issuance
 ├── trellis/    # Spring Boot app entry point (port 8080) + REST controllers, services, DTOs
-├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to VM plots
+├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to VM plots and exec sessions into container groves
 └── trowel/     # Picocli CLI application
 ```
 

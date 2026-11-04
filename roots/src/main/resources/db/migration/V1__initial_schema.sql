@@ -37,6 +37,8 @@ CREATE TABLE fruits (
     container_name VARCHAR(255),
     service_name VARCHAR(255),
     compose_project_name VARCHAR(255),
+    workspace_folder VARCHAR(1024),
+    remote_user VARCHAR(255),
     state VARCHAR(50) NOT NULL,
     seed_json TEXT,
     budded_at TIMESTAMP WITH TIME ZONE,

@@ -52,8 +52,8 @@ public interface GroveProvider {
     CompletableFuture<Plot> plantSubstrate(Plot draft);
 
     /**
-     * Powers a {@link PlotState#DORMANT} plot back on over its existing disk. Throws
-     * {@link IllegalStateException} on the calling thread for any other plot state. The future
+     * Powers a {@link PlotState#DORMANT} plot back on over its existing disk; callers pass only
+     * DORMANT plots ({@code GroveService.startGrove} enforces it). The future
      * resolves to the plot {@link PlotState#ROOTED} with a refreshed endpoint once it is reachable,
      * and completes exceptionally if it could not be started.
      */
