@@ -272,7 +272,7 @@ class ContainerExecCommandTest {
 
         command.destroy(run.channel);
 
-        assertThat(process.forciblyDestroyed).isTrue();
+        awaitForciblyDestroyed(process);
         verify(child, atLeastOnce()).destroyForcibly();
     }
 
@@ -299,6 +299,11 @@ class ContainerExecCommandTest {
         command.destroy(run.channel);
         release.countDown();
 
+        awaitForciblyDestroyed(process);
+    }
+
+    /** The kill can land on the run thread after {@code destroy} returns, when destroy beat the process's registration. */
+    private static void awaitForciblyDestroyed(ScriptedProcess process) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 5_000;
         while (!process.forciblyDestroyed && System.currentTimeMillis() < deadline) {
             Thread.sleep(10);
