@@ -66,6 +66,31 @@ class TokenAuthProviderTest {
     }
 
     @Test
+    void authorizationHeader_keepsStoredRefreshTokenWhenResponseOmitsIt() throws Exception {
+        writeConfig("http://localhost:17779", "old-access", "old-refresh", pastExpiry());
+
+        FenceClient fenceClient = new FenceClient("http://localhost:17779", "test-client-id") {
+            @Override
+            public TokenResponse refreshToken(String refreshToken) throws FenceAuthException {
+                return new TokenResponse("refreshed-access", null, "Bearer", 3600);
+            }
+        };
+
+        var provider = new TokenAuthProvider("old-access", "old-refresh", pastExpiry(), "http://localhost:17779", "test-client-id") {
+            @Override
+            FenceClient createFenceClient() {
+                return fenceClient;
+            }
+        };
+
+        provider.authorizationHeader();
+
+        OrchardConfig.Target target = ConfigLoader.load().targets().get("local");
+        assertThat(target.accessToken()).isEqualTo("refreshed-access");
+        assertThat(target.refreshToken()).isEqualTo("old-refresh");
+    }
+
+    @Test
     void authorizationHeader_persistsRefreshedTokens() throws Exception {
         writeConfig("http://localhost:17779", "old-access", "old-refresh", pastExpiry());
 

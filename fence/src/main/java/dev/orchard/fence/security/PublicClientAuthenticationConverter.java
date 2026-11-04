@@ -18,18 +18,20 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Authenticates public device-flow clients (like trowel-cli) that have no client secret,
- * so none of Spring Authorization Server's built-in client authentication methods apply.
- * The device authorization request and the device-code-grant token request both carry
- * only a {@code client_id} parameter; the actual registered-client lookup is left to
- * {@link DeviceClientAuthenticationProvider}.
+ * Authenticates public clients (like trowel-cli) that have no client secret, so none of
+ * Spring Authorization Server's built-in client authentication methods apply. The device
+ * authorization request, the device-code-grant token request and the refresh-token-grant
+ * token request all carry only a {@code client_id} parameter; the actual registered-client
+ * lookup, which rejects clients that are not registered as public, is left to
+ * {@link PublicClientAuthenticationProvider}.
  */
-public final class DeviceClientAuthenticationConverter implements AuthenticationConverter {
+public final class PublicClientAuthenticationConverter implements AuthenticationConverter {
 
     private final RequestMatcher deviceAuthorizationRequestMatcher;
     private final RequestMatcher deviceAccessTokenRequestMatcher;
+    private final RequestMatcher refreshTokenRequestMatcher;
 
-    public DeviceClientAuthenticationConverter(String deviceAuthorizationEndpointUri, String tokenEndpointUri) {
+    public PublicClientAuthenticationConverter(String deviceAuthorizationEndpointUri, String tokenEndpointUri) {
         RequestMatcher clientIdParameterMatcher =
                 request -> request.getParameter(OAuth2ParameterNames.CLIENT_ID) != null;
 
@@ -43,15 +45,24 @@ public final class DeviceClientAuthenticationConverter implements Authentication
                 PathPatternRequestMatcher.pathPattern(HttpMethod.POST, tokenEndpointUri),
                 deviceCodeGrantMatcher,
                 clientIdParameterMatcher);
+
+        RequestMatcher refreshTokenGrantMatcher = request ->
+                AuthorizationGrantType.REFRESH_TOKEN.getValue().equals(request.getParameter(OAuth2ParameterNames.GRANT_TYPE));
+        this.refreshTokenRequestMatcher = new AndRequestMatcher(
+                PathPatternRequestMatcher.pathPattern(HttpMethod.POST, tokenEndpointUri),
+                refreshTokenGrantMatcher,
+                clientIdParameterMatcher);
     }
 
     @Override
     public Authentication convert(HttpServletRequest request) {
         if (!this.deviceAuthorizationRequestMatcher.matches(request)
-                && !this.deviceAccessTokenRequestMatcher.matches(request)) {
+                && !this.deviceAccessTokenRequestMatcher.matches(request)
+                && !this.refreshTokenRequestMatcher.matches(request)) {
             return null;
         }
-        if (request.getHeader(HttpHeaders.AUTHORIZATION) != null) {
+        if (request.getHeader(HttpHeaders.AUTHORIZATION) != null
+                || request.getParameter(OAuth2ParameterNames.CLIENT_SECRET) != null) {
             // Let the standard converters handle clients that did authenticate.
             return null;
         }

@@ -71,7 +71,7 @@ public class TokenAuthProvider implements AuthProvider {
             oldTarget.cultivator(),
             oldTarget.fenceServer(),
             tokenResponse.accessToken(),
-            tokenResponse.refreshToken(),
+            tokenResponse.refreshToken() != null ? tokenResponse.refreshToken() : oldTarget.refreshToken(),
             newExpiresAt,
             oldTarget.sshKey()
         ));

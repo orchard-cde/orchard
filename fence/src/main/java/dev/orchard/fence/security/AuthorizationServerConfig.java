@@ -41,20 +41,20 @@ public class AuthorizationServerConfig {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 new OAuth2AuthorizationServerConfigurer();
 
-        // trowel-cli is a public client (no client secret) and can't authenticate via any
-        // of Spring Authorization Server's built-in methods; both the device authorization
-        // request and the device-code-grant token request only ever carry a client_id.
-        DeviceClientAuthenticationConverter deviceClientAuthenticationConverter =
-                new DeviceClientAuthenticationConverter(
+        // trowel-cli and orchard-ui are public clients (no client secret) and can't
+        // authenticate via any of Spring Authorization Server's built-in methods; the device
+        // authorization, device-code and refresh-token requests only ever carry a client_id.
+        PublicClientAuthenticationConverter publicClientAuthenticationConverter =
+                new PublicClientAuthenticationConverter(
                         authorizationServerSettings.getDeviceAuthorizationEndpoint(),
                         authorizationServerSettings.getTokenEndpoint());
-        DeviceClientAuthenticationProvider deviceClientAuthenticationProvider =
-                new DeviceClientAuthenticationProvider(registeredClientRepository);
+        PublicClientAuthenticationProvider publicClientAuthenticationProvider =
+                new PublicClientAuthenticationProvider(registeredClientRepository);
 
         authorizationServerConfigurer
                 .clientAuthentication(clientAuthentication -> clientAuthentication
-                        .authenticationConverter(deviceClientAuthenticationConverter)
-                        .authenticationProvider(deviceClientAuthenticationProvider))
+                        .authenticationConverter(publicClientAuthenticationConverter)
+                        .authenticationProvider(publicClientAuthenticationProvider))
                 .deviceAuthorizationEndpoint(Customizer.withDefaults())
                 // Unlike the authorization_code flow, Spring's device-verification
                 // provider ignores ClientSettings#isRequireAuthorizationConsent() and
