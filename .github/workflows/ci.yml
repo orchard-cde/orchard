@@ -3,6 +3,12 @@ name: CI
 on:
   push:
     branches: ['**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitattributes'
+      - '.gitignore'
   pull_request:
     branches: [main]
 
@@ -23,34 +29,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      # Filtering here instead of on the trigger keeps the required "Build & Test"
-      # check reporting on docs-only changes; a path-skipped workflow never reports.
+      # Pull requests are filtered here rather than on the trigger so the required
+      # "Build & Test" check still reports on docs-only changes.
       - name: Detect code changes
         id: changes
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BEFORE: ${{ github.event.before }}
         run: |
-          set -euo pipefail
-          case "$GITHUB_EVENT_NAME" in
-            pull_request)
-              files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
-              ;;
-            push)
-              if [[ "$BEFORE" =~ ^0+$ ]] || ! git fetch --quiet --depth=1 origin "$BEFORE"; then
-                echo "No previous commit to compare against; building"
-                echo "code=true" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-              files=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
-              ;;
-            *)
-              echo "code=true" >> "$GITHUB_OUTPUT"
-              exit 0
-              ;;
-          esac
-          if grep -Ev '\.md$|^docs/|^LICENSE$|^\.gitattributes$|^\.gitignore$' <<<"$files" | grep -q .; then
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          if grep -Eqv '\.md$|^docs/|^LICENSE$|^\.gitattributes$|^\.gitignore$' <<<"$files"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "Only documentation changed; skipping the build"
