@@ -44,11 +44,7 @@ public class GroveSseRegistry {
     GroveSseRegistry(ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>> emitters,
                      Duration heartbeatInterval) {
         this.emitters = emitters;
-        this.heartbeat = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "sse-heartbeat");
-            thread.setDaemon(true);
-            return thread;
-        });
+        this.heartbeat = Executors.newSingleThreadScheduledExecutor();
         long millis = heartbeatInterval.toMillis();
         heartbeat.scheduleAtFixedRate(this::heartbeatTick, millis, millis, TimeUnit.MILLISECONDS);
     }
