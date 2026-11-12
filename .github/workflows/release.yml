@@ -50,8 +50,8 @@ jobs:
       - name: Build native images
         run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} :trellis:nativeCompile :trowel:nativeCompile
 
-      - name: Build fence
-        run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} :fence:bootJar
+      - name: Build fence and gateway
+        run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} :fence:bootJar :gateway:bootJar
 
       - name: Smoke test trowel
         run: |
@@ -83,6 +83,7 @@ jobs:
           rm trowel
 
           cp ../fence/build/libs/fence-${{ steps.version.outputs.version }}.jar .
+          cp ../gateway/build/libs/gateway-${{ steps.version.outputs.version }}.jar .
 
           sha256sum *.tar.gz *.jar | tee checksums-sha256.txt
 
@@ -119,4 +120,5 @@ jobs:
             trowel-linux-amd64.tar.gz
             trowel-linux-arm64.tar.gz
             fence-*.jar
+            gateway-*.jar
             checksums-sha256.txt
