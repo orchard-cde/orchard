@@ -42,7 +42,7 @@ jobs:
             exit 0
           fi
           files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
-          if grep -Eqv '\.md$|^docs/|^LICENSE$|^\.gitattributes$|^\.gitignore$' <<<"$files"; then
+          if grep -Ev '\.md$|^docs/|^LICENSE$|^\.gitattributes$|^\.gitignore$' <<<"$files" | grep -q .; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "Only documentation changed; skipping the build"
