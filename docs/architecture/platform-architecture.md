@@ -84,6 +84,8 @@ Trowel communicates with the Trellis backend over **HTTP/1.1 REST with JSON** pa
 | `grove clear` | DELETE | `/api/groves/{id}` | Destroy a grove |
 | `status` | GET | `/api/health` | Check server health |
 
+Bees and fruits are grove-scoped. Bees live under `/api/groves/{id}/bees` (see [Bee Architecture §7](bee-architecture.md#7-rest-api)); fruits have no endpoint of their own and are returned as the `fruits` array of `GET /api/groves/{id}`. There is no `/api/bees` collection and no `/api/groves/{id}/fruits`.
+
 ```mermaid
 sequenceDiagram
     participant CLI as Trowel CLI
@@ -414,7 +416,7 @@ The synchronous transition is itself a `transitionIfState` from the state the re
 
 `ripenFruit` reruns the post-start hook the way it ran at plant time: for a devcontainer grown through the devcontainer CLI, `devcontainer run-user-commands --container-id … --skip-post-attach` (the CLI's markers skip create-time hooks and rerun `postStartCommand` once per container start); for devfile and legacy-docker fruit, `docker exec`. A failing post-start hook is logged at WARN and the fruit is still `RIPE`; only containers that do not start fail the ripen.
 
-Start does not wake bees; the cultivator wakes each with `POST /api/bees/{id}/actions/wake`.
+Start does not wake bees; the cultivator wakes each with `POST /api/groves/{groveId}/bees/{beeId}/actions/wake`.
 
 Every async write goes through `advance`: one transaction runs `GroveRepository.transitionIfState` (`UPDATE … WHERE id = ? AND state = ?`) and, only if it updated a row, saves the fruit rows and publishes `GroveStateChangedEvent`. Zero rows means the grove moved on, so the stop or start abandons without further provider calls or writes; a `clear` committed mid-stop or mid-start therefore wins.
 
