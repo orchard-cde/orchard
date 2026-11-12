@@ -95,7 +95,8 @@ class FenceLoginE2ETest {
                         "--orchard.security.oauth2.enabled=true",
                         "--spring.security.oauth2.resourceserver.jwt.issuer-uri=" + fenceUrl,
                         "--orchard.qemu.auto-provision=false",
-                        "--orchard.qemu.base-image-path=/tmp/orchard/images/base.qcow2");
+                        "--orchard.qemu.base-image-path=" + System.getProperty(
+                                "orchard.qemu.base-image-path", "/tmp/orchard/images/ubuntu-22.04-base.qcow2"));
         trellisPort = Integer.parseInt(trellisContext.getEnvironment().getProperty("local.server.port"));
     }
 
