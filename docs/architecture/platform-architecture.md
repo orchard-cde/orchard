@@ -118,6 +118,7 @@ Backend implementation in `trellis/src/main/java/dev/orchard/api/controller/Grov
 - **Endpoint**: `GET /api/groves/{groveId}/events` (`text/event-stream`)
 - **Event name**: `grove-state-changed`
 - **Timeout**: 30 minutes
+- **Heartbeat**: `GroveSseRegistry` writes an SSE comment to every open stream every 15 seconds, so idle connections survive proxy read timeouts (nginx defaults to 60 seconds); `EventSource` ignores comments
 - Emitters managed via `ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>>`
 
 The `useGroveEvents()` hook auto-reconnects with exponential backoff (max 3 retries).
