@@ -20,7 +20,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 - **VS Code Remote SSH**: Connect directly from your local VS Code
 - **Web UI (Canopy)**: Manage workspaces from your browser — [separate repo](https://github.com/orchard-cde/orchard-ui)
 - **CLI (Trowel)**: Plant and manage groves from the command line
-- **AI Coding Assistants**: Attach AI-powered Bees (OpenCode, Claude Code, Gemini, Codex) to any grove
+- **AI Coding Assistants**: Attach AI-powered Bees to any grove — OpenCode today; Claude Code ([#41](https://github.com/orchard-cde/orchard/issues/41)), Gemini ([#42](https://github.com/orchard-cde/orchard/issues/42)) and Codex ([#43](https://github.com/orchard-cde/orchard/issues/43)) are planned
 
 ## Quick Start
 
@@ -104,10 +104,33 @@ java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar grove connect <grove-i
 
 Pre-built native binaries are available for each [release](https://github.com/orchard-cde/orchard/releases):
 
-| Binary | linux-amd64 | linux-arm64 | macos-arm64 |
-|---|---|---|---|
-| **orchard-server** | `orchard-server-linux-amd64.tar.gz` | `orchard-server-linux-arm64.tar.gz` | `orchard-server-macos-arm64.tar.gz` |
-| **trowel** | `trowel-linux-amd64.tar.gz` | `trowel-linux-arm64.tar.gz` | `trowel-macos-arm64.tar.gz` |
+| Binary | linux-amd64 | linux-arm64 |
+|---|---|---|
+| **orchard-server** | `orchard-server-linux-amd64.tar.gz` | `orchard-server-linux-arm64.tar.gz` |
+| **trowel** | `trowel-linux-amd64.tar.gz` | `trowel-linux-arm64.tar.gz` |
+
+macOS binaries are not published yet ([#146](https://github.com/orchard-cde/orchard/issues/146)).
+On macOS, build from source with `./gradlew :trowel:fatJar` (see [Using the CLI](#using-the-cli-trowel)).
+
+### Install trowel
+
+The install script downloads the latest trowel release for your OS and architecture,
+verifies its checksum, and installs it to `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orchard-cde/orchard/main/scripts/install-trowel.sh | bash
+```
+
+Pin a release by passing its tag, and override the install directory with `TROWEL_INSTALL_DIR`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orchard-cde/orchard/main/scripts/install-trowel.sh | bash -s v0.6.0
+TROWEL_INSTALL_DIR=/usr/local/bin bash scripts/install-trowel.sh
+```
+
+If the install directory is not on your `PATH`, the script prints the `export PATH=...` line to add.
+
+### Manual download
 
 Each tarball contains a single statically-linked executable. Download, extract, and run:
 
@@ -115,15 +138,6 @@ Each tarball contains a single statically-linked executable. Download, extract, 
 # Example: download and run trowel on Linux amd64
 curl -L https://github.com/orchard-cde/orchard/releases/latest/download/trowel-linux-amd64.tar.gz | tar xz
 ./trowel --version
-```
-
-### macOS Gatekeeper
-
-On macOS, you may need to remove the quarantine attribute before running:
-
-```bash
-xattr -d com.apple.quarantine orchard-server
-xattr -d com.apple.quarantine trowel
 ```
 
 ### Verify Checksums
@@ -149,8 +163,8 @@ sha256sum --check checksums-sha256.txt --ignore-missing
 ├───────────────┬────────────────────────┬────────────────────┤
 │    Harvest    │        Nursery         │       Apiary       │
 │  Devcontainer │    VM Provisioning     │   BeeKeeper (AI)   │
-│    Parsing    │    (QEMU, AWS, GCP,    │ OpenCode, Claude,  │
-│               │         Azure)         │   Gemini, Codex    │
+│    Parsing    │    (QEMU, AWS, GCP,    │      OpenCode      │
+│               │         Azure)         │  (others planned)  │
 ├───────────────┴────────────────────────┴────────────────────┤
 │                    Vine (Substrate Exec)                    │
 │            CommandRunner / SshVine / SshExecutor            │
@@ -262,7 +276,8 @@ cultivator = "<your-uuid>"
 - [x] Real-time status updates (Server-Sent Events)
 - [x] VS Code extension for direct integration — [orchard-vscode-extension](https://github.com/orchard-cde/orchard-vscode-extension)
 - [ ] Multi-container workspace support
-- [ ] AI coding assistant integration (BeeKeeper adapters — OpenCode, Claude Code, Gemini, Codex)
+- [x] AI coding assistant integration — OpenCode BeeKeeper adapter
+- [ ] Claude Code, Gemini and Codex BeeKeeper adapters ([#41](https://github.com/orchard-cde/orchard/issues/41), [#42](https://github.com/orchard-cde/orchard/issues/42), [#43](https://github.com/orchard-cde/orchard/issues/43))
 
 ## License
 
