@@ -122,7 +122,6 @@ sequenceDiagram
     participant BKR as BeeKeeperRegistry
     participant BK as BeeKeeper
     participant CR as CommandRunner
-    participant CS as CredentialService
     participant DB as BeeRepository
     participant EP as EventPublisher
 
@@ -135,6 +134,7 @@ sequenceDiagram
         Note over BS: POST /api/groves/{id}/bees
     end
 
+    BS->>BS: CredentialResolver.resolve(cultivatorId, beeType) merged into spec config
     BS->>DB: save(Bee.hatch()) → state: HATCHING
     BS->>EP: BeeStateChangedEvent(HATCHING)
 
@@ -148,10 +148,6 @@ sequenceDiagram
     BK-->>BS: Bee (HIBERNATING)
     BS->>DB: update(bee)
     BS->>EP: BeeStateChangedEvent(HIBERNATING)
-
-    BS->>CS: decrypt(cultivatorId, beeType)
-    CS-->>BS: API key
-    BS->>CR: Write key to temp file (chmod 600)
 
     BS->>BK: release(bee, runner)
     BK->>CR: Start agent process
@@ -282,39 +278,22 @@ Bee persistence in the schema under `roots/src/main/resources/db/migration/`:
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | UUID | PK |
-| `grove_id` | UUID | FK → groves, NOT NULL |
-| `bee_type` | VARCHAR | NOT NULL |
-| `state` | VARCHAR | NOT NULL |
-| `process_id` | VARCHAR | nullable |
-| `config` | JSONB | nullable |
+| `grove_id` | UUID | FK → groves ON DELETE CASCADE, NOT NULL |
+| `type` | VARCHAR(20) | NOT NULL — `BeeType` name |
+| `state` | VARCHAR(20) | NOT NULL — `BeeState` name |
+| `spec_type` | VARCHAR(20) | NOT NULL — `BeeSpec.type()` name |
+| `spec_version` | VARCHAR(50) | nullable |
+| `process_id` | VARCHAR(100) | nullable |
 | `hatched_at` | TIMESTAMP WITH TIME ZONE | NOT NULL |
 | `started_at` | TIMESTAMP WITH TIME ZONE | nullable |
 | `stopped_at` | TIMESTAMP WITH TIME ZONE | nullable |
 
-**`bee_preferences` table:**
+`BeeSpec.configOverrides` is not persisted: `BeeEntity.toModel()` rebuilds the spec with an empty map, so overrides, and any credentials merged into them (§11), exist only for the lifetime of the attach request.
 
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `cultivator_id` | UUID | FK → cultivators, UNIQUE |
-| `default_bee_type` | VARCHAR | nullable |
-| `auto_attach` | BOOLEAN | DEFAULT false |
-| `config` | JSONB | nullable |
+**Repository:**
+- `BeeRepository extends JpaRepository<BeeEntity, UUID>` — `findByGroveId(UUID)`, `findByGroveIdAndState(UUID, BeeState)`, and `deleteRemovable(beeId, groveId, removableStates)`, a single conditional `DELETE` so a concurrent state change cannot slip in between check and delete.
 
-**`bee_credentials` table:**
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | UUID | PK |
-| `cultivator_id` | UUID | FK → cultivators |
-| `bee_type` | VARCHAR | NOT NULL |
-| `encrypted_key` | TEXT | NOT NULL |
-| `created_at` | TIMESTAMP WITH TIME ZONE | NOT NULL |
-| | | UNIQUE(cultivator_id, bee_type) |
-
-**Repositories:**
-- `BeeRepository extends CrudRepository<BeeEntity, UUID>` — `findByGroveId(UUID)`
-- `BeePreferencesRepository extends CrudRepository<BeePreferencesEntity, UUID>` — `findByCultivatorId(UUID)`
-- `BeeCredentialRepository extends CrudRepository<BeeCredentialEntity, UUID>` — `findByCultivatorIdAndBeeType(UUID, String)`
+Per-cultivator Bee preferences and stored credentials have no tables or repositories; that design is tracked in [#45](https://github.com/orchard-cde/orchard/issues/45).
 
 ---
 
@@ -327,35 +306,26 @@ Bee persistence in the schema under `roots/src/main/resources/db/migration/`:
 | POST | `/api/groves/{id}/bees` | Attach a Bee | Grove must be FLOURISHING |
 | GET | `/api/groves/{id}/bees` | List all Bees in a Grove | |
 | GET | `/api/groves/{id}/bees/{beeId}` | Get Bee status | |
+| GET | `/api/groves/{id}/bees/status` | Swarm summary: Bee count by state | |
 | DELETE | `/api/groves/{id}/bees/{beeId}` | Remove a stopped Bee | 204; 409 unless HIBERNATING or SMOKED |
-| POST | `/api/groves/{id}/bees/{beeId}/actions/wake` | Restart a Bee | Valid from HIBERNATING or SMOKED → BUZZING |
-| GET | `/api/groves/{id}/bees/swarm-status` | Summary of all active Bees | |
+| POST | `/api/groves/{id}/bees/{beeId}/actions/wake` | Restart a Bee | HIBERNATING → BUZZING; any other state is returned unchanged |
+| POST | `/api/groves/{id}/bees/{beeId}/actions/smoke` | Stop a Bee | → SMOKED |
+
+Bees are grove-scoped. `BeeController` is mounted only at `/api/groves/{groveId}/bees`; there is no `/api/bees` collection.
 
 **DTOs:**
 ```java
-record CreateBeeRequest(String beeType, String version, Map<String, String> configOverrides) {}
+record CreateBeeRequest(@NotNull BeeType beeType, String version, Map<String, String> configOverrides) {}
 
-record BeeResponse(UUID id, UUID groveId, String type, String state,
-                   Instant hatchedAt, Instant startedAt, Instant stoppedAt) {
-    static BeeResponse fromModel(Bee bee) { /* ... */ }
-}
+record BeeResponse(UUID id, UUID groveId, BeeType type, BeeState state, String processId,
+                   Instant hatchedAt, Instant startedAt, Instant stoppedAt) {}
 
-record SwarmStatusResponse(UUID groveId, int totalBees, int activeBees,
-                           List<BeeResponse> bees) {}
+record SwarmStatusResponse(UUID groveId, int totalBees, Map<String, Integer> byState) {}
 ```
 
 ### 7.2 Cultivator Preferences
 
-Uses `/me` to resolve cultivator from auth context, preventing unauthorized access:
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/cultivators/me/bee-preferences` | Get agent defaults |
-| PUT | `/api/cultivators/me/bee-preferences` | Set agent defaults |
-| POST | `/api/cultivators/me/bee-credentials` | Store encrypted API key |
-| DELETE | `/api/cultivators/me/bee-credentials/{type}` | Remove an API key |
-
-**Security:** API never returns decrypted keys. GET for credentials returns only type + createdAt.
+Not implemented. There are no `/api/cultivators/me/bee-preferences` or `/api/cultivators/me/bee-credentials` endpoints; see [#45](https://github.com/orchard-cde/orchard/issues/45).
 
 ---
 
@@ -486,36 +456,9 @@ the publishing thread, so it is not a safe ordering key. Clients subscribe first
 
 ## 11. Security — Credential Storage
 
-| Aspect | Detail |
-|--------|--------|
-| **Encryption** | AES-256-GCM with server-side key from `orchard.security.encryption-key` property or Spring Vault |
-| **Storage** | `bee_credentials` table, `encrypted_key` column |
-| **Injection** | Decrypted key written to temp file on VM via SSH (`chmod 600`), sourced by agent, then deleted |
-| **API exposure** | Never return decrypted keys in responses |
-| **Key rotation** | v1: overwrite on re-store. Formal rotation out of scope |
+Credentials are not stored. `BeeService.attachBee` calls `CredentialResolver.resolve(cultivatorId, beeType)` and merges the result into the request's `configOverrides` before the Bee is saved. The only implementation, `NoOpCredentialResolver`, returns an empty map. The merged config is never persisted (§6) and never returned by the API (`BeeResponse` carries no config), so `spec.configOverrides` must be treated as sensitive wherever it is logged or broadcast.
 
-```mermaid
-sequenceDiagram
-    participant API as REST API
-    participant CS as CredentialService
-    participant DB as bee_credentials
-    participant SSH as SshExecutor
-    participant VM as Grove VM
-
-    Note over API: POST /api/cultivators/me/bee-credentials
-    API->>CS: store(cultivatorId, beeType, plainKey)
-    CS->>CS: encrypt(plainKey, serverKey)
-    CS->>DB: save(encryptedKey)
-
-    Note over CS: During Bee provisioning
-    CS->>DB: find(cultivatorId, beeType)
-    DB-->>CS: encryptedKey
-    CS->>CS: decrypt(encryptedKey, serverKey)
-    CS->>SSH: write key to /tmp/.bee-creds-{uuid}
-    SSH->>VM: chmod 600 /tmp/.bee-creds-{uuid}
-    Note over VM: Agent sources credentials
-    SSH->>VM: rm /tmp/.bee-creds-{uuid}
-```
+Encrypted per-cultivator credential storage is tracked in [#45](https://github.com/orchard-cde/orchard/issues/45).
 
 ---
 
