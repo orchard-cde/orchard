@@ -16,7 +16,8 @@ import java.util.UUID;
  * SSE endpoint for grove activity, for clients that cannot use WebSocket/STOMP.
  * <p>
  * GET /api/groves/{id}/events emits {@code grove-state-changed} on grove transitions and
- * {@code bee-state-changed} / {@code bee-removed} from {@link BeeEventBroadcaster}.
+ * {@code bee-attached} / {@code bee-state-changed} / {@code bee-removed} from
+ * {@link BeeEventBroadcaster}.
  */
 @RestController
 @RequestMapping("/api/groves")

@@ -1,6 +1,7 @@
 package dev.orchard.api.service;
 
 import dev.orchard.api.dto.CreateBeeRequest;
+import dev.orchard.api.event.BeeAttachedEvent;
 import dev.orchard.api.event.BeeRemovedEvent;
 import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
@@ -31,6 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -171,6 +173,38 @@ class BeeServiceTest {
             beeService.attachBee(groveId, cultivatorId, request);
 
             verify(keeper, timeout(500)).install(any(Bee.class), any(BeeSpec.class), any(CommandRunner.class), eq(VM_WORKSPACE));
+        }
+    }
+
+    @Test
+    void attachBee_publishesBeeAttachedEventAfterCommit() {
+        setupFlourishingGrove();
+        BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
+        stubCommandRunner();
+        when(keeper.install(any(), any(), any(), any()))
+            .thenReturn(CompletableFuture.completedFuture(Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE))));
+        List<TransactionSynchronization> registered = newSynchronizationSink();
+
+        try (MockedStatic<TransactionSynchronizationManager> tsm =
+                mockStatic(TransactionSynchronizationManager.class)) {
+            stubActiveTransaction(tsm, registered);
+
+            Bee bee = beeService.attachBee(groveId, cultivatorId,
+                new CreateBeeRequest(BeeType.CLAUDE_CODE, "1.0", Map.of("apiKey", "secret")));
+
+            verify(eventPublisher, never()).publishEvent(any());
+
+            registered.forEach(TransactionSynchronization::afterCommit);
+
+            ArgumentCaptor<BeeAttachedEvent> published = ArgumentCaptor.forClass(BeeAttachedEvent.class);
+            verify(eventPublisher).publishEvent(published.capture());
+            BeeAttachedEvent event = published.getValue();
+            assertThat(event.beeId()).isEqualTo(bee.id());
+            assertThat(event.groveId()).isEqualTo(groveId);
+            assertThat(event.beeType()).isEqualTo(BeeType.CLAUDE_CODE);
+            assertThat(event.version()).isEqualTo("1.0");
+            assertThat(event.state()).isEqualTo(BeeState.HATCHING);
+            assertThat(event.attachedAt()).isEqualTo(bee.hatchedAt());
         }
     }
 

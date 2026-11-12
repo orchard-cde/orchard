@@ -1,6 +1,7 @@
 package dev.orchard.api.service;
 
 import dev.orchard.api.dto.CreateBeeRequest;
+import dev.orchard.api.event.BeeAttachedEvent;
 import dev.orchard.api.event.BeeRemovedEvent;
 import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
@@ -79,6 +80,8 @@ public class BeeService {
 
         BeeEntity entity = BeeEntity.fromModel(bee);
         beeRepository.save(entity);
+        publishAfterCommit(new BeeAttachedEvent(
+            bee.id(), groveId, spec.type(), spec.version(), bee.state(), bee.hatchedAt()));
 
         final Bee beeToProvision = bee;
         final BeeKeeper keeper = beeKeeper;

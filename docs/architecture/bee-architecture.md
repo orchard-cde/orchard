@@ -430,10 +430,10 @@ a listener needing its own transaction must ask for one.
 
 | Channel | Topic / Endpoint | Event names | Status |
 |---------|-----------------|-------------|--------|
-| SSE | `GET /api/groves/{groveId}/events` | `bee-state-changed`, `bee-removed` | Implemented |
+| SSE | `GET /api/groves/{groveId}/events` | `bee-attached`, `bee-state-changed`, `bee-removed` | Implemented |
 | WebSocket/STOMP | `/topic/grove.{groveId}.bees` | — | Not implemented |
 
-`BeeEventBroadcaster` listens for both events and relays them onto the grove SSE stream,
+`BeeEventBroadcaster` listens for all three events and relays them onto the grove SSE stream,
 alongside the `grove-state-changed` events `GroveEventController` puts there. Both push through
 `GroveSseRegistry`, which owns the per-grove emitter set, so one connection carries grove and
 bee activity.
@@ -441,6 +441,9 @@ bee activity.
 Payloads stringify UUIDs and enum names and render timestamps as ISO-8601:
 
 ```
+event:bee-attached
+data:{"beeId":"...","groveId":"...","beeType":"OPENCODE","version":null,"state":"HATCHING","attachedAt":"2026-09-21T12:34:56Z"}
+
 event:bee-state-changed
 data:{"beeId":"...","groveId":"...","previousState":"HIBERNATING","newState":"BUZZING","changedAt":"2026-09-21T12:34:56Z"}
 
