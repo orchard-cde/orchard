@@ -8,9 +8,9 @@ class PlotSizesTest {
 
     @Test
     void defaultTiersHaveTheBuiltInResources() {
-        assertThat(PlotSizes.DEFAULT.small()).isEqualTo(new PlotResources(2, 4096, 20));
-        assertThat(PlotSizes.DEFAULT.medium()).isEqualTo(new PlotResources(4, 8192, 40));
-        assertThat(PlotSizes.DEFAULT.large()).isEqualTo(new PlotResources(8, 16384, 80));
+        assertThat(PlotSizes.DEFAULT.small()).isEqualTo(new PlotResources(2, 4096, 50));
+        assertThat(PlotSizes.DEFAULT.medium()).isEqualTo(new PlotResources(4, 8192, 100));
+        assertThat(PlotSizes.DEFAULT.large()).isEqualTo(new PlotResources(8, 16384, 200));
     }
 
     @Test
@@ -48,9 +48,9 @@ class PlotSizesTest {
 
     @Test
     void vmSpecTiers_areBuiltFromTheDefaultCatalogue() {
-        assertThat(VmSpec.small()).isEqualTo(new VmSpec(2, 4096, 20, "small", null));
-        assertThat(VmSpec.medium()).isEqualTo(new VmSpec(4, 8192, 40, "medium", null));
-        assertThat(VmSpec.large()).isEqualTo(new VmSpec(8, 16384, 80, "large", null));
+        assertThat(VmSpec.small()).isEqualTo(new VmSpec(2, 4096, 50, "small", null));
+        assertThat(VmSpec.medium()).isEqualTo(new VmSpec(4, 8192, 100, "medium", null));
+        assertThat(VmSpec.large()).isEqualTo(new VmSpec(8, 16384, 200, "large", null));
         assertThat(VmSpec.of("medium", PlotSizes.DEFAULT.medium())).isEqualTo(VmSpec.medium());
     }
 }
