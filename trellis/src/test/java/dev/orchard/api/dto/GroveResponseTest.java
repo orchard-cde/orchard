@@ -64,7 +64,7 @@ class GroveResponseTest {
         assertThat(plot.sshPort()).isEqualTo(2222);
         assertThat(plot.cpuCores()).isEqualTo(2);
         assertThat(plot.memoryMb()).isEqualTo(4096);
-        assertThat(plot.diskGb()).isEqualTo(20);
+        assertThat(plot.diskGb()).isEqualTo(50);
         assertThat(plot.runtime()).isNull();
     }
 

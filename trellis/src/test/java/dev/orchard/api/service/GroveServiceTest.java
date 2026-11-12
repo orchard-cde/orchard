@@ -180,7 +180,7 @@ class GroveServiceTest {
 
             ArgumentCaptor<SeedlingSpec> captor = ArgumentCaptor.forClass(SeedlingSpec.class);
             verify(defaultProvider).reserve(any(), captor.capture());
-            assertThat(captor.getValue()).isEqualTo(new SeedlingSpec("small", 2, 4096, 20, "ttyS1"));
+            assertThat(captor.getValue()).isEqualTo(new SeedlingSpec("small", 2, 4096, 50, "ttyS1"));
         }
     }
 
