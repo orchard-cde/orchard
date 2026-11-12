@@ -181,7 +181,9 @@ class BeeServiceTest {
         setupFlourishingGrove();
         BeeKeeper keeper = setupRegisteredKeeper(BeeType.CLAUDE_CODE);
         stubCommandRunner();
-        when(keeper.install(any(), any(), any(), any()))
+        // Provisioning runs on another thread after commit and may not reach install() before
+        // this test ends; the stub only keeps that thread quiet, so it must not be strict.
+        lenient().when(keeper.install(any(), any(), any(), any()))
             .thenReturn(CompletableFuture.completedFuture(Bee.hatching(groveId, BeeSpec.of(BeeType.CLAUDE_CODE))));
         List<TransactionSynchronization> registered = newSynchronizationSink();
 
