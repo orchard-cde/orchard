@@ -50,7 +50,10 @@ jobs:
       - name: Build native images
         run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} :trellis:nativeCompile :trowel:nativeCompile
 
+      # The jars are architecture-independent; one leg builds them so the merged
+      # download never holds two files with the same name.
       - name: Build fence and gateway
+        if: matrix.arch == 'amd64'
         run: ./gradlew -PreleaseVersion=${{ steps.version.outputs.version }} :fence:bootJar :gateway:bootJar
 
       - name: Smoke test trowel
@@ -82,10 +85,11 @@ jobs:
           tar czf trowel-${{ matrix.os }}-${{ matrix.arch }}.tar.gz trowel
           rm trowel
 
-          cp ../fence/build/libs/fence-${{ steps.version.outputs.version }}.jar .
-          cp ../gateway/build/libs/gateway-${{ steps.version.outputs.version }}.jar .
-
-          sha256sum *.tar.gz *.jar | tee checksums-sha256.txt
+      - name: Package jars
+        if: matrix.arch == 'amd64'
+        run: |
+          cp fence/build/libs/fence-${{ steps.version.outputs.version }}.jar artifacts/
+          cp gateway/build/libs/gateway-${{ steps.version.outputs.version }}.jar artifacts/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -107,8 +111,11 @@ jobs:
           pattern: release-*
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -la
+      - name: Checksum artifacts
+        run: |
+          ls -la
+          for jar in fence-*.jar gateway-*.jar; do unzip -tq "$jar"; done
+          sha256sum *.tar.gz *.jar | tee checksums-sha256.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3  # v3
@@ -122,3 +129,12 @@ jobs:
             fence-*.jar
             gateway-*.jar
             checksums-sha256.txt
+
+      - name: Verify published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir published
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir published
+          cd published
+          sha256sum --check --strict checksums-sha256.txt
