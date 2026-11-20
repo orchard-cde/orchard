@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -42,8 +43,18 @@ public final class LocalCommandRunner implements CommandRunner {
 
     @Override
     public String execute(String command, long timeoutSeconds) throws IOException, InterruptedException {
+        return run(command, null, timeoutSeconds);
+    }
+
+    @Override
+    public String execute(String command, byte[] stdin, long timeoutSeconds) throws IOException, InterruptedException {
+        return run(command, Objects.requireNonNull(stdin, "stdin"), timeoutSeconds);
+    }
+
+    private String run(String command, byte[] stdin, long timeoutSeconds) throws IOException, InterruptedException {
         log.debug("Executing local command: {}", command);
         Process process = start(command);
+        Thread feeder = stdin == null ? null : StdinFeeder.feed(process, stdin);
 
         StringBuffer stdout = new StringBuffer();
         Thread stdoutReader = Thread.ofVirtual().name("local-exec-stdout")
@@ -53,6 +64,9 @@ public final class LocalCommandRunner implements CommandRunner {
             .start(() -> drain(process.getErrorStream(), stderr, STDERR_CAPTURE_CAP_BYTES));
 
         awaitExit(process, timeoutSeconds, command, stdoutReader, stderrReader);
+        if (feeder != null) {
+            feeder.join(DRAIN_GRACE_MS);
+        }
 
         int exitCode = process.exitValue();
         if (exitCode != 0) {

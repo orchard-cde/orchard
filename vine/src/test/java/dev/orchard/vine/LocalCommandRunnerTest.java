@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
@@ -22,6 +23,19 @@ class LocalCommandRunnerTest {
     @Test
     void execute_returnsStdout() throws Exception {
         assertThat(runner.execute("echo hi")).isEqualTo("hi\n");
+    }
+
+    @Test
+    void execute_withStdin_feedsChild() throws Exception {
+        assertThat(runner.execute("cat", "héllo\n".getBytes(StandardCharsets.UTF_8), 10)).isEqualTo("héllo\n");
+    }
+
+    @Test
+    void execute_withLargeStdin_doesNotDeadlock() throws Exception {
+        byte[] oneMiB = new byte[1024 * 1024];
+        java.util.Arrays.fill(oneMiB, (byte) 'x');
+
+        assertThat(runner.execute("wc -c", oneMiB, 30).trim()).isEqualTo("1048576");
     }
 
     @Test

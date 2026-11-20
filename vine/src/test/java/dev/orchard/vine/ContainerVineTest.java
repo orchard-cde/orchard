@@ -59,6 +59,14 @@ class ContainerVineTest {
             return "out";
         }
 
+        byte[] stdinSeen;
+
+        @Override
+        public String execute(String command, byte[] stdin, long timeoutSeconds) throws IOException {
+            stdinSeen = stdin;
+            return execute(command, timeoutSeconds);
+        }
+
         @Override
         public void executeStreaming(String command, Consumer<String> lineConsumer, long timeoutSeconds) {
             commands.add(command);
@@ -80,6 +88,17 @@ class ContainerVineTest {
         assertThat(local.commands).containsExactly(
             psCommand("docker"),
             "'docker' 'exec' 'abc' '/bin/sh' '-c' 'ls -la'");
+    }
+
+    @Test
+    void execute_withStdin_addsInteractiveFlag() throws Exception {
+        RecordingRunner local = new RecordingRunner();
+        byte[] stdin = "v".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        new ContainerVine(plot(ContainerRuntime.DOCKER), local).commands().execute("cat", stdin, 5);
+
+        assertThat(local.commands.getLast()).contains("'exec' '-i' 'abc'");
+        assertThat(local.stdinSeen).isSameAs(stdin);
+        assertThat(local.timeouts.getLast()).isEqualTo(5L);
     }
 
     @Test
