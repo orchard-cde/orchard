@@ -39,6 +39,26 @@ class LocalCommandRunnerTest {
     }
 
     @Test
+    void execute_withStdin_childExitsZeroWithoutConsuming_throws() {
+        byte[] oneMiB = new byte[1024 * 1024];
+        java.util.Arrays.fill(oneMiB, (byte) 'Q');
+
+        assertThatThrownBy(() -> runner.execute("head -c1 >/dev/null", oneMiB, 10))
+            .isInstanceOf(IOException.class)
+            .hasMessageContaining("stdin feed failed")
+            .hasMessageNotContaining("QQQ");
+    }
+
+    @Test
+    void execute_withStdin_childExitsNonZero_reportsExitCode() {
+        byte[] oneMiB = new byte[1024 * 1024];
+
+        assertThatThrownBy(() -> runner.execute("exit 3", oneMiB, 10))
+            .isInstanceOf(IOException.class)
+            .hasMessageContaining("exit code 3");
+    }
+
+    @Test
     void extraEnv_isVisibleToTheCommand() throws Exception {
         LocalCommandRunner withEnv = new LocalCommandRunner(Map.of("ORCHARD_TEST_EXTRA", "a b"));
 

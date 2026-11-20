@@ -54,7 +54,7 @@ public final class LocalCommandRunner implements CommandRunner {
     private String run(String command, byte[] stdin, long timeoutSeconds) throws IOException, InterruptedException {
         log.debug("Executing local command: {}", command);
         Process process = start(command);
-        Thread feeder = stdin == null ? null : StdinFeeder.feed(process, stdin);
+        StdinFeeder.Feed feeder = stdin == null ? null : StdinFeeder.feed(process, stdin);
 
         StringBuffer stdout = new StringBuffer();
         Thread stdoutReader = Thread.ofVirtual().name("local-exec-stdout")
@@ -69,6 +69,9 @@ public final class LocalCommandRunner implements CommandRunner {
         }
 
         int exitCode = process.exitValue();
+        if (exitCode == 0 && feeder != null && feeder.failed()) {
+            throw new IOException("stdin feed failed (child exited 0 without consuming its input): " + command);
+        }
         if (exitCode != 0) {
             throw failure(exitCode, command, stderr);
         }
