@@ -1,7 +1,9 @@
 package dev.orchard.api.controller;
 
+import dev.orchard.api.dto.SecretWarning;
 import dev.orchard.api.service.GatewayGroveService;
 import dev.orchard.api.service.GroveService;
+import dev.orchard.api.service.SecretService;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.ContainerSpec;
@@ -24,9 +26,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(GroveController.class)
@@ -42,6 +47,35 @@ class GroveControllerTest {
 
     @MockitoBean
     private GatewayGroveService gatewayGroveService;
+
+    @MockitoBean
+    private SecretService secretService;
+
+    @Test
+    void getGrove_includesMissingSecrets() throws Exception {
+        Grove grove = grove();
+        when(groveService.getGrove(grove.id())).thenReturn(Optional.of(grove));
+        when(secretService.missingFor(eq(grove.cultivatorId()), any()))
+            .thenReturn(List.of(new SecretWarning("GITHUB_TOKEN", "a token", "https://docs.example/t")));
+
+        mockMvc.perform(get("/api/groves/{groveId}", grove.id()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.missingSecrets[0].name").value("GITHUB_TOKEN"))
+            .andExpect(jsonPath("$.missingSecrets[0].description").value("a token"))
+            .andExpect(jsonPath("$.missingSecrets[0].documentationUrl").value("https://docs.example/t"));
+    }
+
+    @Test
+    void getGrove_noDeclaredSecrets_emptyArray() throws Exception {
+        Grove grove = grove();
+        when(groveService.getGrove(grove.id())).thenReturn(Optional.of(grove));
+        when(secretService.missingFor(any(), any())).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/groves/{groveId}", grove.id()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.missingSecrets").isArray())
+            .andExpect(jsonPath("$.missingSecrets").isEmpty());
+    }
 
     @Test
     void sshConfig_containerPlot_returns409() throws Exception {

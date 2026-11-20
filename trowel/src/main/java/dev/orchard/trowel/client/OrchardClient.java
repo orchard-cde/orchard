@@ -292,13 +292,16 @@ public class OrchardClient {
         PlotInfo plot,
         List<FruitInfo> fruits,
         String plantedAt,
-        String lastAccessedAt
+        String lastAccessedAt,
+        List<SecretWarning> missingSecrets
     ) {
         /** Returns the primary fruit (first in the list) for backward compatibility. */
         public FruitInfo primaryFruit() {
             return fruits != null && !fruits.isEmpty() ? fruits.getFirst() : null;
         }
     }
+
+    public record SecretWarning(String name, String description, String documentationUrl) {}
 
     public record PlotInfo(
         String kind,

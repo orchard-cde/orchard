@@ -52,6 +52,20 @@ class GroveResponseTest {
     }
 
     @Test
+    void fromModel_carriesWarnings() {
+        SecretWarning warning = new SecretWarning("GITHUB_TOKEN", "token", "https://docs.example/t");
+
+        GroveResponse response = GroveResponse.fromModel(grove(), null, List.of(warning));
+
+        assertThat(response.missingSecrets()).containsExactly(warning);
+    }
+
+    @Test
+    void fromModel_twoArg_isEmptyList() {
+        assertThat(GroveResponse.fromModel(grove(), null).missingSecrets()).isNotNull().isEmpty();
+    }
+
+    @Test
     void fromModel_vmPlot() {
         Grove grove = grove().withPlot(vmPlot(UUID.randomUUID()));
 
@@ -121,7 +135,7 @@ class GroveResponseTest {
         GroveResponse response = new GroveResponse(
             UUID.randomUUID(), "test", "url", "main", null,
             GroveState.FLOURISHING, null, null, List.of(fruit1, fruit2),
-            Instant.now(), Instant.now()
+            Instant.now(), Instant.now(), List.of()
         );
 
         assertThat(response.primaryFruit()).isEqualTo(fruit1);
@@ -132,7 +146,7 @@ class GroveResponseTest {
         GroveResponse response = new GroveResponse(
             UUID.randomUUID(), "test", "url", "main", null,
             GroveState.PREPARING, null, null, List.of(),
-            Instant.now(), Instant.now()
+            Instant.now(), Instant.now(), List.of()
         );
 
         assertThat(response.primaryFruit()).isNull();
@@ -143,7 +157,7 @@ class GroveResponseTest {
         GroveResponse response = new GroveResponse(
             UUID.randomUUID(), "test", "url", "main", null,
             GroveState.PREPARING, null, null, null,
-            Instant.now(), Instant.now()
+            Instant.now(), Instant.now(), List.of()
         );
 
         assertThat(response.primaryFruit()).isNull();

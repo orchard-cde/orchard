@@ -4,8 +4,10 @@ import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.api.service.GatewayGroveService;
 import dev.orchard.api.service.GroveService;
+import dev.orchard.api.service.SecretService;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.Grove;
+import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.VmPlot;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -23,14 +25,24 @@ public class GroveController {
 
     private final GroveService groveService;
     private final GatewayGroveService gatewayGroveService;
+    private final SecretService secretService;
 
-    public GroveController(GroveService groveService, GatewayGroveService gatewayGroveService) {
+    public GroveController(GroveService groveService, GatewayGroveService gatewayGroveService,
+                           SecretService secretService) {
         this.groveService = groveService;
         this.gatewayGroveService = gatewayGroveService;
+        this.secretService = secretService;
     }
 
     private GroveResponse toResponse(Grove grove) {
-        return GroveResponse.fromModel(grove, gatewayGroveService.connectionString(grove).orElse(null));
+        return GroveResponse.fromModel(
+            grove,
+            gatewayGroveService.connectionString(grove).orElse(null),
+            secretService.missingFor(grove.cultivatorId(), primarySeed(grove)));
+    }
+
+    private static Seed primarySeed(Grove grove) {
+        return grove.fruits() == null || grove.fruits().isEmpty() ? null : grove.fruits().getFirst().seed();
     }
 
     @PostMapping

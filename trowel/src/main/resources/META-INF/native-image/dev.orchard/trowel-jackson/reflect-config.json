@@ -32,6 +32,14 @@
     "allRecordComponents" : true
   },
   {
+    "name" : "dev.orchard.trowel.client.OrchardClient$SecretWarning",
+    "allDeclaredConstructors" : true,
+    "allPublicConstructors" : true,
+    "allDeclaredMethods" : true,
+    "allPublicMethods" : true,
+    "allRecordComponents" : true
+  },
+  {
     "name" : "dev.orchard.trowel.client.OrchardClient$HealthResponse",
     "allDeclaredConstructors" : true,
     "allPublicConstructors" : true,
