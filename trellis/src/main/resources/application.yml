@@ -42,6 +42,10 @@ management:
       show-details: always
 
 orchard:
+  knothole:
+    vault-path: ${user.home}/.orchard/knothole/vault
+    master-key-path: ${user.home}/.orchard/knothole/master.key
+
   gateway:
     ssh-host: localhost
     ssh-port: 2222
