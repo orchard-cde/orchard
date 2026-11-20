@@ -22,6 +22,12 @@ public class SecretCommand implements Callable<Integer> {
     @CommandLine.ParentCommand
     Trowel parent;
 
+    private static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,254}");
+
+    static boolean isValidName(String name) {
+        return name != null && NAME.matcher(name).matches();
+    }
+
     @Override
     public Integer call() {
         CommandLine.usage(this, System.out);
@@ -40,7 +46,7 @@ public class SecretCommand implements Callable<Integer> {
         @CommandLine.Parameters(index = "0", description = "Secret name")
         String name;
 
-        @CommandLine.Parameters(index = "1..*", arity = "0..*", hidden = true)
+        @CommandLine.Unmatched
         java.util.List<String> extra;
 
         @CommandLine.Option(names = "--value-file", description = "Read the value from this file")
@@ -51,6 +57,10 @@ public class SecretCommand implements Callable<Integer> {
             if (extra != null && !extra.isEmpty()) {
                 System.err.println("The secret value cannot be given on the command line; use --value-file, pipe it on stdin, or enter it at the prompt.");
                 spec.commandLine().usage(System.err);
+                return 2;
+            }
+            if (!isValidName(name)) {
+                System.err.println("Invalid secret name: " + name);
                 return 2;
             }
             try {
@@ -70,7 +80,7 @@ public class SecretCommand implements Callable<Integer> {
                 return Files.readString(valueFile, StandardCharsets.UTF_8);
             }
             Console console = System.console();
-            if (console == null) {
+            if (console == null || !console.isTerminal()) {
                 String raw = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);
                 return raw.endsWith("\n") ? raw.substring(0, raw.length() - 1) : raw;
             }
@@ -123,6 +133,10 @@ public class SecretCommand implements Callable<Integer> {
 
         @Override
         public Integer call() {
+            if (!isValidName(name)) {
+                System.err.println("Invalid secret name: " + name);
+                return 2;
+            }
             try {
                 if (!force) {
                     System.out.print("Are you sure you want to remove secret " + name + "? [y/N] ");

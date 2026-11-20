@@ -8,6 +8,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -268,7 +270,7 @@ public class OrchardClient {
 
         HttpRequest request = authenticated(
             HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/api/secrets/" + name))
+                .uri(URI.create(baseUrl + "/api/secrets/" + URLEncoder.encode(name, StandardCharsets.UTF_8)))
                 .header("Content-Type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString(body))
         ).build();
@@ -293,7 +295,7 @@ public class OrchardClient {
     public void deleteSecret(String name) throws IOException, InterruptedException {
         HttpRequest request = authenticated(
             HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/api/secrets/" + name))
+                .uri(URI.create(baseUrl + "/api/secrets/" + URLEncoder.encode(name, StandardCharsets.UTF_8)))
                 .DELETE()
         ).build();
 

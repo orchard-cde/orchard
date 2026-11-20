@@ -113,4 +113,44 @@ class SecretCommandTest {
         assertThat(out.toString()).doesNotContain("hunter2");
         assertThat(method.get()).isNull();
     }
+
+    @Test
+    void set_valueStartingWithDash_notEchoed() {
+        int exit = run("set", "GITHUB_TOKEN", "-----BEGIN PRIVATE KEY-----");
+
+        assertThat(exit).isNotZero();
+        assertThat(err.toString()).doesNotContain("BEGIN PRIVATE KEY");
+        assertThat(out.toString()).doesNotContain("BEGIN PRIVATE KEY");
+        assertThat(method.get()).isNull();
+    }
+
+    @Test
+    void set_valueAsOptionSyntax_notEchoed() {
+        int exit = run("set", "GITHUB_TOKEN", "--value=hunter2");
+
+        assertThat(exit).isNotZero();
+        assertThat(err.toString()).doesNotContain("hunter2");
+        assertThat(out.toString()).doesNotContain("hunter2");
+        assertThat(method.get()).isNull();
+    }
+
+    @Test
+    void set_invalidName_rejectedBeforeRequest(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("v");
+        Files.writeString(file, "hunter2");
+
+        int exit = run("set", "a/b", "--value-file", file.toString());
+
+        assertThat(exit).isNotZero();
+        assertThat(err.toString()).contains("Invalid secret name: a/b");
+        assertThat(method.get()).isNull();
+    }
+
+    @Test
+    void remove_invalidName_rejectedBeforeRequest() {
+        int exit = run("rm", "-f", "x?y");
+
+        assertThat(exit).isNotZero();
+        assertThat(method.get()).isNull();
+    }
 }
