@@ -1,5 +1,6 @@
 package dev.orchard.api.service;
 
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.Grove;
@@ -170,6 +171,11 @@ class GroveStopClearInterleavingTest {
         @Override
         public CommandRunner host(Plot plot) {
             throw new UnsupportedOperationException("host");
+        }
+
+        @Override
+        public ContainerRuntime runtime(Plot plot) {
+            throw new UnsupportedOperationException("runtime");
         }
 
         @Override

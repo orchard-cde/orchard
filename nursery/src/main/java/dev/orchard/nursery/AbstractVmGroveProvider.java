@@ -64,7 +64,7 @@ public abstract class AbstractVmGroveProvider<L> extends AbstractGroveProvider<V
     }
 
     @Override
-    protected final ContainerRuntime runtime(VmPlot plot) {
+    protected final ContainerRuntime runtimeFor(VmPlot plot) {
         return ContainerRuntime.DOCKER;
     }
 

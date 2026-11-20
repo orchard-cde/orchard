@@ -1,6 +1,7 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.ContainerPlot;
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
@@ -117,6 +118,9 @@ public interface GroveProvider {
      * itself, or the local machine for a container plot.
      */
     CommandRunner host(Plot plot);
+
+    /** The container CLI that runs on the {@link #host} channel. */
+    ContainerRuntime runtime(Plot plot);
 
     /** The workspace folder as seen by the {@link #host} channel. */
     String workspacePath(Plot plot);

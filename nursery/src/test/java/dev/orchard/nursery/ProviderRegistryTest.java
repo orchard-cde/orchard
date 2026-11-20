@@ -1,5 +1,6 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.SeedlingSpec;
@@ -186,6 +187,7 @@ class ProviderRegistryTest {
         @Override public CompletableFuture<Fruit> ripenFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
         @Override public Vine vine(Plot s) { throw new UnsupportedOperationException(); }
         @Override public CommandRunner host(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public ContainerRuntime runtime(Plot s) { throw new UnsupportedOperationException(); }
         @Override public String workspacePath(Plot s) { throw new UnsupportedOperationException(); }
         @Override public void verifyDevcontainerCli(Plot s, String expectedVersion) { throw new UnsupportedOperationException(); }
     }

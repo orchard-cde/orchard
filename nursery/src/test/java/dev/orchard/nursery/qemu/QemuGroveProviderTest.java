@@ -111,6 +111,13 @@ class QemuGroveProviderTest {
     }
 
     @Test
+    void runtime_vmPlot_isDocker() {
+        VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
+
+        assertThat(provider.runtime(plot)).isEqualTo(ContainerRuntime.DOCKER);
+    }
+
+    @Test
     void reattachSurvivingVms_alivePidMatchingVm_seedlingBecomesInspectable() throws IOException {
         // Directory must be named after plot.id(), matching what plantSubstrate() writes
         VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));

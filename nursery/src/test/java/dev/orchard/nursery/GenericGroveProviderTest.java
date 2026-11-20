@@ -229,7 +229,7 @@ class GenericGroveProviderTest {
         }
 
         @Override
-        protected ContainerRuntime runtime(ContainerPlot plot) {
+        protected ContainerRuntime runtimeFor(ContainerPlot plot) {
             return plot.runtime();
         }
 

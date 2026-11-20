@@ -100,7 +100,7 @@ public class ContainerGroveProvider extends AbstractGroveProvider<ContainerPlot,
     }
 
     @Override
-    protected ContainerRuntime runtime(ContainerPlot plot) {
+    protected ContainerRuntime runtimeFor(ContainerPlot plot) {
         return plot.runtime();
     }
 

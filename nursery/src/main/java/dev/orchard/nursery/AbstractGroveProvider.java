@@ -128,7 +128,7 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
     protected abstract CommandRunner hostFor(P plot);
 
     /** The container runtime whose CLI runs on the {@link #hostFor host}. */
-    protected abstract ContainerRuntime runtime(P plot);
+    protected abstract ContainerRuntime runtimeFor(P plot);
 
     /** The workspace folder as seen by the {@link #hostFor host} channel. */
     protected abstract String workspacePathFor(P plot);
@@ -155,7 +155,7 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
 
     private ExecTarget execTarget(Plot plot) {
         P narrowed = narrow(plot);
-        return new ExecTarget(hostFor(narrowed), workspacePathFor(narrowed), narrowed.id(), runtime(narrowed));
+        return new ExecTarget(hostFor(narrowed), workspacePathFor(narrowed), narrowed.id(), runtimeFor(narrowed));
     }
 
     @Override
@@ -166,6 +166,11 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
     @Override
     public final CommandRunner host(Plot plot) {
         return hostFor(narrow(plot));
+    }
+
+    @Override
+    public final ContainerRuntime runtime(Plot plot) {
+        return runtimeFor(narrow(plot));
     }
 
     @Override
