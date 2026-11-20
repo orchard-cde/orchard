@@ -132,7 +132,7 @@ public final class FileSecretVault implements SecretVault {
         int removed = 0;
         try (DirectoryStream<Path> temps = Files.newDirectoryStream(directory, TEMP_PREFIX + "*")) {
             for (Path temp : temps) {
-                if (Files.getLastModifiedTime(temp).toInstant().isBefore(cutoff) && Files.deleteIfExists(temp)) {
+                if (deleteIfStale(temp, cutoff)) {
                     removed++;
                 }
             }
@@ -140,6 +140,14 @@ public final class FileSecretVault implements SecretVault {
             throw new VaultException("cannot purge stale temp files in " + directory, e);
         }
         return removed;
+    }
+
+    boolean deleteIfStale(Path temp, Instant cutoff) throws IOException {
+        try {
+            return Files.getLastModifiedTime(temp).toInstant().isBefore(cutoff) && Files.deleteIfExists(temp);
+        } catch (NoSuchFileException vanished) {
+            return false;
+        }
     }
 
     private void write(String key, byte[] entry) {

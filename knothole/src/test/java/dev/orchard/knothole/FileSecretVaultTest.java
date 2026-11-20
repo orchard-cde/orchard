@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -65,13 +66,23 @@ class FileSecretVaultTest {
     }
 
     @Test
-    void put_sameValueTwice_differentBytes() throws IOException {
+    void put_sameValueTwiceOnOneKey_differentBytes() throws IOException {
         byte[] value = "same".getBytes(StandardCharsets.UTF_8);
 
         vault.put("a", value);
-        vault.put("b", value);
+        byte[] first = Files.readAllBytes(dir.resolve("a"));
+        vault.put("a", value);
+        byte[] second = Files.readAllBytes(dir.resolve("a"));
 
-        assertThat(Files.readAllBytes(dir.resolve("a"))).isNotEqualTo(Files.readAllBytes(dir.resolve("b")));
+        assertThat(second).isNotEqualTo(first);
+        assertThat(Arrays.copyOfRange(second, 0, 12)).isNotEqualTo(Arrays.copyOfRange(first, 0, 12));
+    }
+
+    @Test
+    void deleteIfStale_vanishedTempFile_isSkippedNotCounted() throws IOException {
+        Path gone = dir.resolve(".tmp-gone");
+
+        assertThat(vault.deleteIfStale(gone, Instant.now())).isFalse();
     }
 
     @Test
