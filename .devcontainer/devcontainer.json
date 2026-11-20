@@ -5,5 +5,10 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   "postCreateCommand": "./gradlew --version",
-  "postStartCommand": "echo started > /tmp/orchard-poststart"
+  "postStartCommand": "echo started > /tmp/orchard-poststart",
+  "secrets": {
+    "ORCHARD_E2E_SECRET": {
+      "description": "Set by the Orchard e2e suite; harmless when absent."
+    }
+  }
 }
