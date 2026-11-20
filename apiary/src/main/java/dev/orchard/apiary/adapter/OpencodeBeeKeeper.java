@@ -79,9 +79,10 @@ public class OpencodeBeeKeeper implements BeeKeeper {
             try {
                 String binary = resolveBinary(runner);
                 String pid = runner.execute(
-                    "cd " + ShellQuote.quote(workspaceRoot) + " && nohup " + ShellQuote.quote(binary)
-                        + " serve --port " + SERVER_PORT + " --hostname 127.0.0.1 > " + LOG_PATH
-                        + " 2>&1 & echo $!").trim();
+                    "cd " + ShellQuote.quote(workspaceRoot) + " && nohup sh -lc "
+                        + ShellQuote.quote("exec " + ShellQuote.quote(binary) + " serve --port " + SERVER_PORT
+                            + " --hostname 127.0.0.1")
+                        + " > " + LOG_PATH + " 2>&1 & echo $!").trim();
                 awaitServer(runner, bee, pid);
                 return bee.withProcessId(pid);
             } catch (IOException e) {
