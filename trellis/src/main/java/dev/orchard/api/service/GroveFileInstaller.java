@@ -51,30 +51,33 @@ public final class GroveFileInstaller {
     }
 
     static String fruitScript(FileSpec spec) {
-        return "set -e; d=$(dirname " + ShellQuote.quote(spec.path())
-            + "); mkdir -p \"$d\"; chmod 755 \"$d\"; umask 077; " + writeSteps(spec);
+        return "set -e; " + vars(spec) + "; trap 'rm -f \"$t\"' EXIT; d=$(dirname \"$p\"); "
+            + "if [ -L \"$d\" ] || [ \"$(stat -c %u \"$d\" 2>/dev/null)\" != 0 ]; then rm -rf \"$d\"; fi; "
+            + "mkdir -p \"$d\"; chown root:root \"$d\"; chmod 755 \"$d\"; umask 077; " + writeSteps(spec);
     }
 
     static String vmScript(FileSpec spec) {
         if (!spec.path().startsWith(VM_SECRETS_DIR + "/")) {
-            return "set -e; umask 077; " + writeSteps(spec);
+            return "set -e; " + vars(spec) + "; trap 'rm -f \"$t\"' EXIT; umask 077; " + writeSteps(spec);
         }
-        String dir = ShellQuote.quote(VM_SECRETS_DIR);
-        return "set -e; mkdir -p " + dir + "; mountpoint -q " + dir
-            + " || mount -t tmpfs -o mode=0755,size=1m tmpfs " + dir
-            + "; mount -o remount,rw " + dir + "; umask 077; "
+        return "set -e; " + vars(spec) + "; d=" + ShellQuote.quote(VM_SECRETS_DIR)
+            + "; trap 'rm -f \"$t\"; mount -o remount,ro \"$d\" 2>/dev/null || true' EXIT; "
+            + "mkdir -p \"$d\"; mountpoint -q \"$d\" || mount -t tmpfs -o mode=0755,size=1m tmpfs \"$d\"; "
+            + "mount -o remount,rw \"$d\"; umask 077; "
             + writeSteps(spec)
-            + "; mount -o remount,ro " + dir;
+            + "; mount -o remount,ro \"$d\"";
+    }
+
+    private static String vars(FileSpec spec) {
+        return "p=" + ShellQuote.quote(spec.path()) + "; t=" + ShellQuote.quote(spec.path() + ".tmp");
     }
 
     private static String writeSteps(FileSpec spec) {
-        String path = ShellQuote.quote(spec.path());
-        String tmp = ShellQuote.quote(spec.path() + ".tmp");
-        return "cat > " + tmp
-            + "; chown " + ShellQuote.quote(spec.owner()) + ":\"$(id -gn "
-            + ShellQuote.quote(spec.groupOfUser()) + ")\" " + tmp
-            + "; chmod " + ShellQuote.quote(spec.mode()) + " " + tmp
-            + "; mv -f " + tmp + " " + path;
+        return "rm -f \"$t\"; cat > \"$t\""
+            + "; g=$(id -gn " + ShellQuote.quote(spec.groupOfUser()) + ")"
+            + "; chown " + ShellQuote.quote(spec.owner()) + ":\"$g\" \"$t\""
+            + "; chmod " + ShellQuote.quote(spec.mode()) + " \"$t\""
+            + "; mv -f \"$t\" \"$p\"";
     }
 
     private static String command(GroveProvider provider, Plot plot, String containerId, Target target,
