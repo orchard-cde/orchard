@@ -29,6 +29,7 @@ Everything in this project uses orchard/gardening terminology:
 | **Vine** | Substrate-agnostic exec seam | `GroveProvider.vine(Plot)`: carries commands into the grove; `docker exec`/`podman exec` for container groves, SSH for VMs |
 | **Host** | Where git and the docker/devcontainer CLIs run | `GroveProvider.host(Plot)`: the VM over SSH, or the local machine for a container grove. `vine` reaches into the grove, `host` runs beside it |
 | **Apiary** | AI assistant integration | BeeKeeper extension point — OpenCode, Claude, Gemini, Codex |
+| **Knothole** | Secret store | `SecretVault` seam; `FileSecretVault` encrypts values with AES-GCM under a local master key; `SecretInjector` delivers a devcontainer's declared secrets into the grove |
 | **Fence** | Authentication subsystem | The boundary; OAuth2/OIDC device flow + token issuance |
 | **Gateway** | SSH jumphost relaying to groves | Not yet gardening-named — see #223 |
 
@@ -44,6 +45,7 @@ orchard/
 ├── greenhouse/ # Prebuild service - ImageBuilder, PrebuildScheduler, PrebuildService
 ├── apiary/     # AI assistant integration - BeeKeeper extension point
 ├── fence/      # Authentication subsystem - OAuth2/OIDC device flow + token issuance
+├── knothole/   # Secret store - SecretVault seam, AES-GCM file vault
 ├── trellis/    # Spring Boot app entry point (port 8080) + REST controllers, services, DTOs
 ├── gateway/    # SSH gateway - MINA SSHD jumphost relaying SSH to VM plots and exec sessions into container groves
 └── trowel/     # Picocli CLI application
@@ -106,7 +108,8 @@ runs them. Before declaring a feature complete, run both of these and report the
 ```
 
 The integration suite boots real QEMU VMs and plants this repository (its `.devcontainer`, from
-`main`) as the grove fixture; it takes several minutes. `-Porchard.e2e.require-qemu=true` makes a
+`main`, or the pushed branch named by `-Porchard.e2e.branch=<branch>`) as the grove fixture; it
+takes several minutes. `-Porchard.e2e.require-qemu=true` makes a
 missing QEMU prerequisite fail instead of silently skipping the VM tests. `prepareQemuBaseImage`
 downloads the base image on first run. Prerequisites: `qemu-system-*` and `qemu-img`, `mkisofs` or
 `genisoimage`, an `~/.ssh/orchard_ed25519` key pair, and a container runtime for Testcontainers
