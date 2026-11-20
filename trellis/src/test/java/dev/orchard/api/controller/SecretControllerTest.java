@@ -155,4 +155,17 @@ class SecretControllerTest {
 
         assertThat(output.getAll()).doesNotContain("hunter2-distinct");
     }
+
+    @Test
+    void malformedBody_neverEchoedOrLogged(CapturedOutput output) throws Exception {
+        mockMvc.perform(put("/api/secrets/API_TOKEN")
+                .requestAttr("cultivatorId", cultivatorId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"value\": hunter2-DISTINCT}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().string(not(containsString("hunter2-DISTINCT"))));
+
+        assertThat(output.getAll()).doesNotContain("hunter2-DISTINCT");
+        verify(service, never()).put(any(), any(), any());
+    }
 }
