@@ -21,6 +21,7 @@ public final class GroveFileInstaller {
 
     public static final String HOOK_PATH = "/etc/profile.d/orchard-secrets.sh";
     public static final String FRUIT_SECRETS_PATH = "/dev/shm/orchard/secrets.env";
+    private static final String FRUIT_SECRETS_DIR = "/dev/shm/orchard";
     public static final String VM_SECRETS_DIR = "/run/orchard/secrets";
     public static final String VM_SECRETS_PATH = VM_SECRETS_DIR + "/secrets.env";
 
@@ -52,8 +53,22 @@ public final class GroveFileInstaller {
 
     static String fruitScript(FileSpec spec) {
         return "set -e; " + vars(spec) + "; trap 'rm -f \"$t\"' EXIT; d=$(dirname \"$p\"); "
-            + "if [ -L \"$d\" ] || [ \"$(stat -c %u \"$d\" 2>/dev/null)\" != 0 ]; then rm -rf \"$d\"; fi; "
-            + "mkdir -p \"$d\"; chown root:root \"$d\"; chmod 755 \"$d\"; umask 077; " + writeSteps(spec);
+            + parentSteps(spec) + "umask 077; " + writeSteps(spec);
+    }
+
+    private static String parentSteps(FileSpec spec) {
+        if (!FRUIT_SECRETS_DIR.equals(parentOf(spec.path()))) {
+            return "mkdir -p \"$d\"; chmod 755 \"$d\"; ";
+        }
+        return "if [ -e \"$d\" ] || [ -L \"$d\" ]; then o=$(stat -c %u \"$d\"); "
+            + "if [ -L \"$d\" ] || [ \"$o\" != 0 ]; then rm -rf \"$d\"; fi; fi; "
+            + "if [ ! -e \"$d\" ] && [ ! -L \"$d\" ]; then mkdir \"$d\"; fi; "
+            + "[ ! -L \"$d\" ]; chown root:root \"$d\"; chmod 755 \"$d\"; ";
+    }
+
+    private static String parentOf(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash <= 0 ? "" : path.substring(0, slash);
     }
 
     static String vmScript(FileSpec spec) {

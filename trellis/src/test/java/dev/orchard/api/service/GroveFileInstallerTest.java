@@ -85,8 +85,16 @@ class GroveFileInstallerTest {
     void scripts_hardenParentAssignGroupFirstAndCleanTemp() {
         FileSpec spec = new FileSpec(GroveFileInstaller.FRUIT_SECRETS_PATH, "vscode", "vscode", "0400", CONTENT);
         String fruit = GroveFileInstaller.fruitScript(spec);
-        assertThat(fruit).contains("[ -L \"$d\" ]", "stat -c %u \"$d\"", "rm -rf \"$d\"",
-            "chown root:root \"$d\"", "chmod 755 \"$d\"", "trap 'rm -f \"$t\"' EXIT");
+        assertThat(fruit).contains("[ -L \"$d\" ]", "o=$(stat -c %u \"$d\")", "rm -rf \"$d\"",
+            "chown root:root \"$d\"", "chmod 755 \"$d\"", "trap 'rm -f \"$t\"' EXIT", "fi; [ ! -L \"$d\" ];");
+        assertThat(fruit).doesNotContain("mkdir -p").doesNotContain("2>/dev/null");
+        assertThat(fruit.indexOf("mkdir \"$d\"")).isGreaterThan(fruit.indexOf("rm -rf \"$d\""));
+        assertThat(fruit.indexOf("chown root:root")).isGreaterThan(fruit.indexOf("fi; [ ! -L \"$d\" ];"));
+
+        String hookFruit = GroveFileInstaller.fruitScript(
+            new FileSpec(GroveFileInstaller.HOOK_PATH, "root", "root", "0644", CONTENT));
+        assertThat(hookFruit).contains("mkdir -p \"$d\"", "chmod 755 \"$d\"")
+            .doesNotContain("rm -rf", "stat", "chown root:root");
         assertThat(fruit.indexOf("rm -f \"$t\"; cat")).isGreaterThan(fruit.indexOf("chmod 755"));
         assertThat(fruit.indexOf("g=$(id -gn 'vscode')")).isBetween(fruit.indexOf("cat >"), fruit.indexOf("chown 'vscode'"));
         assertThat(fruit).doesNotContain("\"$(id -gn");
