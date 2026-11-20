@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,6 +37,7 @@ public class SecretService {
     private final SecretVault vault;
     private final CultivatorService cultivatorService;
     private final TransactionTemplate tx;
+    private final Set<String> inFlight = ConcurrentHashMap.newKeySet();
 
     public SecretService(SecretRepository repository, SecretVault vault,
                          CultivatorService cultivatorService, TransactionTemplate tx) {
@@ -66,21 +68,21 @@ public class SecretService {
         }
 
         String newKey = UUID.randomUUID().toString();
-        vault.put(newKey, value);
-
+        inFlight.add(newKey);
         Written written;
         try {
-            written = commit(cultivatorId, name, newKey);
-        } catch (DataIntegrityViolationException first) {
+            vault.put(newKey, value);
             try {
                 written = commit(cultivatorId, name, newKey);
-            } catch (RuntimeException second) {
-                discard(newKey);
-                throw second;
+            } catch (DataIntegrityViolationException first) {
+                written = commit(cultivatorId, name, newKey);
             }
         } catch (RuntimeException e) {
+            inFlight.remove(newKey);
             discard(newKey);
             throw e;
+        } finally {
+            inFlight.remove(newKey);
         }
 
         if (written.oldKey() != null) {
@@ -108,6 +110,7 @@ public class SecretService {
             vault.delete(key);
         } catch (RuntimeException e) {
             log.warn("Could not remove vault entry {} after failed write", key);
+            sweepQuietly();
         }
     }
 
@@ -116,7 +119,15 @@ public class SecretService {
             vault.delete(key);
         } catch (RuntimeException e) {
             log.warn("Could not delete vault entry {}; sweeping", key);
+            sweepQuietly();
+        }
+    }
+
+    private void sweepQuietly() {
+        try {
             sweep();
+        } catch (RuntimeException e) {
+            log.warn("Sweep failed: {}", e.getClass().getName());
         }
     }
 
@@ -173,6 +184,7 @@ public class SecretService {
     public int sweep() {
         Set<String> orphans = new HashSet<>(vault.keys());
         orphans.removeAll(new HashSet<>(repository.findAllVaultKeys()));
+        orphans.removeAll(inFlight);
         int removed = 0;
         for (String key : orphans) {
             try {

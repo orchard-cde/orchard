@@ -9,6 +9,7 @@ import dev.orchard.core.model.DevcontainerSeed.SecretDeclaration;
 import dev.orchard.core.model.DevfileSeed;
 import dev.orchard.core.model.Secret;
 import dev.orchard.knothole.SecretVault;
+import dev.orchard.knothole.VaultException;
 import dev.orchard.roots.entity.SecretEntity;
 import dev.orchard.roots.repository.SecretRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -54,15 +55,18 @@ class SecretServiceTest {
         final Map<String, byte[]> entries = new HashMap<>();
         boolean failNextPut;
         boolean failNextDelete;
+        boolean failKeys;
+        Runnable onPut = () -> {};
         int purgeResult;
 
         @Override
         public void put(String key, byte[] value) {
             if (failNextPut) {
                 failNextPut = false;
-                throw new IllegalStateException("put failed");
+                throw new VaultException("put failed");
             }
             entries.put(key, value.clone());
+            onPut.run();
         }
 
         @Override
@@ -74,13 +78,16 @@ class SecretServiceTest {
         public boolean delete(String key) {
             if (failNextDelete) {
                 failNextDelete = false;
-                throw new IllegalStateException("delete failed");
+                throw new VaultException("delete failed");
             }
             return entries.remove(key) != null;
         }
 
         @Override
         public Set<String> keys() {
+            if (failKeys) {
+                throw new VaultException("keys failed");
+            }
             return Set.copyOf(entries.keySet());
         }
 
@@ -160,7 +167,7 @@ class SecretServiceTest {
         vault.failNextPut = true;
 
         assertThatThrownBy(() -> service.put(cultivatorId, "API_TOKEN", bytes("v1")))
-            .isInstanceOf(IllegalStateException.class);
+            .isInstanceOf(VaultException.class);
 
         verify(repository, never()).saveAndFlush(any());
         assertThat(rows).isEmpty();
@@ -228,6 +235,55 @@ class SecretServiceTest {
         Secret second = service.put(cultivatorId, "API_TOKEN", bytes("v2")).secret();
 
         assertThat(vault.keys()).containsExactly(second.vaultKey());
+    }
+
+    @Test
+    void put_commitFails_discardFails_sweepsAutomatically() {
+        doThrow(new IllegalStateException("db down")).when(repository).saveAndFlush(any());
+        vault.failNextDelete = true;
+
+        assertThatThrownBy(() -> service.put(cultivatorId, "API_TOKEN", bytes("v1")))
+            .isInstanceOf(IllegalStateException.class);
+
+        assertThat(vault.keys()).isEmpty();
+    }
+
+    @Test
+    void delete_entryDeleteFails_thenSweepFails_stillReturnsTrue() {
+        service.put(cultivatorId, "API_TOKEN", bytes("v1"));
+        vault.failNextDelete = true;
+        vault.failKeys = true;
+
+        assertThat(service.delete(cultivatorId, "API_TOKEN")).isTrue();
+        assertThat(rows).isEmpty();
+    }
+
+    @Test
+    void put_oldEntryDeleteFails_thenSweepFails_stillReturnsStored() {
+        service.put(cultivatorId, "API_TOKEN", bytes("v1"));
+        vault.failNextDelete = true;
+        vault.failKeys = true;
+
+        SecretService.Stored stored = service.put(cultivatorId, "API_TOKEN", bytes("v2"));
+
+        assertThat(stored.created()).isFalse();
+        assertThat(rows.get("API_TOKEN").getVaultKey()).isEqualTo(stored.secret().vaultKey());
+    }
+
+    @Test
+    void sweep_duringPut_leavesInFlightEntryAndRemovesOrphan() {
+        vault.entries.put("genuine-orphan", bytes("x"));
+        AtomicInteger swept = new AtomicInteger();
+        vault.onPut = () -> {
+            vault.onPut = () -> {};
+            swept.set(service.sweep());
+        };
+
+        SecretService.Stored stored = service.put(cultivatorId, "API_TOKEN", bytes("v1"));
+
+        assertThat(swept.get()).isEqualTo(1);
+        assertThat(vault.keys()).containsExactly(stored.secret().vaultKey());
+        assertThat(service.resolve(cultivatorId, List.of("API_TOKEN")).get("API_TOKEN")).isEqualTo(bytes("v1"));
     }
 
     @Test

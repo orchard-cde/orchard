@@ -69,3 +69,9 @@ jmh {
     resultFormat.set("JSON")
     resultsFile.set(layout.buildDirectory.file("results/jmh/results.json").get().asFile)
 }
+
+tasks.named<Test>("test") {
+    val knotholeDir = layout.buildDirectory.dir("test-knothole").get().asFile
+    systemProperty("orchard.knothole.vault-path", File(knotholeDir, "vault").absolutePath)
+    systemProperty("orchard.knothole.master-key-path", File(knotholeDir, "master.key").absolutePath)
+}
