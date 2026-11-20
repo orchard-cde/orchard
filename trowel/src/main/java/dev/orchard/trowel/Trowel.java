@@ -25,6 +25,7 @@ import java.util.concurrent.Callable;
         StatusCommand.class,
         DevServerCommand.class,
         SshKeyCommand.class,
+        SecretCommand.class,
         LoginCommand.class,
         CommandLine.HelpCommand.class
     },

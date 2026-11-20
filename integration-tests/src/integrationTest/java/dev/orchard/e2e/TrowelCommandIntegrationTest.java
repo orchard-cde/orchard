@@ -105,6 +105,35 @@ class TrowelCommandIntegrationTest {
         }
     }
 
+    @Test
+    void secretSetListRemove(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) throws Exception {
+        java.nio.file.Path valueFile = tmp.resolve("value");
+        java.nio.file.Files.writeString(valueFile, "e2e-secret-value");
+        boolean removed = false;
+        try {
+            assertThat(execute("secret", "set", "E2E_T", "--value-file", valueFile.toString()))
+                .as("set: exit code").isZero();
+            assertThat(outContent.toString()).as("set: output").contains("Stored E2E_T")
+                .doesNotContain("e2e-secret-value");
+            outContent.reset();
+
+            assertThat(execute("secret", "list")).as("list: exit code").isZero();
+            assertThat(outContent.toString()).as("list: output").contains("E2E_T");
+            outContent.reset();
+
+            assertThat(execute("secret", "rm", "-f", "E2E_T")).as("rm: exit code").isZero();
+            removed = true;
+            outContent.reset();
+
+            assertThat(execute("secret", "list")).as("list after rm: exit code").isZero();
+            assertThat(outContent.toString()).as("list after rm: output").doesNotContain("E2E_T");
+        } finally {
+            if (!removed) {
+                execute("secret", "rm", "-f", "E2E_T");
+            }
+        }
+    }
+
     private UUID plantGrove() {
         int exitCode = execute("grove", "plant", TEST_REPO_URL);
 

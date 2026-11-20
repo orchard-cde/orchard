@@ -12,6 +12,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -262,6 +263,44 @@ public class OrchardClient {
         checkResponse(response);
     }
 
+    public SecretResponse putSecret(String name, String value) throws IOException, InterruptedException {
+        String body = objectMapper.writeValueAsString(new PutSecretRequest(value));
+
+        HttpRequest request = authenticated(
+            HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/secrets/" + name))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body))
+        ).build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), SecretResponse.class);
+    }
+
+    public List<SecretResponse> listSecrets() throws IOException, InterruptedException {
+        HttpRequest request = authenticated(
+            HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/secrets"))
+                .GET()
+        ).build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+        return objectMapper.readValue(response.body(), new TypeReference<List<SecretResponse>>() {});
+    }
+
+    public void deleteSecret(String name) throws IOException, InterruptedException {
+        HttpRequest request = authenticated(
+            HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/api/secrets/" + name))
+                .DELETE()
+        ).build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        checkResponse(response);
+    }
+
     public HealthResponse checkHealth() throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(baseUrl + "/api/health"))
@@ -346,4 +385,8 @@ public class OrchardClient {
         String fingerprint,
         String createdAt
     ) {}
+
+    public record PutSecretRequest(String value) {}
+
+    public record SecretResponse(String name, Instant createdAt, Instant updatedAt, Instant rotatedAt) {}
 }
