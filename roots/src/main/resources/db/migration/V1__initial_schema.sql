@@ -86,3 +86,20 @@ CREATE TABLE ssh_public_keys (
 );
 
 CREATE INDEX idx_ssh_public_keys_cultivator ON ssh_public_keys(cultivator_id);
+
+CREATE TABLE secrets (
+    id UUID PRIMARY KEY,
+    scope VARCHAR(20) NOT NULL,
+    cultivator_id UUID REFERENCES cultivators(id),
+    owner VARCHAR(64),
+    name VARCHAR(255) NOT NULL,
+    vault_key VARCHAR(64) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    rotated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    CHECK ((scope = 'CULTIVATOR' AND cultivator_id IS NOT NULL AND owner IS NULL)
+        OR (scope = 'SERVICE' AND cultivator_id IS NULL AND owner IS NOT NULL)),
+    CONSTRAINT uq_secrets_cultivator_name UNIQUE (cultivator_id, name),
+    CONSTRAINT uq_secrets_owner_name UNIQUE (owner, name)
+);
+CREATE INDEX idx_secrets_cultivator ON secrets(cultivator_id);
