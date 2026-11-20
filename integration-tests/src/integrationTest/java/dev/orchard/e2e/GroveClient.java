@@ -3,7 +3,11 @@ package dev.orchard.e2e;
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.core.model.GroveState;
+import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
+import dev.orchard.nursery.GroveProvider;
+import dev.orchard.vine.ContainerExec;
+import dev.orchard.vine.ShellQuote;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -15,9 +19,11 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -151,7 +157,42 @@ final class GroveClient {
         }
     }
 
+    void putSecret(String name, String value) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<Void> response = restTemplate.exchange(baseUrl + "/api/secrets/" + name, HttpMethod.PUT,
+            new HttpEntity<>(Map.of("value", value), headers), Void.class);
+        assertThat(response.getStatusCode()).as("put secret %s: status", name)
+            .isIn(HttpStatus.CREATED, HttpStatus.OK);
+    }
+
+    void deleteSecret(String name) {
+        ResponseEntity<Void> response = restTemplate.exchange(
+            baseUrl + "/api/secrets/" + name, HttpMethod.DELETE, null, Void.class);
+        assertThat(response.getStatusCode()).as("delete secret %s: status", name).isEqualTo(HttpStatus.NO_CONTENT);
+    }
+
+    void deleteSecretQuietly(String name) {
+        try {
+            restTemplate.delete(baseUrl + "/api/secrets/" + name);
+        } catch (Exception e) {
+            // Best effort
+        }
+    }
+
+    /** Runs {@code command} under {@code /bin/sh -c} inside the fruit as {@code user}, through the plot's host. */
+    static String runInFruit(GroveProvider provider, Plot plot, String containerId, String user, String command)
+        throws Exception {
+        String exec = ShellQuote.join(ContainerExec.of(provider.runtime(plot).cli(), containerId)
+            .user(user).shell(command).argv());
+        return provider.host(plot).execute(exec).trim();
+    }
+
     static String runOnSeedling(int sshPort, String command) throws Exception {
+        return runOnSeedling(sshPort, command, null);
+    }
+
+    static String runOnSeedling(int sshPort, String command, byte[] stdin) throws Exception {
         Path privateKey = Path.of(System.getProperty("orchard.ssh.key-path",
             System.getProperty("user.home") + "/.ssh/orchard_ed25519"));
 
@@ -159,6 +200,7 @@ final class GroveClient {
             "ssh",
             "-o", "StrictHostKeyChecking=no",
             "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "LogLevel=ERROR",
             "-o", "ConnectTimeout=10",
             "-i", privateKey.toString(),
             "-p", String.valueOf(sshPort),
@@ -168,6 +210,11 @@ final class GroveClient {
         pb.redirectErrorStream(true);
 
         Process process = pb.start();
+        try (OutputStream in = process.getOutputStream()) {
+            if (stdin != null) {
+                in.write(stdin);
+            }
+        }
         String output;
         try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             output = reader.lines().reduce("", (a, b) -> a + "\n" + b).trim();
