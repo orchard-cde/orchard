@@ -183,7 +183,7 @@ final class GroveClient {
     /** Runs {@code command} under {@code /bin/sh -c} inside the fruit as {@code user}, through the plot's host. */
     static String runInFruit(GroveProvider provider, Plot plot, String containerId, String user, String command)
         throws Exception {
-        String exec = ShellQuote.join(ContainerExec.of(provider.runtime(plot).cli(), containerId)
+        String exec = ShellQuote.join(ContainerExec.of(provider.execTarget(plot).runtime().cli(), containerId)
             .user(user).shell(command).argv());
         return provider.host(plot).execute(exec).trim();
     }

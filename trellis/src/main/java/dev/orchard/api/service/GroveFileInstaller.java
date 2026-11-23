@@ -1,9 +1,7 @@
 package dev.orchard.api.service;
 
-import dev.orchard.core.model.ContainerPlot;
-import dev.orchard.core.model.Plot;
-import dev.orchard.nursery.GroveProvider;
 import dev.orchard.vine.ContainerExec;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.ShellQuote;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,8 +24,7 @@ public final class GroveFileInstaller {
     public static final String VM_SECRETS_PATH = VM_SECRETS_DIR + "/secrets.env";
 
     private static final long TIMEOUT_SECONDS = 60;
-    private static final String SOURCE_HOOK_LINE =
-        "'\\n[ -r /etc/profile.d/orchard-secrets.sh ] && . /etc/profile.d/orchard-secrets.sh\\n'";
+    private static final String SOURCE_HOOK_LINE = "'\\n[ -r " + HOOK_PATH + " ] && . " + HOOK_PATH + "\\n'";
     static final String BASHRC_GUARD =
         "grep -q orchard-secrets /etc/bash.bashrc 2>/dev/null || printf " + SOURCE_HOOK_LINE
             + " >> /etc/bash.bashrc";
@@ -37,19 +34,25 @@ public final class GroveFileInstaller {
     private static final String HOOK_RESOURCE = "/knothole/orchard-secrets.sh";
     private static final String HOOK = loadHook();
 
-    public void install(GroveProvider provider, Plot plot, String containerId, Target target, FileSpec spec)
+    public void install(ExecTarget exec, String containerId, Target target, FileSpec spec)
         throws IOException, InterruptedException {
-        String script = target == Target.FRUIT ? fruitScript(spec) : vmScript(spec);
-        String command = command(provider, plot, containerId, target, script);
-        provider.host(plot).execute(command, spec.content(), TIMEOUT_SECONDS);
+        exec.runner().execute(command(exec, containerId, target, script(target, spec)), spec.content(),
+            TIMEOUT_SECONDS);
     }
 
-    public void installHook(GroveProvider provider, Plot plot, String containerId, Target target)
+    public void installHook(ExecTarget exec, String containerId, Target target)
         throws IOException, InterruptedException {
-        install(provider, plot, containerId, target,
-            new FileSpec(HOOK_PATH, "root", "root", "0644", HOOK.getBytes(StandardCharsets.UTF_8)));
-        provider.host(plot).execute(command(provider, plot, containerId, target, BASHRC_GUARD), TIMEOUT_SECONDS);
-        provider.host(plot).execute(command(provider, plot, containerId, target, ZPROFILE_GUARD), TIMEOUT_SECONDS);
+        FileSpec spec = new FileSpec(HOOK_PATH, "root", "root", "0644", HOOK.getBytes(StandardCharsets.UTF_8));
+        exec.runner().execute(command(exec, containerId, target, hookInstallScript(target, spec)), spec.content(),
+            TIMEOUT_SECONDS);
+    }
+
+    static String hookInstallScript(Target target, FileSpec spec) {
+        return script(target, spec) + "; umask 022; " + BASHRC_GUARD + "; " + ZPROFILE_GUARD;
+    }
+
+    private static String script(Target target, FileSpec spec) {
+        return target == Target.FRUIT ? fruitScript(spec) : vmScript(spec);
     }
 
     public static String hookScript() {
@@ -57,7 +60,7 @@ public final class GroveFileInstaller {
     }
 
     static String fruitScript(FileSpec spec) {
-        return "set -e; " + vars(spec) + "; trap 'rm -f \"$t\"' EXIT; d=$(dirname \"$p\"); "
+        return preamble(spec) + "d=$(dirname \"$p\"); "
             + parentSteps(spec) + "umask 077; " + writeSteps(spec);
     }
 
@@ -78,7 +81,7 @@ public final class GroveFileInstaller {
 
     static String vmScript(FileSpec spec) {
         if (!spec.path().startsWith(VM_SECRETS_DIR + "/")) {
-            return "set -e; " + vars(spec) + "; trap 'rm -f \"$t\"' EXIT; umask 077; " + writeSteps(spec);
+            return preamble(spec) + "umask 077; " + writeSteps(spec);
         }
         return "set -e; " + vars(spec) + "; d=" + ShellQuote.quote(VM_SECRETS_DIR)
             + "; trap 'rm -f \"$t\"; mount -o remount,ro \"$d\" 2>/dev/null || true' EXIT; "
@@ -86,6 +89,10 @@ public final class GroveFileInstaller {
             + "mount -o remount,rw \"$d\"; umask 077; "
             + writeSteps(spec)
             + "; mount -o remount,ro \"$d\"";
+    }
+
+    private static String preamble(FileSpec spec) {
+        return "set -e; " + vars(spec) + "; trap 'rm -f \"$t\"' EXIT; ";
     }
 
     private static String vars(FileSpec spec) {
@@ -100,16 +107,12 @@ public final class GroveFileInstaller {
             + "; mv -f \"$t\" \"$p\"";
     }
 
-    private static String command(GroveProvider provider, Plot plot, String containerId, Target target,
-                                  String script) {
+    private static String command(ExecTarget exec, String containerId, Target target, String script) {
         if (target == Target.VM) {
-            if (plot instanceof ContainerPlot) {
-                throw new IllegalArgumentException("Target.VM requires a VM plot");
-            }
             return "sudo sh -c " + ShellQuote.quote(script);
         }
-        return ShellQuote.join(ContainerExec.of(provider.runtime(plot).cli(), containerId)
-            .interactive(true, false).user("root").shell(script).argv());
+        return ContainerExec.of(exec.runtime().cli(), containerId)
+            .interactive(true, false).user("root").shell(script).commandLine();
     }
 
     private static String loadHook() {

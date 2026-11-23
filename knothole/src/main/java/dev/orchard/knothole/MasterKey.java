@@ -1,24 +1,17 @@
 package dev.orchard.knothole;
 
-import static java.nio.file.StandardOpenOption.CREATE_NEW;
-import static java.nio.file.StandardOpenOption.WRITE;
-
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SeekableByteChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
-import java.util.Set;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 public final class MasterKey {
 
     private static final int KEY_BYTES = 32;
-    private static final String FILE_MODE = "rw-------";
+    private static final String FILE_MODE = SecurePaths.PRIVATE_FILE;
 
     private final SecretKey key;
 
@@ -49,17 +42,7 @@ public final class MasterKey {
     private static MasterKey create(Path path) throws IOException {
         byte[] bytes = new byte[KEY_BYTES];
         new SecureRandom().nextBytes(bytes);
-        SeekableByteChannel channel = Files.newByteChannel(path, Set.of(CREATE_NEW, WRITE),
-                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(FILE_MODE)));
-        try (channel) {
-            ByteBuffer buffer = ByteBuffer.wrap(bytes);
-            while (buffer.hasRemaining()) {
-                channel.write(buffer);
-            }
-        } catch (IOException e) {
-            Files.deleteIfExists(path);
-            throw e;
-        }
+        SecurePaths.createPrivateFile(path, bytes, false);
         return new MasterKey(bytes);
     }
 

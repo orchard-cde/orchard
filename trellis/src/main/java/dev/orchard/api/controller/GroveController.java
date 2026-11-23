@@ -6,6 +6,7 @@ import dev.orchard.api.service.GatewayGroveService;
 import dev.orchard.api.service.GroveService;
 import dev.orchard.api.service.SecretService;
 import dev.orchard.core.model.ContainerPlot;
+import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.VmPlot;
@@ -42,7 +43,8 @@ public class GroveController {
     }
 
     private static Seed primarySeed(Grove grove) {
-        return grove.fruits() == null || grove.fruits().isEmpty() ? null : grove.fruits().getFirst().seed();
+        Fruit f = grove.primaryFruit();
+        return f == null ? null : f.seed();
     }
 
     @PostMapping

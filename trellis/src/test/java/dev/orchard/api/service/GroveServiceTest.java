@@ -1042,6 +1042,7 @@ class GroveServiceTest {
         assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
             org.assertj.core.groups.Tuple.tuple(GroveState.DORMANT, GroveState.PLANTING),
             org.assertj.core.groups.Tuple.tuple(GroveState.PLANTING, GroveState.GROWING),
+            org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.GROWING),
             org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.FLOURISHING));
         assertThat(transitions.getLast().plot().state()).isEqualTo(PlotState.ROOTED);
         assertThat(lastSavedFruits()).singleElement()
@@ -1071,6 +1072,7 @@ class GroveServiceTest {
         assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
             org.assertj.core.groups.Tuple.tuple(GroveState.BLIGHTED, GroveState.PLANTING),
             org.assertj.core.groups.Tuple.tuple(GroveState.PLANTING, GroveState.GROWING),
+            org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.GROWING),
             org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.FLOURISHING));
         verify(ownerProvider, never()).plantSubstrate(any());
     }
@@ -1270,7 +1272,7 @@ class GroveServiceTest {
         order.verify(groveRepository).transitionIfState(
             eq(grove.id()), eq(GroveState.GROWING), eq(GroveState.FLOURISHING), any());
         assertThat(transitions).extracting(Transition::next)
-            .containsExactly(GroveState.GROWING, GroveState.FLOURISHING);
+            .containsExactly(GroveState.GROWING, GroveState.GROWING, GroveState.FLOURISHING);
     }
 
     @Test
@@ -1284,7 +1286,7 @@ class GroveServiceTest {
         groveService.completeStart(grove, ownerProvider);
 
         assertThat(transitions).extracting(Transition::next)
-            .containsExactly(GroveState.GROWING, GroveState.BLIGHTED);
+            .containsExactly(GroveState.GROWING, GroveState.GROWING, GroveState.BLIGHTED);
         assertThat(transitions.getLast().expected()).isEqualTo(GroveState.GROWING);
         assertThat(transitions.getLast().plot().state()).isEqualTo(PlotState.ROOTED);
     }
@@ -1304,11 +1306,9 @@ class GroveServiceTest {
     void completeStart_clearedAfterRipen_skipsInject() {
         Grove grove = startingGrove();
         List<Transition> transitions = recordTransitions(1);
-        when(ownerProvider.ripenFruit(any(), any())).thenAnswer(inv -> {
-            when(groveRepository.findById(grove.id()))
-                .thenReturn(Optional.of(GroveEntity.fromModel(grove.withState(GroveState.CLEARING))));
-            return CompletableFuture.completedFuture(((Fruit) inv.getArgument(1)).withState(FruitState.RIPE));
-        });
+        ripenSucceeds();
+        doReturn(0).when(groveRepository)
+            .transitionIfState(any(), eq(GroveState.GROWING), eq(GroveState.GROWING), any());
 
         groveService.completeStart(grove, ownerProvider);
 

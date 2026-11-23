@@ -84,25 +84,32 @@ class SecretControllerTest {
 
     @Test
     void put_badName_returns400() throws Exception {
+        enforceNameRuleInService();
+
         mockMvc.perform(put("/api/secrets/my-token")
                 .requestAttr("cultivatorId", cultivatorId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"value\":\"s3cret\"}"))
             .andExpect(status().isBadRequest());
-
-        verify(service, never()).put(any(), any(), any());
     }
 
     @Test
     void put_reservedName_returns400() throws Exception {
+        enforceNameRuleInService();
+
         mockMvc.perform(put("/api/secrets/LD_PRELOAD")
                 .requestAttr("cultivatorId", cultivatorId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"value\":\"s3cret\"}"))
             .andExpect(status().isBadRequest())
             .andExpect(content().string(containsString("reserved name: LD_PRELOAD")));
+    }
 
-        verify(service, never()).put(any(), any(), any());
+    private void enforceNameRuleInService() {
+        when(service.put(any(), any(), any())).thenAnswer(inv -> {
+            Secret.requireStorableName(inv.getArgument(1));
+            throw new AssertionError("name rule should have rejected " + inv.getArgument(1));
+        });
     }
 
     @Test

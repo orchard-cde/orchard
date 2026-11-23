@@ -45,7 +45,6 @@ public class SecretController {
         if (cultivatorId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        Secret.requireStorableName(name);
         SecretService.Stored stored = service.put(
             cultivatorId, name, putRequest.value().getBytes(StandardCharsets.UTF_8));
         HttpStatus status = stored.created() ? HttpStatus.CREATED : HttpStatus.OK;
@@ -60,14 +59,8 @@ public class SecretController {
         if (cultivatorId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        requireValidName(name);
+        Secret.requireValidName(name);
         boolean deleted = service.delete(cultivatorId, name);
         return deleted ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
-    }
-
-    private static void requireValidName(String name) {
-        if (!Secret.NAME.matcher(name).matches()) {
-            throw new IllegalArgumentException("Invalid secret name: " + name);
-        }
     }
 }

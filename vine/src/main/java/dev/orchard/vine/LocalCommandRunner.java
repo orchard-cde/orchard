@@ -64,13 +64,9 @@ public final class LocalCommandRunner implements CommandRunner {
             .start(() -> drain(process.getErrorStream(), stderr, STDERR_CAPTURE_CAP_BYTES));
 
         awaitExit(process, timeoutSeconds, command, stdoutReader, stderrReader);
-        if (feeder != null) {
-            feeder.join(DRAIN_GRACE_MS);
-        }
-
         int exitCode = process.exitValue();
-        if (exitCode == 0 && feeder != null && feeder.failed()) {
-            throw new IOException("stdin feed failed (child exited 0 without consuming its input): " + command);
+        if (feeder != null) {
+            feeder.finish(DRAIN_GRACE_MS, exitCode, command);
         }
         if (exitCode != 0) {
             throw failure(exitCode, command, stderr);

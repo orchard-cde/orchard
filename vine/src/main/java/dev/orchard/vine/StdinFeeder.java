@@ -3,6 +3,7 @@ package dev.orchard.vine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -21,6 +22,13 @@ final class StdinFeeder {
 
         boolean failed() {
             return failure.get() != null;
+        }
+
+        void finish(long graceMillis, int exitCode, String command) throws IOException, InterruptedException {
+            join(graceMillis);
+            if (exitCode == 0 && failed()) {
+                throw new IOException("stdin feed failed (child exited 0 without consuming its input): " + command);
+            }
         }
     }
 

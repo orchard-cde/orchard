@@ -23,10 +23,6 @@ public class SecretCommand implements Callable<Integer> {
     @CommandLine.ParentCommand
     Trowel parent;
 
-    static boolean isValidName(String name) {
-        return name != null && Secret.NAME.matcher(name).matches();
-    }
-
     @Override
     public Integer call() {
         CommandLine.usage(this, System.out);
@@ -58,12 +54,10 @@ public class SecretCommand implements Callable<Integer> {
                 spec.commandLine().usage(System.err);
                 return 2;
             }
-            if (!isValidName(name)) {
-                System.err.println("Invalid secret name: " + name);
-                return 2;
-            }
-            if (Secret.RESERVED.contains(name)) {
-                System.err.println("reserved name: " + name);
+            try {
+                Secret.requireStorableName(name);
+            } catch (IllegalArgumentException e) {
+                System.err.println(e.getMessage());
                 return 2;
             }
             try {
@@ -139,8 +133,10 @@ public class SecretCommand implements Callable<Integer> {
 
         @Override
         public Integer call() {
-            if (!isValidName(name)) {
-                System.err.println("Invalid secret name: " + name);
+            try {
+                Secret.requireValidName(name);
+            } catch (IllegalArgumentException e) {
+                System.err.println(e.getMessage());
                 return 2;
             }
             try {

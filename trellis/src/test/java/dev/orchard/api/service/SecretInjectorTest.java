@@ -33,6 +33,7 @@ import dev.orchard.core.model.VmSpec;
 import dev.orchard.knothole.VaultException;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -59,12 +60,12 @@ class SecretInjectorTest {
     private final GroveFileInstaller installer = mock(GroveFileInstaller.class);
     private final GroveProvider provider = mock(GroveProvider.class);
     private final CommandRunner host = mock(CommandRunner.class);
+    private final ExecTarget exec = new ExecTarget(host, "/ws", UUID.randomUUID(), ContainerRuntime.DOCKER);
     private final SecretInjector injector = new SecretInjector(secrets, installer);
 
     @BeforeEach
     void wire() throws Exception {
-        lenient().when(provider.host(any())).thenReturn(host);
-        lenient().when(provider.runtime(any())).thenReturn(ContainerRuntime.DOCKER);
+        lenient().when(provider.execTarget(any())).thenReturn(exec);
         lenient().when(host.execute(any())).thenReturn("private");
         lenient().when(host.execute(anyString(), anyLong())).thenReturn("private");
     }
@@ -111,7 +112,7 @@ class SecretInjectorTest {
 
     private FileSpec captureFruitSpec() throws Exception {
         ArgumentCaptor<FileSpec> spec = ArgumentCaptor.forClass(FileSpec.class);
-        verify(installer).install(eq(provider), any(), eq(CONTAINER_ID), eq(Target.FRUIT), spec.capture());
+        verify(installer).install(eq(exec), eq(CONTAINER_ID), eq(Target.FRUIT), spec.capture());
         return spec.getValue();
     }
 
@@ -198,8 +199,8 @@ class SecretInjectorTest {
         SecretInjector.Outcome outcome = injector.inject(provider, grove, fruit(grove, seedDeclaring("A"), "vscode"));
 
         assertThat(outcome.injected()).containsExactly("A");
-        verify(installer).install(eq(provider), any(), eq(CONTAINER_ID), eq(Target.FRUIT), any());
-        verify(installer).install(eq(provider), any(), eq(CONTAINER_ID), eq(Target.VM), any());
+        verify(installer).install(eq(exec), eq(CONTAINER_ID), eq(Target.FRUIT), any());
+        verify(installer).install(eq(exec), eq(CONTAINER_ID), eq(Target.VM), any());
     }
 
     @Test
@@ -213,11 +214,11 @@ class SecretInjectorTest {
         ArgumentCaptor<FileSpec> fruitSpec = ArgumentCaptor.forClass(FileSpec.class);
         ArgumentCaptor<FileSpec> vmSpec = ArgumentCaptor.forClass(FileSpec.class);
         InOrder order = inOrder(installer);
-        order.verify(installer).installHook(provider, grove.plot(), CONTAINER_ID, Target.FRUIT);
-        order.verify(installer).install(eq(provider), eq(grove.plot()), eq(CONTAINER_ID), eq(Target.FRUIT),
+        order.verify(installer).installHook(exec, CONTAINER_ID, Target.FRUIT);
+        order.verify(installer).install(eq(exec), eq(CONTAINER_ID), eq(Target.FRUIT),
             fruitSpec.capture());
-        order.verify(installer).installHook(provider, grove.plot(), CONTAINER_ID, Target.VM);
-        order.verify(installer).install(eq(provider), eq(grove.plot()), eq(CONTAINER_ID), eq(Target.VM),
+        order.verify(installer).installHook(exec, CONTAINER_ID, Target.VM);
+        order.verify(installer).install(eq(exec), eq(CONTAINER_ID), eq(Target.VM),
             vmSpec.capture());
         order.verifyNoMoreInteractions();
         assertThat(fruitSpec.getValue().path()).isEqualTo(GroveFileInstaller.FRUIT_SECRETS_PATH);
@@ -240,8 +241,8 @@ class SecretInjectorTest {
         injector.inject(provider, grove, fruit(grove, seedDeclaring("A"), "vscode"));
 
         InOrder order = inOrder(installer);
-        order.verify(installer).installHook(provider, grove.plot(), CONTAINER_ID, Target.FRUIT);
-        order.verify(installer).install(eq(provider), eq(grove.plot()), eq(CONTAINER_ID), eq(Target.FRUIT), any());
+        order.verify(installer).installHook(exec, CONTAINER_ID, Target.FRUIT);
+        order.verify(installer).install(eq(exec), eq(CONTAINER_ID), eq(Target.FRUIT), any());
         order.verifyNoMoreInteractions();
         verify(host).execute(eq("docker inspect --format '{{.HostConfig.IpcMode}}' '" + CONTAINER_ID + "'"),
             anyLong());
@@ -268,7 +269,7 @@ class SecretInjectorTest {
 
         assertThat(outcome.injected()).containsExactly("A");
         assertThat(outcome.missing()).containsExactly("B");
-        verify(installer).install(eq(provider), any(), eq(CONTAINER_ID), eq(Target.FRUIT), any());
+        verify(installer).install(eq(exec), eq(CONTAINER_ID), eq(Target.FRUIT), any());
         verify(secrets).resolve(grove.cultivatorId(), Set.of("A", "B"));
     }
 
@@ -277,7 +278,7 @@ class SecretInjectorTest {
         Grove grove = grove(containerPlot());
         when(secrets.resolve(eq(grove.cultivatorId()), anyCollection())).thenReturn(values("A", "a"));
         doThrow(new IOException("exit 1")).when(installer)
-            .install(any(), any(), any(), eq(Target.FRUIT), any());
+            .install(any(), any(), eq(Target.FRUIT), any());
 
         assertThatThrownBy(() -> injector.inject(provider, grove, fruit(grove, seedDeclaring("A"), "vscode")))
             .isInstanceOf(SecretDeliveryException.class)
@@ -337,7 +338,7 @@ class SecretInjectorTest {
     void inject_interrupted_restoresFlag() throws Exception {
         Grove grove = grove(containerPlot());
         when(secrets.resolve(eq(grove.cultivatorId()), anyCollection())).thenReturn(values("A", "a"));
-        doThrow(new InterruptedException()).when(installer).installHook(any(), any(), any(), any());
+        doThrow(new InterruptedException()).when(installer).installHook(any(), any(), any());
 
         try {
             assertThatThrownBy(() -> injector.inject(provider, grove, fruit(grove, seedDeclaring("A"), "vscode")))
@@ -353,8 +354,8 @@ class SecretInjectorTest {
         String value = "s3cr3t-'value'-xyz";
         RecordingRunner runner = new RecordingRunner(value);
         GroveProvider realProvider = mock(GroveProvider.class);
-        when(realProvider.host(any())).thenReturn(runner);
-        lenient().when(realProvider.runtime(any())).thenReturn(ContainerRuntime.DOCKER);
+        when(realProvider.execTarget(any()))
+            .thenReturn(new ExecTarget(runner, "/ws", UUID.randomUUID(), ContainerRuntime.DOCKER));
         SecretInjector real = new SecretInjector(secrets, new GroveFileInstaller());
         Grove grove = grove(vmPlot());
         when(secrets.resolve(eq(grove.cultivatorId()), anyCollection())).thenReturn(values("TOKEN", value));

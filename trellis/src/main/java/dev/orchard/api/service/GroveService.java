@@ -799,9 +799,7 @@ public class GroveService {
                     throw new IllegalStateException("fruit " + fruit.id() + " ended " + ripened.state());
                 }
                 current = current.withFruit(ripened);
-                GroveState persisted = groveRepository.findById(grove.id()).map(GroveEntity::getState).orElse(null);
-                if (persisted != GroveState.GROWING) {
-                    log.info("Grove {} is {} after ripening — skipping secret injection", grove.id(), persisted);
+                if (!advance(grove.id(), expected, current)) {
                     return;
                 }
                 injectSecrets(provider, current, ripened);

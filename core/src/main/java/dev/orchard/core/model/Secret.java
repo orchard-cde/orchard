@@ -26,11 +26,17 @@ public record Secret(
 
     /** Throws {@link IllegalArgumentException} unless {@code name} matches {@link #NAME} and is not {@link #RESERVED}. */
     public static void requireStorableName(String name) {
+        if (!isStorableName(name)) {
+            throw new IllegalArgumentException(name != null && RESERVED.contains(name)
+                ? "reserved name: " + name
+                : "name must match " + NAME.pattern());
+        }
+    }
+
+    /** Throws {@link IllegalArgumentException} unless {@code name} matches {@link #NAME}. */
+    public static void requireValidName(String name) {
         if (name == null || !NAME.matcher(name).matches()) {
             throw new IllegalArgumentException("name must match " + NAME.pattern());
-        }
-        if (RESERVED.contains(name)) {
-            throw new IllegalArgumentException("reserved name: " + name);
         }
     }
 

@@ -73,8 +73,8 @@ public final class ContainerVine implements Vine {
         }
 
         private String execCommand(String command, boolean stdin) throws IOException, InterruptedException {
-            return ShellQuote.join(ContainerExec.of(cli, resolveContainer()).user(remoteUser)
-                .interactive(stdin, false).shell(command).argv());
+            return ContainerExec.of(cli, resolveContainer()).user(remoteUser)
+                .interactive(stdin, false).shell(command).commandLine();
         }
 
         private String resolveContainer() throws IOException, InterruptedException {

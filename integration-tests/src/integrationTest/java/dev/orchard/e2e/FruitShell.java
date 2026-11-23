@@ -48,7 +48,7 @@ record FruitShell(GroveProvider provider, Plot plot, String containerId, String 
         assertThat(run("stat -c '%U %G %a' " + GroveFileInstaller.FRUIT_SECRETS_PATH))
             .as("%s: fruit secrets file ownership", step).isEqualTo("root " + group + " 440");
         String diff = provider.host(plot).execute(
-            provider.runtime(plot).cli() + " diff " + ShellQuote.quote(containerId));
+            provider.execTarget(plot).runtime().cli() + " diff " + ShellQuote.quote(containerId));
         assertThat(diff).as("%s: container layer holds the hook but not the secrets file", step)
             .contains("orchard-secrets.sh")
             .doesNotContain("secrets.env");

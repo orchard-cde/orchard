@@ -10,13 +10,13 @@ import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.Secret;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.GroveProvider;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.ShellQuote;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -67,29 +67,24 @@ public final class SecretInjector {
                     "declared secrets need the devcontainer CLI path (orchard.nursery.use-devcontainer-cli=false)",
                     null);
             }
-            if (plot instanceof ContainerPlot && "host".equals(ipcMode(provider, plot, fruit.containerId()))) {
+            ExecTarget exec = provider.execTarget(plot);
+            if (plot instanceof ContainerPlot && "host".equals(ipcMode(exec, fruit.containerId()))) {
                 throw new SecretDeliveryException(
                     "declared secrets cannot be delivered to a container started with --ipc=host", null);
             }
-            SecretEnvFile.Rendered rendered = SecretEnvFile.render(values);
+            byte[] rendered = SecretEnvFile.render(values);
             String fruitMode = "root".equals(remoteUser) ? "0400" : "0440";
-            installer.installHook(provider, plot, fruit.containerId(), Target.FRUIT);
-            installer.install(provider, plot, fruit.containerId(), Target.FRUIT,
-                new FileSpec(GroveFileInstaller.FRUIT_SECRETS_PATH, "root", remoteUser, fruitMode, rendered.bytes()));
+            installer.installHook(exec, fruit.containerId(), Target.FRUIT);
+            installer.install(exec, fruit.containerId(), Target.FRUIT,
+                new FileSpec(GroveFileInstaller.FRUIT_SECRETS_PATH, "root", remoteUser, fruitMode, rendered));
             if (plot instanceof VmPlot) {
-                installer.installHook(provider, plot, fruit.containerId(), Target.VM);
-                installer.install(provider, plot, fruit.containerId(), Target.VM,
-                    new FileSpec(GroveFileInstaller.VM_SECRETS_PATH, "root", "cultivator", "0440", rendered.bytes()));
+                installer.installHook(exec, fruit.containerId(), Target.VM);
+                installer.install(exec, fruit.containerId(), Target.VM,
+                    new FileSpec(GroveFileInstaller.VM_SECRETS_PATH, "root", "cultivator", "0440", rendered));
             }
-            List<String> injected = values.keySet().stream()
-                .filter(n -> !rendered.skippedNames().contains(n)).sorted().toList();
+            List<String> injected = values.keySet().stream().sorted().toList();
             log.info("Injected secrets {} into grove {}", injected, grove.id());
-            if (!rendered.skippedNames().isEmpty()) {
-                log.warn("Skipped secrets with invalid names {} for grove {}", rendered.skippedNames(), grove.id());
-            }
-            List<String> skipped = Stream.concat(unstorable.stream(), rendered.skippedNames().stream())
-                .distinct().sorted().toList();
-            return new Outcome(injected, missing, skipped);
+            return new Outcome(injected, missing, unstorable);
         } catch (SecretDeliveryException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -100,10 +95,9 @@ public final class SecretInjector {
         }
     }
 
-    private static String ipcMode(GroveProvider provider, Plot plot, String containerId)
-        throws IOException, InterruptedException {
-        String command = provider.runtime(plot).cli() + " inspect --format '{{.HostConfig.IpcMode}}' "
+    private static String ipcMode(ExecTarget exec, String containerId) throws IOException, InterruptedException {
+        String command = exec.runtime().cli() + " inspect --format '{{.HostConfig.IpcMode}}' "
             + ShellQuote.quote(containerId);
-        return provider.host(plot).execute(command, INSPECT_TIMEOUT_SECONDS).trim();
+        return exec.runner().execute(command, INSPECT_TIMEOUT_SECONDS).trim();
     }
 }

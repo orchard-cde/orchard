@@ -1,7 +1,6 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.ContainerPlot;
-import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
@@ -10,6 +9,7 @@ import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.Vine;
 
 import java.util.UUID;
@@ -119,8 +119,8 @@ public interface GroveProvider {
      */
     CommandRunner host(Plot plot);
 
-    /** The container CLI that runs on the {@link #host} channel. */
-    ContainerRuntime runtime(Plot plot);
+    /** The {@link #host} channel bundled with its workspace path, plot id and container runtime. */
+    ExecTarget execTarget(Plot plot);
 
     /** The workspace folder as seen by the {@link #host} channel. */
     String workspacePath(Plot plot);

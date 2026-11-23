@@ -114,7 +114,7 @@ class QemuGroveProviderTest {
     void runtime_vmPlot_isDocker() {
         VmPlot plot = VmPlot.germinate(UUID.randomUUID(), "qemu-local", SeedlingSpec.from(VmSpec.small()));
 
-        assertThat(provider.runtime(plot)).isEqualTo(ContainerRuntime.DOCKER);
+        assertThat(provider.execTarget(plot).runtime()).isEqualTo(ContainerRuntime.DOCKER);
     }
 
     @Test

@@ -31,7 +31,6 @@ import java.util.stream.Collectors;
 public class SecretService {
 
     private static final Logger log = LoggerFactory.getLogger(SecretService.class);
-    static final int MAX_VALUE_BYTES = 65536;
 
     private final SecretRepository repository;
     private final SecretVault vault;
@@ -56,8 +55,8 @@ public class SecretService {
         if (value == null) {
             throw new IllegalArgumentException("value must not be null");
         }
-        if (value.length > MAX_VALUE_BYTES) {
-            throw new IllegalArgumentException("value must not exceed " + MAX_VALUE_BYTES + " bytes");
+        if (value.length > SecretVault.MAX_VALUE_BYTES) {
+            throw new IllegalArgumentException("value must not exceed " + SecretVault.MAX_VALUE_BYTES + " bytes");
         }
         for (byte b : value) {
             if (b == 0) {
@@ -77,14 +76,14 @@ public class SecretService {
             }
         } catch (RuntimeException e) {
             inFlight.remove(newKey);
-            discard(newKey);
+            deleteOrSweep(newKey, "after failed write");
             throw e;
         } finally {
             inFlight.remove(newKey);
         }
 
         if (written.oldKey() != null) {
-            deleteEntry(written.oldKey());
+            deleteOrSweep(written.oldKey(), "after overwrite");
         }
         log.info("Stored secret {} (created={})", name, written.created());
         return new Stored(written.secret(), written.created());
@@ -94,29 +93,21 @@ public class SecretService {
         return tx.execute(status -> {
             cultivatorService.ensureCultivator(cultivatorId);
             var existing = repository.findByCultivatorIdAndName(cultivatorId, name);
-            Secret base = existing.map(SecretEntity::toModel)
-                .orElseGet(() -> Secret.store(cultivatorId, name, newKey));
-            String oldKey = existing.map(e -> e.toModel().vaultKey()).orElse(null);
-            Secret updated = existing.isPresent() ? base.withValueWritten(newKey, Instant.now()) : base;
+            Secret current = existing.map(SecretEntity::toModel).orElse(null);
+            Secret updated = current == null
+                ? Secret.store(cultivatorId, name, newKey)
+                : current.withValueWritten(newKey, Instant.now());
+            String oldKey = current == null ? null : current.vaultKey();
             repository.saveAndFlush(SecretEntity.fromModel(updated));
-            return new Written(updated, existing.isEmpty(), oldKey);
+            return new Written(updated, current == null, oldKey);
         });
     }
 
-    private void discard(String key) {
+    private void deleteOrSweep(String key, String context) {
         try {
             vault.delete(key);
         } catch (RuntimeException e) {
-            log.warn("Could not remove vault entry {} after failed write: {}", key, e.toString());
-            sweepQuietly();
-        }
-    }
-
-    private void deleteEntry(String key) {
-        try {
-            vault.delete(key);
-        } catch (RuntimeException e) {
-            log.warn("Could not delete vault entry {}; sweeping: {}", key, e.toString());
+            log.warn("Could not delete vault entry {} {}; sweeping: {}", key, context, e.toString());
             sweepQuietly();
         }
     }
@@ -139,13 +130,13 @@ public class SecretService {
         String key = tx.execute(status -> repository.findByCultivatorIdAndName(cultivatorId, name)
             .map(entity -> {
                 repository.delete(entity);
-                return entity.toModel().vaultKey();
+                return entity.getVaultKey();
             })
             .orElse(null));
         if (key == null) {
             return false;
         }
-        deleteEntry(key);
+        deleteOrSweep(key, "after delete");
         log.info("Deleted secret {}", name);
         return true;
     }
@@ -153,10 +144,9 @@ public class SecretService {
     public Map<String, byte[]> resolve(UUID cultivatorId, Collection<String> names) {
         Map<String, byte[]> resolved = new HashMap<>();
         for (SecretEntity entity : repository.findByCultivatorIdAndNameIn(cultivatorId, names)) {
-            Secret secret = entity.toModel();
-            byte[] value = vault.get(secret.vaultKey()).orElseThrow(() ->
-                new IllegalStateException("Vault entry missing for secret " + secret.name()));
-            resolved.put(secret.name(), value);
+            byte[] value = vault.get(entity.getVaultKey()).orElseThrow(() ->
+                new IllegalStateException("Vault entry missing for secret " + entity.getName()));
+            resolved.put(entity.getName(), value);
         }
         return resolved;
     }
@@ -166,22 +156,16 @@ public class SecretService {
             return List.of();
         }
         Set<String> present = repository.findByCultivatorId(cultivatorId).stream()
-            .map(e -> e.toModel().name())
+            .map(SecretEntity::getName)
             .collect(Collectors.toSet());
         List<SecretWarning> warnings = new ArrayList<>();
-        List<String> unstorable = new ArrayList<>();
         devcontainer.secrets().forEach((name, declaration) -> {
-            if (!Secret.isStorableName(name)) {
-                unstorable.add(name);
-            } else if (!present.contains(name)) {
+            if (Secret.isStorableName(name) && !present.contains(name)) {
                 warnings.add(new SecretWarning(name,
                     declaration == null ? null : declaration.description(),
                     declaration == null ? null : declaration.documentationUrl()));
             }
         });
-        if (!unstorable.isEmpty()) {
-            log.warn("Unstorable secret declarations {}", unstorable);
-        }
         return warnings;
     }
 

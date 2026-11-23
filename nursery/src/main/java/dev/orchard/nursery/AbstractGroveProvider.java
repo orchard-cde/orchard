@@ -153,7 +153,8 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
         return fruitGrower.ripen(execTarget(plot), fruit);
     }
 
-    private ExecTarget execTarget(Plot plot) {
+    @Override
+    public final ExecTarget execTarget(Plot plot) {
         P narrowed = narrow(plot);
         return new ExecTarget(hostFor(narrowed), workspacePathFor(narrowed), narrowed.id(), runtimeFor(narrowed));
     }
@@ -166,11 +167,6 @@ public abstract class AbstractGroveProvider<P extends Plot, L> implements GroveP
     @Override
     public final CommandRunner host(Plot plot) {
         return hostFor(narrow(plot));
-    }
-
-    @Override
-    public final ContainerRuntime runtime(Plot plot) {
-        return runtimeFor(narrow(plot));
     }
 
     @Override

@@ -164,7 +164,7 @@ class SecretCommandTest {
         int exit = run("set", "a/b", "--value-file", file.toString());
 
         assertThat(exit).isNotZero();
-        assertThat(err.toString()).contains("Invalid secret name: a/b");
+        assertThat(err.toString()).contains("name must match");
         assertThat(method.get()).isNull();
     }
 

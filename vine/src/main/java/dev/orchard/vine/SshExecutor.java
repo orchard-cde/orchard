@@ -96,13 +96,9 @@ class SshExecutor implements CommandRunner {
         // join() before reading the StringBuilders establishes happens-before on their contents.
         stdoutReader.join();
         stderrReader.join();
-        if (feeder != null) {
-            feeder.join(STDOUT_DRAIN_GRACE_MS);
-        }
-
         int exitCode = process.exitValue();
-        if (exitCode == 0 && feeder != null && feeder.failed()) {
-            throw new IOException("stdin feed failed (child exited 0 without consuming its input): " + command);
+        if (feeder != null) {
+            feeder.finish(STDOUT_DRAIN_GRACE_MS, exitCode, command);
         }
         if (exitCode != 0) {
             log.error("SSH command failed (exit {}): {} — stderr: {}", exitCode, command, stderr.toString().trim());

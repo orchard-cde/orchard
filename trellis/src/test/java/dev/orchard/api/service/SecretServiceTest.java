@@ -1,6 +1,5 @@
 package dev.orchard.api.service;
 
-import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -437,25 +436,14 @@ class SecretServiceTest {
 
     @Test
     void missingFor_invalidDeclaredName_isExcluded() {
-        Logger logger = (Logger) LoggerFactory.getLogger(SecretService.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        try {
-            Map<String, SecretDeclaration> declared = new LinkedHashMap<>();
-            declared.put("bad-name", new SecretDeclaration(null, null));
-            declared.put("GOOD", new SecretDeclaration(null, null));
-            DevcontainerSeed seed = DevcontainerSeed.builder().name("n").image("img").secrets(declared).build();
+        Map<String, SecretDeclaration> declared = new LinkedHashMap<>();
+        declared.put("bad-name", new SecretDeclaration(null, null));
+        declared.put("GOOD", new SecretDeclaration(null, null));
+        DevcontainerSeed seed = DevcontainerSeed.builder().name("n").image("img").secrets(declared).build();
 
-            List<SecretWarning> warnings = service.missingFor(cultivatorId, seed);
+        List<SecretWarning> warnings = service.missingFor(cultivatorId, seed);
 
-            assertThat(warnings).containsExactly(new SecretWarning("GOOD", null, null));
-            assertThat(appender.list).filteredOn(e -> e.getLevel() == Level.WARN)
-                .singleElement()
-                .satisfies(e -> assertThat(e.getFormattedMessage()).contains("bad-name"));
-        } finally {
-            logger.detachAppender(appender);
-        }
+        assertThat(warnings).containsExactly(new SecretWarning("GOOD", null, null));
     }
 
     @Test

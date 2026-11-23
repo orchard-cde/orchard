@@ -1,6 +1,5 @@
 package dev.orchard.api.service;
 
-import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.Grove;
@@ -20,6 +19,7 @@ import dev.orchard.roots.repository.FruitRepository;
 import dev.orchard.roots.repository.GroveRepository;
 import dev.orchard.trellis.OrchardApplication;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -174,8 +174,8 @@ class GroveStopClearInterleavingTest {
         }
 
         @Override
-        public ContainerRuntime runtime(Plot plot) {
-            throw new UnsupportedOperationException("runtime");
+        public ExecTarget execTarget(Plot plot) {
+            throw new UnsupportedOperationException("execTarget");
         }
 
         @Override

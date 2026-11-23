@@ -3,18 +3,12 @@ package dev.orchard.knothole;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
-import static java.nio.file.StandardOpenOption.CREATE_NEW;
-import static java.nio.file.StandardOpenOption.WRITE;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.SeekableByteChannel;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -28,13 +22,12 @@ import javax.crypto.spec.GCMParameterSpec;
 
 public final class FileSecretVault implements SecretVault {
 
-    static final int MAX_VALUE_BYTES = 65536;
 
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
     private static final int NONCE_BYTES = 12;
     private static final int TAG_BITS = 128;
     private static final String TEMP_PREFIX = ".tmp-";
-    private static final String ENTRY_PERMISSIONS = "rw-------";
+    private static final String ENTRY_PERMISSIONS = SecurePaths.PRIVATE_FILE;
     private static final Duration STALE_TEMP_AGE = Duration.ofSeconds(60);
 
     private final Path directory;
@@ -153,18 +146,7 @@ public final class FileSecretVault implements SecretVault {
     private void write(String key, byte[] entry) {
         Path temp = directory.resolve(TEMP_PREFIX + key + "-" + Long.toHexString(random.nextLong()));
         try {
-            try (SeekableByteChannel channel = Files.newByteChannel(
-                    temp,
-                    Set.of(CREATE_NEW, WRITE),
-                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(ENTRY_PERMISSIONS)))) {
-                ByteBuffer buffer = ByteBuffer.wrap(entry);
-                while (buffer.hasRemaining()) {
-                    channel.write(buffer);
-                }
-                if (channel instanceof FileChannel fileChannel) {
-                    fileChannel.force(true);
-                }
-            }
+            SecurePaths.createPrivateFile(temp, entry, true);
             Files.move(temp, directory.resolve(key), ATOMIC_MOVE, REPLACE_EXISTING);
         } catch (IOException e) {
             try {

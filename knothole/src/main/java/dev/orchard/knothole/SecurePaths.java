@@ -1,6 +1,12 @@
 package dev.orchard.knothole;
 
+import static java.nio.file.StandardOpenOption.CREATE_NEW;
+import static java.nio.file.StandardOpenOption.WRITE;
+
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -15,6 +21,7 @@ import java.util.Set;
 
 final class SecurePaths {
 
+    static final String PRIVATE_FILE = "rw-------";
     private static final String PRIVATE_DIRECTORY = "rwx------";
 
     private final UserPrincipal expectedOwner;
@@ -63,6 +70,27 @@ final class SecurePaths {
         }
         requireModeAndOwner(file, attrs, permissions);
         return attrs;
+    }
+
+    static void createPrivateFile(Path path, byte[] bytes, boolean fsync) throws IOException {
+        SeekableByteChannel channel = Files.newByteChannel(path, Set.of(CREATE_NEW, WRITE),
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(PRIVATE_FILE)));
+        try (channel) {
+            ByteBuffer buffer = ByteBuffer.wrap(bytes);
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
+            if (fsync && channel instanceof FileChannel fileChannel) {
+                fileChannel.force(true);
+            }
+        } catch (IOException e) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
+        }
     }
 
     private void createMissing(Path dir) throws IOException {

@@ -1,53 +1,43 @@
 package dev.orchard.api.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import dev.orchard.api.service.GroveFileInstaller.FileSpec;
 import dev.orchard.api.service.GroveFileInstaller.Target;
-import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.ContainerRuntime;
-import dev.orchard.nursery.GroveProvider;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.ContainerExec;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.LocalCommandRunner;
 import dev.orchard.vine.ShellQuote;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
 
 class GroveFileInstallerTest {
 
     private static final byte[] CONTENT = "TOKEN='hunter2'\n".getBytes(StandardCharsets.UTF_8);
 
     private final GroveFileInstaller installer = new GroveFileInstaller();
-    private final GroveProvider provider = mock(GroveProvider.class);
     private final CommandRunner runner = mock(CommandRunner.class);
-
-    private void wire() {
-        when(provider.host(any())).thenReturn(runner);
-        when(provider.runtime(any())).thenReturn(ContainerRuntime.DOCKER);
-    }
+    private final ExecTarget exec = new ExecTarget(runner, "/ws", UUID.randomUUID(), ContainerRuntime.DOCKER);
+    private static final FileSpec HOOK_SPEC = new FileSpec(GroveFileInstaller.HOOK_PATH, "root", "root", "0644",
+        GroveFileInstaller.hookScript().getBytes(StandardCharsets.UTF_8));
 
     @Test
     void install_fruit_execsAsRootWithStdin() throws Exception {
-        wire();
         FileSpec spec = new FileSpec(GroveFileInstaller.FRUIT_SECRETS_PATH, "vscode", "vscode", "0400", CONTENT);
 
-        installer.install(provider, null, "abc123", Target.FRUIT, spec);
+        installer.install(exec, "abc123", Target.FRUIT, spec);
 
         ArgumentCaptor<String> cmd = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<byte[]> stdin = ArgumentCaptor.forClass(byte[].class);
@@ -61,10 +51,9 @@ class GroveFileInstallerTest {
 
     @Test
     void install_vm_usesSudoAndRemountsReadOnly() throws Exception {
-        wire();
         FileSpec spec = new FileSpec(GroveFileInstaller.VM_SECRETS_PATH, "root", "cultivator", "0440", CONTENT);
 
-        installer.install(provider, null, "abc123", Target.VM, spec);
+        installer.install(exec, "abc123", Target.VM, spec);
 
         ArgumentCaptor<String> cmd = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<byte[]> stdin = ArgumentCaptor.forClass(byte[].class);
@@ -125,46 +114,52 @@ class GroveFileInstallerTest {
     }
 
     @Test
-    void install_vmOnContainerPlot_rejected() {
-        FileSpec spec = new FileSpec("/p", "root", "root", "0400", CONTENT);
-        assertThatThrownBy(() -> installer.install(provider, mock(ContainerPlot.class), "x", Target.VM, spec))
-            .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void installHook_fruit_writesHookThenGuardsBashrcAndZprofile() throws Exception {
-        wire();
-
-        installer.installHook(provider, null, "abc123", Target.FRUIT);
+    void installHook_fruit_writesHookAndGuardsInOneStdinExec() throws Exception {
+        installer.installHook(exec, "abc123", Target.FRUIT);
 
         ArgumentCaptor<String> cmd = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<byte[]> stdin = ArgumentCaptor.forClass(byte[].class);
-        ArgumentCaptor<String> guards = ArgumentCaptor.forClass(String.class);
-        InOrder order = inOrder(runner);
-        order.verify(runner).execute(cmd.capture(), stdin.capture(), anyLong());
-        order.verify(runner, times(2)).execute(guards.capture(), anyLong());
-        order.verifyNoMoreInteractions();
-        String second = guards.getAllValues().get(0);
-        String third = guards.getAllValues().get(1);
+        verify(runner).execute(cmd.capture(), stdin.capture(), eq(60L));
+        verifyNoMoreInteractions(runner);
+        String script = GroveFileInstaller.hookInstallScript(Target.FRUIT, HOOK_SPEC);
         assertThat(stdin.getValue()).isEqualTo(GroveFileInstaller.hookScript().getBytes(StandardCharsets.UTF_8));
-        assertThat(cmd.getValue()).contains("chmod '\\''0644'\\''");
-        assertThat(second).isEqualTo(ShellQuote.join(ContainerExec.of("docker", "abc123")
-            .interactive(true, false).user("root").shell(GroveFileInstaller.BASHRC_GUARD).argv()));
-        assertThat(second).contains(">> /etc/bash.bashrc", "grep -q orchard-secrets");
-        assertThat(third).isEqualTo(ShellQuote.join(ContainerExec.of("docker", "abc123")
-            .interactive(true, false).user("root").shell(GroveFileInstaller.ZPROFILE_GUARD).argv()));
-        assertThat(third).contains("/etc/zsh/zprofile", "/etc/zprofile", "grep -q orchard-secrets",
+        assertThat(cmd.getValue()).isEqualTo(ContainerExec.of("docker", "abc123")
+            .interactive(true, false).user("root").shell(script).commandLine());
+        assertHookWriteThenGuards(script);
+    }
+
+    @Test
+    void installHook_vm_writesHookAndGuardsInOneSudoExec() throws Exception {
+        installer.installHook(exec, "abc123", Target.VM);
+
+        ArgumentCaptor<String> cmd = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<byte[]> stdin = ArgumentCaptor.forClass(byte[].class);
+        verify(runner).execute(cmd.capture(), stdin.capture(), eq(60L));
+        verifyNoMoreInteractions(runner);
+        String script = GroveFileInstaller.hookInstallScript(Target.VM, HOOK_SPEC);
+        assertThat(stdin.getValue()).isEqualTo(GroveFileInstaller.hookScript().getBytes(StandardCharsets.UTF_8));
+        assertThat(cmd.getValue()).isEqualTo("sudo sh -c " + ShellQuote.quote(script));
+        assertThat(script).doesNotContain("mount");
+        assertHookWriteThenGuards(script);
+    }
+
+    private static void assertHookWriteThenGuards(String script) {
+        assertThat(script).contains("p='" + GroveFileInstaller.HOOK_PATH + "'", "cat > \"$t\"",
+            "chown 'root':\"$g\"", "chmod '0644'", "mv -f \"$t\" \"$p\"",
+            GroveFileInstaller.BASHRC_GUARD, GroveFileInstaller.ZPROFILE_GUARD);
+        assertThat(script.indexOf("mv -f")).isLessThan(script.indexOf(GroveFileInstaller.BASHRC_GUARD));
+        assertThat(script.indexOf(GroveFileInstaller.BASHRC_GUARD))
+            .isLessThan(script.indexOf(GroveFileInstaller.ZPROFILE_GUARD));
+        assertThat(GroveFileInstaller.BASHRC_GUARD).contains(">> /etc/bash.bashrc", "grep -q orchard-secrets");
+        assertThat(GroveFileInstaller.ZPROFILE_GUARD).contains("/etc/zsh/zprofile", "/etc/zprofile",
+            "grep -q orchard-secrets",
             "[ -r /etc/profile.d/orchard-secrets.sh ] && . /etc/profile.d/orchard-secrets.sh");
     }
 
     @Test
-    void installHook_vm_guardsZprofileThroughSudo() throws Exception {
-        wire();
-
-        installer.installHook(provider, null, "abc123", Target.VM);
-
-        verify(runner).execute("sudo sh -c " + ShellQuote.quote(GroveFileInstaller.ZPROFILE_GUARD), 60L);
-        verify(runner).execute("sudo sh -c " + ShellQuote.quote(GroveFileInstaller.BASHRC_GUARD), 60L);
+    void hookScript_readsBothSecretsPaths() {
+        assertThat(GroveFileInstaller.hookScript())
+            .contains(GroveFileInstaller.FRUIT_SECRETS_PATH, GroveFileInstaller.VM_SECRETS_PATH);
     }
 
     @Test
