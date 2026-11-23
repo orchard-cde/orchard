@@ -54,11 +54,9 @@ public class PrebuildService {
     public Prebuild triggerPrebuild(String repositoryUrl, String branch) {
         log.info("Triggering prebuild for {} branch {}", repositoryUrl, branch);
 
-        // Create prebuild record
         Prebuild prebuild = Prebuild.create(repositoryUrl, branch);
         prebuildRepository.save(PrebuildEntity.fromModel(prebuild));
 
-        // Run the build asynchronously
         final Prebuild initialPrebuild = prebuild;
         Thread.ofVirtual().name("prebuild-" + prebuild.id()).start(() ->
             executePrebuild(initialPrebuild));
@@ -77,9 +75,6 @@ public class PrebuildService {
             .filter(Prebuild::isUsable);
     }
 
-    /**
-     * Gets a prebuild by its ID.
-     */
     public Optional<Prebuild> getPrebuild(UUID id) {
         return prebuildRepository.findById(id)
             .map(PrebuildEntity::toModel);
@@ -110,33 +105,25 @@ public class PrebuildService {
     private void executePrebuild(Prebuild prebuild) {
         Path workDir = null;
         try {
-            // Create temp working directory
             workDir = Path.of(config.workDir(), prebuild.id().toString());
             Files.createDirectories(workDir);
 
-            // Clone repo
             Path repoDir = imageBuilder.cloneRepository(
                 prebuild.repositoryUrl(), prebuild.branch(), workDir);
 
-            // Get commit SHA
             String commitSha = imageBuilder.getCommitSha(repoDir);
             prebuild = prebuild.withCommitSha(commitSha);
 
-            // Parse devcontainer.json
             DevcontainerSeed seed = discoverSeed(repoDir);
 
-            // Build image
             String imageRef = imageBuilder.buildImage(
                 prebuild.repositoryUrl(), prebuild.branch(), seed, repoDir);
             prebuild = prebuild.withImageRef(imageRef);
 
-            // Push image to registry
             imageBuilder.pushImage(imageRef);
 
-            // Compost any existing RIPE prebuild for this repo+branch
             compostExistingPrebuild(prebuild.repositoryUrl(), prebuild.branch(), prebuild.id());
 
-            // Mark as RIPE
             prebuild = prebuild.withState(PrebuildState.RIPE);
             savePrebuild(prebuild);
 
@@ -147,7 +134,6 @@ public class PrebuildService {
             prebuild = prebuild.withState(PrebuildState.FAILED);
             savePrebuild(prebuild);
         } finally {
-            // Clean up working directory
             cleanupWorkDir(workDir);
         }
     }
@@ -163,7 +149,6 @@ public class PrebuildService {
             log.warn("Failed to parse devcontainer.json, using default seed: {}", e.getMessage());
         }
 
-        // Fall back to default seed
         log.info("No devcontainer.json found, using default seed for prebuild");
         return DevcontainerSeed.devcontainer()
             .name("orchard-workspace")

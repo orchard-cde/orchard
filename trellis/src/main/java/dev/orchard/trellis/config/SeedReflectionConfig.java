@@ -1,10 +1,14 @@
 package dev.orchard.trellis.config;
 
+import dev.orchard.core.model.DevcontainerJson;
 import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.DevfileSeed;
+import dev.orchard.core.model.DevfileYaml;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.WaitFor;
+import dev.orchard.harvest.DevcontainerJsonBinding;
+import dev.orchard.harvest.DevfileYamlBinding;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.context.annotation.Configuration;
 
@@ -23,6 +27,11 @@ import org.springframework.context.annotation.Configuration;
  * <p>Uses {@code @RegisterReflectionForBinding} (the repo's binding idiom — see
  * {@code GroveEventBroadcaster}) instead of a hand-written {@code reflect-config.json}, so a
  * rename of any model class is tracked by the compiler rather than silently breaking native.
+ *
+ * <p>{@link DevcontainerJson} and {@link DevfileYaml} are the wire shapes the harvest parsers bind
+ * workspace configs to; registering them also covers their nested records. Their
+ * {@code @JsonDeserialize} bindings live on harvest's mixin interfaces, so registering those covers
+ * the deserializers the annotations name.
  */
 @Configuration(proxyBeanMethods = false)
 @RegisterReflectionForBinding({
@@ -37,7 +46,14 @@ import org.springframework.context.annotation.Configuration;
     LifecycleCommand.class,
     LifecycleCommand.Sequential.class,
     LifecycleCommand.Parallel.class,
-    WaitFor.class
+    WaitFor.class,
+    DevcontainerJson.class,
+    DevfileYaml.class,
+    DevcontainerJsonBinding.class,
+    DevcontainerJsonBinding.Build.class,
+    DevcontainerJsonBinding.Customizations.class,
+    DevcontainerJsonBinding.VsCode.class,
+    DevfileYamlBinding.Component.class
 })
 public class SeedReflectionConfig {
 }

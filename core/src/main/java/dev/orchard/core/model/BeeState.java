@@ -15,7 +15,7 @@ public enum BeeState {
             case HATCHING -> target == HIBERNATING;
             case HIBERNATING -> target == BUZZING;
             case BUZZING -> target == POLLINATING || target == HIBERNATING;
-            case POLLINATING -> target == BUZZING;
+            case POLLINATING -> target == BUZZING || target == HIBERNATING;
             case SMOKED -> false;
         };
     }

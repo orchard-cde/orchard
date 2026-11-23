@@ -3,6 +3,7 @@ package dev.orchard.roots.repository;
 import dev.orchard.core.model.GroveState;
 import dev.orchard.roots.entity.GroveEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
@@ -25,4 +26,8 @@ public interface GroveRepository extends JpaRepository<GroveEntity, UUID> {
 
     @Query("SELECT g FROM GroveEntity g WHERE g.cultivatorId = :cultivatorId AND g.repositoryUrl = :repoUrl AND g.branch = :branch")
     List<GroveEntity> findByCultivatorAndRepo(UUID cultivatorId, String repoUrl, String branch);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE GroveEntity g SET g.state = :next, g.plotJson = :plotJson WHERE g.id = :id AND g.state = :expected")
+    int transitionIfState(UUID id, GroveState expected, GroveState next, String plotJson);
 }

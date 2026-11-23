@@ -35,6 +35,18 @@ class SshExecutor implements CommandRunner {
         this.targetId = targetId;
     }
 
+    String host() {
+        return host;
+    }
+
+    int port() {
+        return port;
+    }
+
+    UUID targetId() {
+        return targetId;
+    }
+
     /**
      * Executes a command on the remote target via SSH and returns stdout.
      *

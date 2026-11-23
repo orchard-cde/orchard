@@ -16,21 +16,11 @@ public record GroveResponse(
     String commitSha,
     GroveState state,
     String sshConnectionString,
-    SeedlingInfo seedling,
+    PlotInfo plot,
     List<FruitInfo> fruits,
     Instant plantedAt,
     Instant lastAccessedAt
 ) {
-    public record SeedlingInfo(
-        UUID id,
-        String state,
-        String ipAddress,
-        int sshPort,
-        int cpuCores,
-        int memoryMb,
-        int diskGb
-    ) {}
-
     public record FruitInfo(
         UUID id,
         String state,
@@ -46,21 +36,7 @@ public record GroveResponse(
         return fruits != null && !fruits.isEmpty() ? fruits.getFirst() : null;
     }
 
-    public static GroveResponse fromModel(Grove grove) {
-        SeedlingInfo seedlingInfo = null;
-        if (grove.seedling() != null) {
-            var s = grove.seedling();
-            seedlingInfo = new SeedlingInfo(
-                s.id(),
-                s.state().name(),
-                s.ipAddress(),
-                s.sshPort(),
-                s.spec().cpuCores(),
-                s.spec().memoryMb(),
-                s.spec().diskGb()
-            );
-        }
-
+    public static GroveResponse fromModel(Grove grove, String sshConnectionString) {
         List<FruitInfo> fruitInfos = List.of();
         if (grove.fruits() != null && !grove.fruits().isEmpty()) {
             fruitInfos = grove.fruits().stream()
@@ -81,8 +57,8 @@ public record GroveResponse(
             grove.branch(),
             grove.commitSha(),
             grove.state(),
-            grove.getSshConnectionString(),
-            seedlingInfo,
+            sshConnectionString,
+            grove.plot() == null ? null : PlotInfo.from(grove.plot()),
             fruitInfos,
             grove.plantedAt(),
             grove.lastAccessedAt()

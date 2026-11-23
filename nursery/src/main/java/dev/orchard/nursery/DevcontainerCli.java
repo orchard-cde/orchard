@@ -1,10 +1,14 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ContainerLabels;
+import dev.orchard.vine.ExecTarget;
+import dev.orchard.vine.ShellQuote;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
-import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -14,19 +18,26 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
- * Drives {@code @devcontainers/cli} over SSH via an injected {@link CommandRunner}.
- * Spec: Locked decisions #1-19 of {@code docs/superpowers/specs/2026-06-15-issue-74-features-runtime-design.md}.
+ * Drives {@code @devcontainers/cli} through the {@link CommandRunner} of an {@link ExecTarget}.
  *
  * <p>The CLI's stdout (with {@code --log-format json}) is a stream of JSON objects, one per
  * line. Each log line has a {@code type} field; the terminal line has an {@code outcome}
  * field. We parse the outcome line for the result and pass every line through to a
  * Consumer for callers who want to derive progress events.
  */
-@RegisterReflectionForBinding({DevcontainerCliResult.class, CliError.class})
+@RegisterReflectionForBinding({DevcontainerCliResult.class, CliError.class, DevcontainerCli.Outcome.class})
 public class DevcontainerCli {
 
     private static final Logger log = LoggerFactory.getLogger(DevcontainerCli.class);
-    private static final ObjectMapper mapper = JsonMapper.builder().build();
+    private static final ObjectMapper mapper = JsonMapper.builder()
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .build();
+
+    record Outcome(String outcome) {
+        boolean isSuccess() {
+            return "success".equals(outcome);
+        }
+    }
 
     private final DevcontainerCliConfig config;
 
@@ -35,30 +46,33 @@ public class DevcontainerCli {
     }
 
     /**
-     * Runs {@code devcontainer up} against {@code workspacePath} via the given runner. Each CLI
+     * Runs {@code devcontainer up} against the target's workspace via its runner, using the
+     * target's container runtime and labelling the container with the target's id. Each CLI
      * JSON log line is fed to {@code rawLineConsumer} as it arrives; phase-transition events
      * are derived by the caller (FruitGrower).
      *
      * @return the parsed {@link DevcontainerCliResult} (outcome=success line).
      * @throws DevcontainerCliException on outcome=error or a missing outcome line.
      */
-    public DevcontainerCliResult up(CommandRunner runner, String workspacePath, UUID fruitId,
-                                    String containerName, Consumer<String> rawLineConsumer)
+    public DevcontainerCliResult up(ExecTarget target, UUID fruitId, String containerName,
+                                    Consumer<String> rawLineConsumer)
             throws IOException, InterruptedException {
+        CommandRunner runner = target.runner();
         String cmd = "devcontainer up"
-            + " --workspace-folder " + workspacePath
+            + " --workspace-folder " + ShellQuote.quote(target.workspacePath())
             + " --log-format json"
             + " --skip-post-attach"
             + " --remove-existing-container"
-            + " --id-label orchard.fruit.id=" + fruitId
-            + " --id-label orchard.fruit.name=" + shellEscape(containerName);
+            + dockerPathArgs(target)
+            + composePathArg(target)
+            + " --id-label " + ShellQuote.quote("orchard.fruit.id=" + fruitId)
+            + " --id-label " + ShellQuote.quote("orchard.fruit.name=" + containerName)
+            + " --id-label " + ShellQuote.quote(ContainerLabels.label(target.targetId()));
 
         AtomicReference<String> outcomeLine = new AtomicReference<>();
         runner.executeStreaming(cmd, line -> {
             rawLineConsumer.accept(line);
-            // The outcome line is the only one with an "outcome" key (matched as a JSON key prefix
-            // to avoid false positives on log messages that mention "outcome" in a value).
-            if (line.contains("\"outcome\":\"")) {
+            if (isOutcomeLine(line)) {
                 outcomeLine.set(line);
             }
         }, config.upTimeoutSeconds());
@@ -69,45 +83,87 @@ public class DevcontainerCli {
                 null, null, null, null));
         }
 
-        JsonNode node = mapper.readTree(outcomeLine.get());
-        String outcome = node.has("outcome") ? node.get("outcome").asText() : null;
-        if (!"success".equals(outcome)) {
-            throw new DevcontainerCliException(new CliError(
-                node.path("message").asText(null),
-                node.path("description").asText(null),
-                node.path("disallowedFeatureId").asText(null),
-                node.path("containerId").asText(null),
-                node.has("didStopContainer") ? node.get("didStopContainer").asBoolean() : null,
-                node.path("learnMoreUrl").asText(null)));
+        if (!mapper.readValue(outcomeLine.get(), Outcome.class).isSuccess()) {
+            throw new DevcontainerCliException(mapper.readValue(outcomeLine.get(), CliError.class));
         }
+        return mapper.readValue(outcomeLine.get(), DevcontainerCliResult.class);
+    }
 
-        return new DevcontainerCliResult(
-            node.path("containerId").asText(null),
-            node.path("composeProjectName").asText(null),
-            node.path("remoteUser").asText(null),
-            node.path("remoteWorkspaceFolder").asText(null));
+    /**
+     * Runs {@code devcontainer run-user-commands} against an existing container, as the remote user
+     * in the workspace folder with variable substitution, exactly as {@code up} ran them. The CLI's
+     * markers skip create-time hooks already run in this container and rerun {@code postStartCommand}
+     * once per container start. {@code postAttachCommand} is skipped, as it is for {@code up}.
+     *
+     * @throws DevcontainerCliException on outcome=error or a missing outcome line
+     * @throws IOException if the CLI exits non-zero
+     */
+    public void runUserCommands(ExecTarget target, String containerId)
+            throws IOException, InterruptedException {
+        String cmd = "devcontainer run-user-commands"
+            + " --workspace-folder " + ShellQuote.quote(target.workspacePath())
+            + " --container-id " + ShellQuote.quote(containerId)
+            + " --log-format json"
+            + " --skip-post-attach"
+            + dockerPathArgs(target);
+        String output = target.runner().execute(cmd, config.upTimeoutSeconds());
+        String outcomeLine = null;
+        for (String line : output.split("\n")) {
+            if (isOutcomeLine(line)) {
+                outcomeLine = line;
+            }
+        }
+        if (outcomeLine == null) {
+            throw new DevcontainerCliException(new CliError(
+                "no outcome line", "devcontainer run-user-commands emitted no result JSON — possible CLI crash",
+                null, containerId, null, null));
+        }
+        if (!mapper.readValue(outcomeLine, Outcome.class).isSuccess()) {
+            CliError error = mapper.readValue(outcomeLine, CliError.class);
+            throw new DevcontainerCliException(error.containerId() != null ? error : new CliError(
+                error.message(), error.description(), error.disallowedFeatureId(),
+                containerId, error.didStopContainer(), error.learnMoreUrl()));
+        }
     }
 
     /** Run a command inside the fruit's container. Used by FruitGrower.attach() for postAttachCommand. */
-    public void exec(CommandRunner runner, String workspacePath, String command) throws IOException, InterruptedException {
-        String cmd = "devcontainer exec --workspace-folder " + workspacePath + " -- " + command;
-        runner.execute(cmd, config.execTimeoutSeconds());
+    public void exec(ExecTarget target, String command) throws IOException, InterruptedException {
+        String cmd = "devcontainer exec --workspace-folder " + ShellQuote.quote(target.workspacePath())
+            + dockerPathArgs(target) + " -- /bin/sh -c " + ShellQuote.quote(command);
+        target.runner().execute(cmd, config.execTimeoutSeconds());
     }
 
     /** Fetch the actual container name post-up so {@code Fruit.containerName()} reflects reality. */
-    public String inspectContainerName(CommandRunner runner, String containerId) throws IOException, InterruptedException {
-        String name = runner
-            .execute("docker inspect " + containerId + " --format '{{.Name}}'")
+    public String inspectContainerName(ExecTarget target, String containerId) throws IOException, InterruptedException {
+        String name = target.runner()
+            .execute(target.runtime().cli() + " inspect " + ShellQuote.quote(containerId) + " --format '{{.Name}}'")
             .trim();
-        // docker inspect returns "/name" with a leading slash; strip it.
+        // inspect returns "/name" with a leading slash; strip it.
         return name.startsWith("/") ? name.substring(1) : name;
     }
 
-    private static String shellEscape(String s) {
-        if (s == null) {
-            return "''";
+    /**
+     * The outcome line is the only one with an "outcome" key (matched as a JSON key prefix to avoid
+     * false positives on log messages that mention "outcome" in a value).
+     */
+    private static boolean isOutcomeLine(String line) {
+        return line.contains("\"outcome\":\"");
+    }
+
+    private static String dockerPathArgs(ExecTarget target) {
+        return target.runtime() == ContainerRuntime.PODMAN ? " --docker-path " + target.runtime().cli() : "";
+    }
+
+    private static String composePathArg(ExecTarget target) throws InterruptedException {
+        if (target.runtime() != ContainerRuntime.PODMAN) {
+            return "";
         }
-        return "'" + s.replace("'", "'\\''") + "'";
+        try {
+            String found = target.runner().execute("command -v podman-compose");
+            return found != null && !found.isBlank() ? " --docker-compose-path podman-compose" : "";
+        } catch (IOException notInstalled) {
+            return "";
+        }
     }
 
     public static class DevcontainerCliException extends RuntimeException {

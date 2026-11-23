@@ -1,8 +1,16 @@
 package dev.orchard.nursery.aws;
 
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.Seedling.SeedlingSpec;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.ContainerPlot;
+import dev.orchard.core.model.ContainerRuntime;
+import dev.orchard.core.model.ContainerSpec;
+import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmEndpoint;
+import dev.orchard.core.model.Host;
+import dev.orchard.core.model.ProviderHandle;
+import dev.orchard.core.model.ProviderType;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.aws.Ec2Operations.AwsInstanceState;
@@ -13,11 +21,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
@@ -27,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -43,7 +57,7 @@ class Ec2GroveProviderTest {
     @TempDir Path tempDir;
 
     private Path keyPath;
-    private Seedling germinated;
+    private VmPlot germinated;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -51,7 +65,7 @@ class Ec2GroveProviderTest {
         Files.writeString(keyPath, "private-fake");
         Files.writeString(Path.of(keyPath + ".pub"), "ssh-ed25519 AAAA testkey orchard@test");
 
-        germinated = Seedling.germinate(UUID.randomUUID(), SeedlingSpec.small());
+        germinated = VmPlot.germinate(UUID.randomUUID(), "aws-ec2", SeedlingSpec.from(VmSpec.small()));
     }
 
     private Ec2Config configWith(Ec2Config.IpMode mode) {
@@ -74,17 +88,22 @@ class Ec2GroveProviderTest {
     }
 
     @Test
-    void plantSubstrate_happyPath_returnsSaplingWithProviderDetails() {
+    void type_isAwsEc2() {
+        assertThat(providerWith(configWith(Ec2Config.IpMode.AUTO)).type()).isEqualTo(ProviderType.AWS_EC2);
+    }
+
+    @Test
+    void plantSubstrate_happyPath_returnsRootedWithProviderDetails() {
         when(ops.runInstance(any(RunInstanceParams.class))).thenReturn("i-abc");
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .plantSubstrate(germinated).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.SAPLING);
+        assertThat(result.state()).isEqualTo(PlotState.ROOTED);
         assertThat(result.providerInstanceId()).isEqualTo("i-abc");
-        assertThat(result.ipAddress()).isEqualTo("1.2.3.4");  // AUTO prefers public
+        assertThat(result.host()).isEqualTo("1.2.3.4");  // AUTO prefers public
         assertThat(result.sshPort()).isEqualTo(22);
         verify(waiter).awaitRunning("i-abc");
         verify(waiter).awaitSshReady("1.2.3.4", 22);
@@ -95,10 +114,10 @@ class Ec2GroveProviderTest {
         when(ops.runInstance(any(RunInstanceParams.class)))
             .thenThrow(new RuntimeException("auth failed"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .plantSubstrate(germinated).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
+        assertThat(result.state()).isEqualTo(PlotState.BLIGHTED);
         verify(ops, never()).terminateInstance(anyString());
     }
 
@@ -108,10 +127,10 @@ class Ec2GroveProviderTest {
         doThrow(new Ec2InstanceWaiter.WaitTimeoutException("timeout"))
             .when(waiter).awaitRunning("i-abc");
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .plantSubstrate(germinated).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
+        assertThat(result.state()).isEqualTo(PlotState.BLIGHTED);
         verify(ops, never()).terminateInstance(anyString());
     }
 
@@ -123,10 +142,10 @@ class Ec2GroveProviderTest {
         doThrow(new Ec2InstanceWaiter.WaitTimeoutException("ssh"))
             .when(waiter).awaitSshReady(anyString(), org.mockito.ArgumentMatchers.eq(22));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .plantSubstrate(germinated).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
+        assertThat(result.state()).isEqualTo(PlotState.BLIGHTED);
         verify(ops, never()).terminateInstance(anyString());
     }
 
@@ -136,10 +155,10 @@ class Ec2GroveProviderTest {
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .plantSubstrate(germinated).join();
 
-        assertThat(result.ipAddress()).isEqualTo("1.2.3.4");
+        assertThat(result.host()).isEqualTo("1.2.3.4");
     }
 
     @Test
@@ -148,10 +167,10 @@ class Ec2GroveProviderTest {
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, null, "10.0.0.4"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .plantSubstrate(germinated).join();
 
-        assertThat(result.ipAddress()).isEqualTo("10.0.0.4");
+        assertThat(result.host()).isEqualTo("10.0.0.4");
     }
 
     @Test
@@ -160,10 +179,10 @@ class Ec2GroveProviderTest {
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, null, "10.0.0.4"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.PUBLIC))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.PUBLIC))
             .plantSubstrate(germinated).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.BLIGHTED);
+        assertThat(result.state()).isEqualTo(PlotState.BLIGHTED);
     }
 
     @Test
@@ -172,44 +191,139 @@ class Ec2GroveProviderTest {
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.PRIVATE))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.PRIVATE))
             .plantSubstrate(germinated).join();
 
-        assertThat(result.ipAddress()).isEqualTo("10.0.0.4");
+        assertThat(result.host()).isEqualTo("10.0.0.4");
+    }
+
+    private VmPlot dormantPlot(int sshPort) {
+        return germinated
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), sshPort))
+            .withState(PlotState.DORMANT);
     }
 
     @Test
-    void water_startsInstanceAndRefreshesIp() {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.WILTING);
+    void water_startsWaitsRefreshesIpAndAwaitsSsh_returnsRooted() {
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "5.6.7.8", "10.0.0.4"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .water(planted).join();
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .water(dormantPlot(germinated.sshPort())).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.SAPLING);
-        assertThat(result.ipAddress()).isEqualTo("5.6.7.8");
-        verify(ops).startInstance("i-abc");
-        verify(waiter).awaitRunning("i-abc");
+        assertThat(result.state()).isEqualTo(PlotState.ROOTED);
+        assertThat(result.host()).isEqualTo("5.6.7.8");
+        InOrder order = inOrder(ops, waiter);
+        order.verify(ops).startInstance("i-abc");
+        order.verify(waiter).awaitRunning("i-abc");
+        order.verify(ops).describeInstance("i-abc");
+        order.verify(waiter).awaitSshReady("5.6.7.8", 22);
     }
 
     @Test
-    void dormant_returnsWiltingWithoutTouchingAws() {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
+    void water_refreshesHostButPreservesSshPort() {
+        when(ops.describeInstance("i-abc")).thenReturn(
+            new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "5.6.7.8", "10.0.0.4"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .water(dormantPlot(2201)).join();
+
+        assertThat(result.state()).isEqualTo(PlotState.ROOTED);
+        assertThat(result.host()).isEqualTo("5.6.7.8");
+        assertThat(result.sshPort()).isEqualTo(2201);
+        verify(waiter).awaitSshReady("5.6.7.8", 2201);
+    }
+
+    @Test
+    void water_failure_completesExceptionally() {
+        doThrow(new IllegalStateException("start failed")).when(ops).startInstance("i-abc");
+
+        assertThatThrownBy(() -> providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .water(dormantPlot(22)).join())
+            .isInstanceOf(CompletionException.class)
+            .hasRootCauseMessage("start failed");
+    }
+
+    @Test
+    void water_sshNeverReady_completesExceptionally() {
+        when(ops.describeInstance("i-abc")).thenReturn(
+            new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "5.6.7.8", "10.0.0.4"));
+        doThrow(new Ec2InstanceWaiter.WaitTimeoutException("ssh timeout"))
+            .when(waiter).awaitSshReady("5.6.7.8", 22);
+
+        assertThatThrownBy(() -> providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .water(dormantPlot(22)).join())
+            .isInstanceOf(CompletionException.class)
+            .hasRootCauseMessage("ssh timeout");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"water", "dormant", "uproot", "inspect"})
+    void ownedMethod_containerPlot_isRefusedOnTheCallingThread(String method) {
+        Ec2GroveProvider provider = providerWith(configWith(Ec2Config.IpMode.AUTO));
+        ContainerPlot container = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
+            "c-1", PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"),
+            ContainerRuntime.DOCKER, new ContainerSpec(2, 2048), null);
+        Runnable call = switch (method) {
+            case "water" -> () -> provider.water(container);
+            case "dormant" -> () -> provider.dormant(container);
+            case "uproot" -> () -> provider.uproot(container);
+            case "inspect" -> () -> provider.inspect(container);
+            default -> throw new IllegalArgumentException(method);
+        };
+
+        assertThatThrownBy(call::run)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("aws-ec2")
+            .hasMessageContaining(container.id().toString());
+    }
+
+    @Test
+    void dormant_stopsAndWaits_returnsDormant() {
+        VmPlot planted = germinated
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.WILTING);
+
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .dormant(planted).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.WILTING);
-        verifyNoInteractions(ops, waiter);
+        assertThat(result.state()).isEqualTo(PlotState.DORMANT);
+        InOrder order = inOrder(ops, waiter);
+        order.verify(ops).stopInstance("i-abc");
+        order.verify(waiter).awaitStopped("i-abc");
+    }
+
+    @Test
+    void dormant_stopFails_completesExceptionally() {
+        VmPlot planted = germinated
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.WILTING);
+        doThrow(new IllegalStateException("stop failed")).when(ops).stopInstance("i-abc");
+
+        assertThatThrownBy(() -> providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .dormant(planted).join())
+            .isInstanceOf(CompletionException.class)
+            .hasRootCauseMessage("stop failed");
+        verify(waiter, never()).awaitStopped(anyString());
+    }
+
+    @Test
+    void dormant_neverStops_completesExceptionally() {
+        VmPlot planted = germinated
+            .withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.WILTING);
+        doThrow(new Ec2InstanceWaiter.WaitTimeoutException("stop timeout")).when(waiter).awaitStopped("i-abc");
+
+        assertThatThrownBy(() -> providerWith(configWith(Ec2Config.IpMode.AUTO))
+            .dormant(planted).join())
+            .isInstanceOf(CompletionException.class)
+            .hasRootCauseMessage("stop timeout");
     }
 
     @Test
     void uproot_callsTerminateAndReturnsNull() throws Exception {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.ROOTED);
 
         Void result = providerWith(configWith(Ec2Config.IpMode.AUTO))
             .uproot(planted).join();
@@ -224,8 +338,8 @@ class Ec2GroveProviderTest {
      */
     @Test
     void uproot_terminateFails_completesExceptionally() {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.ROOTED);
         RuntimeException terminateFailure = new RuntimeException("AWS terminate-instances failed");
         doThrow(terminateFailure).when(ops).terminateInstance("i-abc");
 
@@ -236,83 +350,46 @@ class Ec2GroveProviderTest {
             .hasCause(terminateFailure);
     }
 
-    @Test
-    void inspect_mapsRunningToSapling() {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
+    @ParameterizedTest(name = "{0} -> {1}")
+    @CsvSource({"PENDING,SPROUTING", "RUNNING,ROOTED", "STOPPING,WILTING", "SHUTTING_DOWN,WILTING",
+                "STOPPED,DORMANT", "TERMINATED,WITHERED"})
+    void inspect_mapsAwsStateToPlotState(AwsInstanceState aws, PlotState expected) {
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.ROOTED);
         when(ops.describeInstance("i-abc")).thenReturn(
-            new InstanceDescription("i-abc", AwsInstanceState.RUNNING, "1.2.3.4", "10.0.0.4"));
+            new InstanceDescription("i-abc", aws, null, "10.0.0.4"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .inspect(planted).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.SAPLING);
-    }
-
-    @Test
-    void inspect_mapsStoppedToWilting() {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
-        when(ops.describeInstance("i-abc")).thenReturn(
-            new InstanceDescription("i-abc", AwsInstanceState.STOPPED, null, "10.0.0.4"));
-
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .inspect(planted).join();
-
-        assertThat(result.state()).isEqualTo(SeedlingState.WILTING);
-    }
-
-    @Test
-    void inspect_mapsTerminatedToWithered() {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
-        when(ops.describeInstance("i-abc")).thenReturn(
-            new InstanceDescription("i-abc", AwsInstanceState.TERMINATED, null, null));
-
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .inspect(planted).join();
-
-        assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
-    }
-
-    @Test
-    void inspect_mapsPendingToSprouting() {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
-        when(ops.describeInstance("i-abc")).thenReturn(
-            new InstanceDescription("i-abc", AwsInstanceState.PENDING, null, "10.0.0.4"));
-
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
-            .inspect(planted).join();
-
-        assertThat(result.state()).isEqualTo(SeedlingState.SPROUTING);
+        assertThat(result.state()).isEqualTo(expected);
     }
 
     @Test
     void inspect_mapsUnknownToCurrentState() {
-        Seedling planted = germinated.withProviderDetails("i-abc", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-abc"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.ROOTED);
         when(ops.describeInstance("i-abc")).thenReturn(
             new InstanceDescription("i-abc", AwsInstanceState.UNKNOWN, null, null));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .inspect(planted).join();
 
         // UNKNOWN: preserve current state rather than mapping to a fixed lifecycle state.
         // We don't know what's happening; a later inspect should resolve to a real state.
-        assertThat(result.state()).isEqualTo(SeedlingState.SAPLING);
+        assertThat(result.state()).isEqualTo(PlotState.ROOTED);
     }
 
     @Test
     void inspect_instanceNotFound_returnsWithered() {
-        Seedling planted = germinated.withProviderDetails("i-gone", "1.2.3.4")
-            .withState(SeedlingState.SAPLING);
+        VmPlot planted = germinated.withEndpoint(new VmEndpoint(new ProviderHandle("i-gone"), new Host("1.2.3.4"), germinated.sshPort()))
+            .withState(PlotState.ROOTED);
         when(ops.describeInstance("i-gone")).thenThrow(new InstanceNotFoundException("i-gone"));
 
-        Seedling result = providerWith(configWith(Ec2Config.IpMode.AUTO))
+        VmPlot result = (VmPlot) providerWith(configWith(Ec2Config.IpMode.AUTO))
             .inspect(planted).join();
 
-        assertThat(result.state()).isEqualTo(SeedlingState.WITHERED);
+        assertThat(result.state()).isEqualTo(PlotState.WITHERED);
     }
 
     @Test

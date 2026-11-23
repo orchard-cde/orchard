@@ -5,6 +5,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -156,6 +157,50 @@ class GroveSseRegistryTest {
         registry.broadcast(groveId, "bee-state-changed", Map.of());
 
         verify(healthy).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    void sendHeartbeats_writesAnSseCommentToEveryOpenStream() throws IOException {
+        SseEmitter mine = mock(SseEmitter.class);
+        SseEmitter someoneElses = mock(SseEmitter.class);
+        registry.register(groveId, mine);
+        registry.register(UUID.randomUUID(), someoneElses);
+
+        registry.sendHeartbeats();
+
+        for (SseEmitter emitter : List.of(mine, someoneElses)) {
+            ArgumentCaptor<SseEmitter.SseEventBuilder> sent =
+                ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
+            verify(emitter).send(sent.capture());
+            assertThat(rendered(sent.getValue()))
+                .as("a heartbeat is an SSE comment, invisible to EventSource listeners")
+                .startsWith(":")
+                .doesNotContain("event:");
+        }
+    }
+
+    @Test
+    void sendHeartbeats_detachesASubscriberThatHasDisconnected() throws IOException {
+        SseEmitter gone = mock(SseEmitter.class);
+        doThrow(new IOException("stream closed")).when(gone).send(any(SseEmitter.SseEventBuilder.class));
+        registry.register(groveId, gone);
+
+        registry.sendHeartbeats();
+
+        assertThat(registry.subscriberCount(groveId)).isZero();
+    }
+
+    @Test
+    void heartbeats_keepFlowingWhileNoEventsArrive() throws IOException {
+        GroveSseRegistry ticking = new GroveSseRegistry(new ConcurrentHashMap<>(), Duration.ofMillis(20));
+        try {
+            SseEmitter emitter = mock(SseEmitter.class);
+            ticking.register(groveId, emitter);
+
+            verify(emitter, timeout(2000).atLeast(2)).send(any(SseEmitter.SseEventBuilder.class));
+        } finally {
+            ticking.shutdown();
+        }
     }
 
     /** Records which mutating map operations the registry uses. */

@@ -12,10 +12,11 @@ public record OrchardConfig(String active, Map<String, Target> targets) {
         String fenceServer,
         String accessToken,
         String refreshToken,
-        Long expiresAt
+        Long expiresAt,
+        String sshKey
     ) {
         public Target(String server, String cultivator) {
-            this(server, cultivator, null, null, null, null);
+            this(server, cultivator, null, null, null, null, null);
         }
     }
 
@@ -28,7 +29,7 @@ public record OrchardConfig(String active, Map<String, Target> targets) {
 
     public static OrchardConfig withDefault() {
         var targets = new LinkedHashMap<String, Target>();
-        targets.put("local", new Target("http://localhost:7778", UUID.randomUUID().toString()));
+        targets.put("local", new Target("http://localhost:17778", UUID.randomUUID().toString()));
         return new OrchardConfig("local", targets);
     }
 }

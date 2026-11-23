@@ -7,7 +7,7 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 /**
- * Decodes owner tokens minted by fence's POST /gateway-token (Phase 2) that
+ * Decodes owner tokens minted by fence's POST /gateway-token that
  * the CLI pastes as an SSH password. JWKS is fetched from fence's issuer, the
  * same way trellis validates fence JWTs via issuer-uri. The RemoteJWKSet
  * resolves lazily, so building this bean never touches the network.

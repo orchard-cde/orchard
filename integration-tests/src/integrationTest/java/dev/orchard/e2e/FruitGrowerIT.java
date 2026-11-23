@@ -1,12 +1,16 @@
 package dev.orchard.e2e;
 
 import dev.orchard.core.model.DevfileSeed;
+import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.FruitState;
 import dev.orchard.core.model.LifecycleCommand;
 import dev.orchard.core.model.Seed;
-import dev.orchard.core.model.Seedling;
-import dev.orchard.core.model.SeedlingState;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmPlot;
+import dev.orchard.core.model.VmSpec;
 import dev.orchard.nursery.DevcontainerCliConfig;
 import dev.orchard.nursery.FruitGrower;
 import dev.orchard.nursery.GroveProvider;
@@ -16,11 +20,8 @@ import dev.orchard.vine.ExecTarget;
 import dev.orchard.trellis.OrchardApplication;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -57,7 +58,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 )
 @ActiveProfiles({"devserver", "e2etest"})
 @ExtendWith(QemuPrerequisiteExtension.class)
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class FruitGrowerIT {
 
@@ -74,8 +74,7 @@ class FruitGrowerIT {
     private DevcontainerCliConfig devcontainerCliConfig;
 
     private GroveProvider provider;
-    private Seedling seedling;
-    private Fruit grown;
+    private VmPlot plot;
 
     @BeforeAll
     void plantSeedling() {
@@ -84,16 +83,15 @@ class FruitGrowerIT {
             .as("Default provider must be qemu-local for this IT")
             .isEqualTo("qemu-local");
 
-        UUID groveId = UUID.randomUUID();
-        Seedling germinated = Seedling.germinate(groveId, Seedling.SeedlingSpec.small());
-
-        seedling = provider.plantSubstrate(germinated).join();
-
-        assertThat(seedling.state())
-            .as("Seedling must reach SAPLING — plant() returned %s", seedling.state())
-            .isEqualTo(SeedlingState.SAPLING);
-        assertThat(seedling.ipAddress()).isNotBlank();
-        assertThat(seedling.sshPort()).isPositive();
+        Plot reserved = provider.reserve(UUID.randomUUID(), SeedlingSpec.from(VmSpec.small()));
+        Plot planted = provider.plantSubstrate(reserved).join();
+        assertThat(planted).isInstanceOf(VmPlot.class);
+        plot = (VmPlot) planted;
+        assertThat(plot.state())
+            .as("Plot must reach ROOTED — plantSubstrate() returned %s", plot.state())
+            .isEqualTo(PlotState.ROOTED);
+        assertThat(plot.host()).isNotBlank();
+        assertThat(plot.sshPort()).isPositive();
 
         waitForCloudInit();
     }
@@ -101,11 +99,11 @@ class FruitGrowerIT {
     /**
      * Resolves the command channel the same way production does — through the provider's
      * {@link dev.orchard.vine.Vine}, not by constructing an SSH client. Deliberately fresh per
-     * call: {@code vine()} rebuilds from the seedling's current endpoint (#86 stage 2), and a
+     * call: {@code vine()} rebuilds from the plot's current endpoint (#86), and a
      * container-backed provider returns a non-SSH runner here without this test changing.
      */
     private CommandRunner commands() {
-        return provider.vine(seedling).commands();
+        return provider.vine(plot).commands();
     }
 
     /**
@@ -114,7 +112,7 @@ class FruitGrowerIT {
      * correlation.
      */
     private ExecTarget execTarget() {
-        return new ExecTarget(commands(), "/workspace", seedling.id());
+        return new ExecTarget(commands(), "/workspace", plot.id(), ContainerRuntime.DOCKER);
     }
 
     private void waitForCloudInit() {
@@ -142,7 +140,6 @@ class FruitGrowerIT {
     }
 
     @Test
-    @Order(1)
     void devcontainerCliIsInstalledAtExpectedVersion() throws Exception {
         String version = commands().execute("devcontainer --version").trim();
         assertThat(version)
@@ -151,8 +148,7 @@ class FruitGrowerIT {
     }
 
     @Test
-    @Order(2)
-    void growsFruitViaCliAndPreservesContainerName() throws Exception {
+    void growsFruitViaCliAppliesFeatureAndCompostsCleanly() throws Exception {
         // Stage devcontainer.json with a real, public feature on the seedling's workspace.
         // The CLI reads /workspace/.devcontainer/devcontainer.json by default.
         CommandRunner ssh = commands();
@@ -171,8 +167,7 @@ class FruitGrowerIT {
         ssh.execute("echo " + b64 + " | base64 -d > /workspace/.devcontainer/devcontainer.json");
 
         // Build the Seed/Fruit mirroring how SeedParser would shape them. We only need image +
-        // features here — the CLI path reads the on-disk devcontainer.json for everything else
-        // (Locked decision #1).
+        // features here — the CLI path reads the on-disk devcontainer.json for everything else.
         Map<String, Map<String, Object>> features = new LinkedHashMap<>();
         features.put(FEATURE_ID, Map.of("username", FEATURE_USERNAME));
 
@@ -182,41 +177,44 @@ class FruitGrowerIT {
             .features(features)
             .build();
 
-        Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
-        String originallyAssignedName = budding.containerName();
-        assertThat(originallyAssignedName).isNotBlank();
+        Fruit budding = Fruit.bud(plot.groveId(), plot.id(), seed);
+        assertThat(budding.containerName()).isNotBlank();
 
-        grown = fruitGrower.grow(execTarget(), budding).join();
+        Fruit grown = fruitGrower.grow(execTarget(), budding).join();
+        try {
+            assertGrownWithContainerName(grown);
+            assertFeatureApplied(grown);
+            assertPicksAndComposts(grown);
+        } finally {
+            compostQuietly(grown);
+        }
+    }
 
+    private void assertGrownWithContainerName(Fruit grown) throws Exception {
         assertThat(grown.state())
-            .as("Fruit must reach RIPE — grow() returned %s", grown.state())
+            .as("grow: Fruit must reach RIPE — grow() returned %s", grown.state())
             .isEqualTo(FruitState.RIPE);
 
         // Regression-critical: containerName must survive the CLI transition.
         // Pre-#74 the CLI path silently lost this field, breaking every downstream consumer
         // (grove status, SSH config rendering, docker exec join).
         assertThat(grown.containerName())
-            .as("Fruit.containerName must be non-null and non-blank after CLI grow")
+            .as("grow: Fruit.containerName must be non-null and non-blank after CLI grow")
             .isNotNull()
             .isNotBlank();
         assertThat(grown.containerId())
-            .as("Fruit.containerId must be set by the CLI outcome line")
+            .as("grow: Fruit.containerId must be set by the CLI outcome line")
             .isNotBlank();
 
-        // The container the CLI actually started must match the recorded name.
-        String running = ssh.execute(
+        String running = commands().execute(
             "docker inspect " + grown.containerName()
                 + " --format '{{.State.Running}}'").trim();
         assertThat(running)
-            .as("Container named %s must be running on the seedling", grown.containerName())
+            .as("grow: container named %s must be running on the seedling", grown.containerName())
             .isEqualTo("true");
     }
 
-    @Test
-    @Order(3)
-    void featureWasApplied_createsOrchardUserInsideContainer() throws Exception {
-        assertThat(grown).as("grown must be set by the previous test").isNotNull();
-
+    private void assertFeatureApplied(Fruit grown) throws Exception {
         // common-utils with username=orchard creates a real local user inside the container.
         // `id orchard` proves the feature actually ran — the legacy docker path would silently
         // skip features and this assertion would fail with "no such user".
@@ -225,21 +223,15 @@ class FruitGrowerIT {
             .trim();
 
         assertThat(idOutput)
-            .as("common-utils feature must have created the '%s' user inside the container",
+            .as("feature: common-utils must have created the '%s' user inside the container",
                 FEATURE_USERNAME)
             .contains("uid=")
             .contains(FEATURE_USERNAME);
     }
 
-    @Test
-    @Order(4)
-    void picksAndCompostsCleanly() throws Exception {
-        assertThat(grown).as("grown must be set by the previous test").isNotNull();
-
-        CommandRunner ssh = commands();
-
+    private void assertPicksAndComposts(Fruit grown) {
         Fruit picked = fruitGrower.pick(execTarget(), grown).join();
-        assertThat(picked.state()).isEqualTo(FruitState.PICKED);
+        assertThat(picked.state()).as("pick: state").isEqualTo(FruitState.PICKED);
 
         fruitGrower.compost(execTarget(), grown).join();
 
@@ -247,18 +239,28 @@ class FruitGrowerIT {
         // CommandRunner.execute() raises IOException on non-zero exit — that's the success signal here.
         boolean inspectFailed;
         try {
-            ssh.execute("docker inspect " + grown.containerId() + " > /dev/null 2>&1");
+            commands().execute("docker inspect " + grown.containerId() + " > /dev/null 2>&1");
             inspectFailed = false;
         } catch (Exception expected) {
             inspectFailed = true;
         }
         assertThat(inspectFailed)
-            .as("docker inspect must fail after compost — container should be removed")
+            .as("compost: docker inspect must fail after compost — container should be removed")
             .isTrue();
     }
 
+    private void compostQuietly(Fruit fruit) {
+        if (fruit.containerId() == null) {
+            return;
+        }
+        try {
+            fruitGrower.compost(execTarget(), fruit).join();
+        } catch (Exception ignored) {
+            // Best effort; @AfterAll uproots the whole seedling
+        }
+    }
+
     @Test
-    @Order(5)
     void growsFruitViaDevfileDockerAndRunsPreStartPostStartCommands() throws Exception {
         Seed seed = DevfileSeed.builder()
                 .name("devfile-lifecycle-test")
@@ -269,7 +271,7 @@ class FruitGrowerIT {
                     List.of("echo post-start-ran > /tmp/poststart-marker")))
                 .build();
 
-        Fruit budding = Fruit.bud(seedling.groveId(), seedling.id(), seed);
+        Fruit budding = Fruit.bud(plot.groveId(), plot.id(), seed);
 
         CommandRunner ssh = commands();
         Fruit devfileGrown = fruitGrower.grow(execTarget(), budding).join();
@@ -295,25 +297,16 @@ class FruitGrowerIT {
 
     @AfterAll
     void uprootSeedling() {
-        // Layer 1: best-effort container teardown if a test failed mid-way and grown is still set.
-        if (grown != null && grown.containerId() != null) {
+        // Layer 1: uproot the VM via the provider so QEMU process + disk image are cleaned up.
+        if (plot != null && provider != null) {
             try {
-                fruitGrower.compost(execTarget(), grown).join();
-            } catch (Exception ignored) {
-                // Fall through to VM teardown.
-            }
-        }
-
-        // Layer 2: uproot the VM via the provider so QEMU process + disk image are cleaned up.
-        if (seedling != null && provider != null) {
-            try {
-                provider.uproot(seedling).join();
+                provider.uproot(plot).join();
             } catch (Exception ignored) {
                 // Fall through to process cleanup.
             }
         }
 
-        // Layer 3: kill any orphaned QEMU processes spawned by this test. Matches
+        // Layer 2: kill any orphaned QEMU processes spawned by this test. Matches
         // GroveLifecycleE2ETest's belt-and-braces pattern — Conductor-style worktrees can leak
         // QEMU processes across test runs if uproot() didn't get a chance to land.
         try {

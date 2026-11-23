@@ -77,7 +77,7 @@ public interface BeeKeeper {
 }
 ```
 
-All operations return `CompletableFuture` for non-blocking async execution, following the `GroveProvider` pattern. The caller (`BeeService`) resolves the `CommandRunner` once per Grove via `GroveProvider.vine(seedling).commands()` and passes it into each call — `BeeKeeper` implementations never touch `Seedling` or `SshExecutor` directly.
+All operations return `CompletableFuture` for non-blocking async execution, following the `GroveProvider` pattern. The caller (`BeeService`) resolves the `CommandRunner` for the Bee's grove via `GroveProvider.vine(plot).commands()` on each operation and passes it into the call — `BeeKeeper` implementations never touch a `Plot` or `SshExecutor` directly.
 
 | Method | Purpose | State Transition |
 |--------|---------|-----------------|
@@ -122,7 +122,6 @@ sequenceDiagram
     participant BKR as BeeKeeperRegistry
     participant BK as BeeKeeper
     participant CR as CommandRunner
-    participant CS as CredentialService
     participant DB as BeeRepository
     participant EP as EventPublisher
 
@@ -135,23 +134,20 @@ sequenceDiagram
         Note over BS: POST /api/groves/{id}/bees
     end
 
+    BS->>BS: CredentialResolver.resolve(cultivatorId, beeType) merged into spec config
     BS->>DB: save(Bee.hatch()) → state: HATCHING
     BS->>EP: BeeStateChangedEvent(HATCHING)
 
     BS->>BKR: get(beeType)
     BKR-->>BS: BeeKeeper
 
-    Note over BS,CR: BeeService resolves CommandRunner via GroveProvider.vine(seedling).commands()
+    Note over BS,CR: BeeService resolves CommandRunner via GroveProvider.vine(plot).commands()
     BS->>BK: install(bee, spec, runner)
     BK->>CR: Check prerequisites
     BK->>CR: Install agent CLI
     BK-->>BS: Bee (HIBERNATING)
     BS->>DB: update(bee)
     BS->>EP: BeeStateChangedEvent(HIBERNATING)
-
-    BS->>CS: decrypt(cultivatorId, beeType)
-    CS-->>BS: API key
-    BS->>CR: Write key to temp file (chmod 600)
 
     BS->>BK: release(bee, runner)
     BK->>CR: Start agent process
@@ -275,46 +271,29 @@ public record BeeHealth(
 
 ## 6. Database Schema
 
-New Flyway migration (V7) in `roots/src/main/resources/db/migration/`:
+Bee persistence in the schema under `roots/src/main/resources/db/migration/`:
 
 **`bees` table:**
 
 | Column | Type | Constraints |
 |--------|------|-------------|
 | `id` | UUID | PK |
-| `grove_id` | UUID | FK → groves, NOT NULL |
-| `bee_type` | VARCHAR | NOT NULL |
-| `state` | VARCHAR | NOT NULL |
-| `process_id` | VARCHAR | nullable |
-| `config` | JSONB | nullable |
+| `grove_id` | UUID | FK → groves ON DELETE CASCADE, NOT NULL |
+| `type` | VARCHAR(20) | NOT NULL — `BeeType` name |
+| `state` | VARCHAR(20) | NOT NULL — `BeeState` name |
+| `spec_type` | VARCHAR(20) | NOT NULL — `BeeSpec.type()` name |
+| `spec_version` | VARCHAR(50) | nullable |
+| `process_id` | VARCHAR(100) | nullable |
 | `hatched_at` | TIMESTAMP WITH TIME ZONE | NOT NULL |
 | `started_at` | TIMESTAMP WITH TIME ZONE | nullable |
 | `stopped_at` | TIMESTAMP WITH TIME ZONE | nullable |
 
-**`bee_preferences` table:**
+`BeeSpec.configOverrides` is not persisted: `BeeEntity.toModel()` rebuilds the spec with an empty map, so overrides, and any credentials merged into them (§11), exist only for the lifetime of the attach request.
 
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `cultivator_id` | UUID | FK → cultivators, UNIQUE |
-| `default_bee_type` | VARCHAR | nullable |
-| `auto_attach` | BOOLEAN | DEFAULT false |
-| `config` | JSONB | nullable |
+**Repository:**
+- `BeeRepository extends JpaRepository<BeeEntity, UUID>` — `findByGroveId(UUID)`, `findByGroveIdAndState(UUID, BeeState)`, and `deleteRemovable(beeId, groveId, removableStates)`, a single conditional `DELETE` so a concurrent state change cannot slip in between check and delete.
 
-**`bee_credentials` table:**
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `id` | UUID | PK |
-| `cultivator_id` | UUID | FK → cultivators |
-| `bee_type` | VARCHAR | NOT NULL |
-| `encrypted_key` | TEXT | NOT NULL |
-| `created_at` | TIMESTAMP WITH TIME ZONE | NOT NULL |
-| | | UNIQUE(cultivator_id, bee_type) |
-
-**Repositories:**
-- `BeeRepository extends CrudRepository<BeeEntity, UUID>` — `findByGroveId(UUID)`
-- `BeePreferencesRepository extends CrudRepository<BeePreferencesEntity, UUID>` — `findByCultivatorId(UUID)`
-- `BeeCredentialRepository extends CrudRepository<BeeCredentialEntity, UUID>` — `findByCultivatorIdAndBeeType(UUID, String)`
+Per-cultivator Bee preferences and stored credentials have no tables or repositories; that design is tracked in [#45](https://github.com/orchard-cde/orchard/issues/45).
 
 ---
 
@@ -327,35 +306,26 @@ New Flyway migration (V7) in `roots/src/main/resources/db/migration/`:
 | POST | `/api/groves/{id}/bees` | Attach a Bee | Grove must be FLOURISHING |
 | GET | `/api/groves/{id}/bees` | List all Bees in a Grove | |
 | GET | `/api/groves/{id}/bees/{beeId}` | Get Bee status | |
+| GET | `/api/groves/{id}/bees/status` | Swarm summary: Bee count by state | |
 | DELETE | `/api/groves/{id}/bees/{beeId}` | Remove a stopped Bee | 204; 409 unless HIBERNATING or SMOKED |
-| POST | `/api/groves/{id}/bees/{beeId}/actions/wake` | Restart a Bee | Valid from HIBERNATING or SMOKED → BUZZING |
-| GET | `/api/groves/{id}/bees/swarm-status` | Summary of all active Bees | |
+| POST | `/api/groves/{id}/bees/{beeId}/actions/wake` | Restart a Bee | HIBERNATING → BUZZING; any other state is returned unchanged |
+| POST | `/api/groves/{id}/bees/{beeId}/actions/smoke` | Stop a Bee | → SMOKED |
+
+Bees are grove-scoped. `BeeController` is mounted only at `/api/groves/{groveId}/bees`; there is no `/api/bees` collection.
 
 **DTOs:**
 ```java
-record CreateBeeRequest(String beeType, String version, Map<String, String> configOverrides) {}
+record CreateBeeRequest(@NotNull BeeType beeType, String version, Map<String, String> configOverrides) {}
 
-record BeeResponse(UUID id, UUID groveId, String type, String state,
-                   Instant hatchedAt, Instant startedAt, Instant stoppedAt) {
-    static BeeResponse fromModel(Bee bee) { /* ... */ }
-}
+record BeeResponse(UUID id, UUID groveId, BeeType type, BeeState state, String processId,
+                   Instant hatchedAt, Instant startedAt, Instant stoppedAt) {}
 
-record SwarmStatusResponse(UUID groveId, int totalBees, int activeBees,
-                           List<BeeResponse> bees) {}
+record SwarmStatusResponse(UUID groveId, int totalBees, Map<String, Integer> byState) {}
 ```
 
 ### 7.2 Cultivator Preferences
 
-Uses `/me` to resolve cultivator from auth context, preventing unauthorized access:
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/cultivators/me/bee-preferences` | Get agent defaults |
-| PUT | `/api/cultivators/me/bee-preferences` | Set agent defaults |
-| POST | `/api/cultivators/me/bee-credentials` | Store encrypted API key |
-| DELETE | `/api/cultivators/me/bee-credentials/{type}` | Remove an API key |
-
-**Security:** API never returns decrypted keys. GET for credentials returns only type + createdAt.
+Not implemented. There are no `/api/cultivators/me/bee-preferences` or `/api/cultivators/me/bee-credentials` endpoints; see [#45](https://github.com/orchard-cde/orchard/issues/45).
 
 ---
 
@@ -372,7 +342,7 @@ The swarm-status endpoint provides a consolidated view of all Bees in a Grove.
 ```mermaid
 graph LR
     subgraph Grove
-        subgraph VM[Seedling VM]
+        subgraph VM[VM plot]
             direction TB
             WS["/workspace (shared)"]
             B1[Bee: Claude Code<br/>BUZZING]
@@ -391,7 +361,11 @@ graph LR
 
 ## 9. Grove Lifecycle Integration
 
-When a Grove transitions to CLEARING, all Bees must be stopped before the Seedling is uprooted:
+When a Grove transitions to CLEARING, all Bees must be stopped before the plot is uprooted:
+
+> **Not yet implemented.** `BeeService` has no `GroveStateChangedEvent` listener, so clearing a grove
+> uproots its plot without smoking its Bees. Today a Bee is stopped only by an explicit
+> `BeeService.smoke(beeId)`. The diagram below is the intended flow.
 
 ```mermaid
 sequenceDiagram
@@ -404,15 +378,18 @@ sequenceDiagram
     GS->>EP: GroveStateChangedEvent(CLEARING)
     EP->>BS: onGroveClearing(event)
 
+    BS->>SP: vine(plot).commands()
+    SP-->>BS: runner (CommandRunner — the command channel into the plot)
+
     loop For each active Bee
-        BS->>BK: smoke(bee, seedling)
+        BS->>BK: smoke(bee, runner)
         BK-->>BS: Bee (SMOKED)
         BS->>EP: BeeStateChangedEvent(SMOKED)
     end
 
     BS-->>GS: All Bees stopped
 
-    GS->>SP: uproot(seedling)
+    GS->>SP: uproot(plot)
     SP-->>GS: VM destroyed
 ```
 
@@ -453,10 +430,10 @@ a listener needing its own transaction must ask for one.
 
 | Channel | Topic / Endpoint | Event names | Status |
 |---------|-----------------|-------------|--------|
-| SSE | `GET /api/groves/{groveId}/events` | `bee-state-changed`, `bee-removed` | Implemented |
+| SSE | `GET /api/groves/{groveId}/events` | `bee-attached`, `bee-state-changed`, `bee-removed` | Implemented |
 | WebSocket/STOMP | `/topic/grove.{groveId}.bees` | — | Not implemented |
 
-`BeeEventBroadcaster` listens for both events and relays them onto the grove SSE stream,
+`BeeEventBroadcaster` listens for all three events and relays them onto the grove SSE stream,
 alongside the `grove-state-changed` events `GroveEventController` puts there. Both push through
 `GroveSseRegistry`, which owns the per-grove emitter set, so one connection carries grove and
 bee activity.
@@ -464,6 +441,9 @@ bee activity.
 Payloads stringify UUIDs and enum names and render timestamps as ISO-8601:
 
 ```
+event:bee-attached
+data:{"beeId":"...","groveId":"...","beeType":"OPENCODE","version":null,"state":"HATCHING","attachedAt":"2026-09-21T12:34:56Z"}
+
 event:bee-state-changed
 data:{"beeId":"...","groveId":"...","previousState":"HIBERNATING","newState":"BUZZING","changedAt":"2026-09-21T12:34:56Z"}
 
@@ -479,36 +459,9 @@ the publishing thread, so it is not a safe ordering key. Clients subscribe first
 
 ## 11. Security — Credential Storage
 
-| Aspect | Detail |
-|--------|--------|
-| **Encryption** | AES-256-GCM with server-side key from `orchard.security.encryption-key` property or Spring Vault |
-| **Storage** | `bee_credentials` table, `encrypted_key` column |
-| **Injection** | Decrypted key written to temp file on VM via SSH (`chmod 600`), sourced by agent, then deleted |
-| **API exposure** | Never return decrypted keys in responses |
-| **Key rotation** | v1: overwrite on re-store. Formal rotation out of scope |
+Credentials are not stored. `BeeService.attachBee` calls `CredentialResolver.resolve(cultivatorId, beeType)` and merges the result into the request's `configOverrides` before the Bee is saved. The only implementation, `NoOpCredentialResolver`, returns an empty map. The merged config is never persisted (§6) and never returned by the API (`BeeResponse` carries no config), so `spec.configOverrides` must be treated as sensitive wherever it is logged or broadcast.
 
-```mermaid
-sequenceDiagram
-    participant API as REST API
-    participant CS as CredentialService
-    participant DB as bee_credentials
-    participant SSH as SshExecutor
-    participant VM as Grove VM
-
-    Note over API: POST /api/cultivators/me/bee-credentials
-    API->>CS: store(cultivatorId, beeType, plainKey)
-    CS->>CS: encrypt(plainKey, serverKey)
-    CS->>DB: save(encryptedKey)
-
-    Note over CS: During Bee provisioning
-    CS->>DB: find(cultivatorId, beeType)
-    DB-->>CS: encryptedKey
-    CS->>CS: decrypt(encryptedKey, serverKey)
-    CS->>SSH: write key to /tmp/.bee-creds-{uuid}
-    SSH->>VM: chmod 600 /tmp/.bee-creds-{uuid}
-    Note over VM: Agent sources credentials
-    SSH->>VM: rm /tmp/.bee-creds-{uuid}
-```
+Encrypted per-cultivator credential storage is tracked in [#45](https://github.com/orchard-cde/orchard/issues/45).
 
 ---
 

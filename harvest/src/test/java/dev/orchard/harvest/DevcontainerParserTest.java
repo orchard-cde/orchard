@@ -322,9 +322,7 @@ class DevcontainerParserTest {
         assertThat(parser.discover(tempDir)).isEmpty();
     }
 
-    // =========================================================================================
     // Issue #31 — build.* fields
-    // =========================================================================================
 
     @Test
     void parseJson_buildContextTargetCacheFromOptions() {
@@ -366,9 +364,7 @@ class DevcontainerParserTest {
         assertThat(result.get().buildCacheFrom()).containsExactly("ghcr.io/org/cache:latest");
     }
 
-    // =========================================================================================
     // Issue #32 — dockerComposeFiles + runServices
-    // =========================================================================================
 
     @Test
     void parseJson_dockerComposeFileArray_storesAll() {
@@ -408,9 +404,7 @@ class DevcontainerParserTest {
         assertThat(result.get().runServices()).containsExactly("db", "redis");
     }
 
-    // =========================================================================================
     // Issue #29 — container runtime fields
-    // =========================================================================================
 
     @Test
     void parseJson_remoteEnv() {
@@ -534,9 +528,7 @@ class DevcontainerParserTest {
         assertThat(result.get().shutdownAction()).isEqualTo("stopContainer");
     }
 
-    // =========================================================================================
     // Issue #101 — portsAttributes / otherPortsAttributes
-    // =========================================================================================
 
     @Test
     void parseJson_portsAttributes() {
@@ -576,9 +568,7 @@ class DevcontainerParserTest {
         assertThat(seed.otherPortsAttributes().onAutoForward()).isEqualTo("ignore");
     }
 
-    // =========================================================================================
     // Issue #102 — userEnvProbe
-    // =========================================================================================
 
     @Test
     void parseJson_userEnvProbe_allValues() {
@@ -607,9 +597,7 @@ class DevcontainerParserTest {
         assertThat(result.get().userEnvProbe()).isNull();
     }
 
-    // =========================================================================================
     // Issue #103 — hostRequirements
-    // =========================================================================================
 
     @Test
     void parseJson_hostRequirements_simple() {
@@ -648,9 +636,7 @@ class DevcontainerParserTest {
         assertThat(result.get().hostRequirements().gpu()).isEqualTo("optional");
     }
 
-    // =========================================================================================
     // Issue #104 — secrets
-    // =========================================================================================
 
     @Test
     void parseJson_secrets() {
@@ -676,9 +662,7 @@ class DevcontainerParserTest {
         assertThat(seed.secrets().get("NPM_TOKEN").description()).isNull();
     }
 
-    // =========================================================================================
     // Issue #105 — overrideFeatureInstallOrder
-    // =========================================================================================
 
     @Test
     void parseJson_overrideFeatureInstallOrder() {
@@ -696,5 +680,72 @@ class DevcontainerParserTest {
             .containsExactly(
                 "ghcr.io/devcontainers/features/common-utils",
                 "ghcr.io/devcontainers/features/java");
+    }
+
+    // Loose shapes: the bound records keep the coercions the former JsonNode walk applied.
+
+    @Test
+    void parseJson_explicitNulls_readAsEmptyValues() {
+        DevcontainerSeed seed = parser.parseJson("""
+                {"name": null, "privileged": null, "hostRequirements": {"cpus": null},
+                 "containerEnv": {"A": null}, "customizations": {"vscode": null}}""").orElseThrow();
+
+        assertThat(seed.name()).isEmpty();
+        assertThat(seed.privileged()).isFalse();
+        assertThat(seed.hostRequirements().cpus()).isZero();
+        assertThat(seed.containerEnv()).containsExactly(Map.entry("A", ""));
+        assertThat(seed.vscodeCustomizations())
+            .isEqualTo(new DevcontainerSeed.VsCodeCustomizations(List.of(), Map.of()));
+    }
+
+    @Test
+    void parseJson_vscodeSettings_explicitNullStaysNull_absentIsEmpty() {
+        DevcontainerSeed withNull = parser.parseJson("""
+                {"customizations": {"vscode": {"settings": null}}}""").orElseThrow();
+        DevcontainerSeed absent = parser.parseJson("""
+                {"customizations": {"vscode": {}}}""").orElseThrow();
+
+        assertThat(withNull.vscodeCustomizations().settings()).isNull();
+        assertThat(absent.vscodeCustomizations().settings()).isEmpty();
+    }
+
+    @Test
+    void parseJson_collectionOfWrongKind_readsAsEmpty_objectContributesItsValues() {
+        DevcontainerSeed seed = parser.parseJson("""
+                {"forwardPorts": 3000, "containerEnv": "x", "runArgs": {"a": "--init", "b": 2},
+                 "hostRequirements": "big", "postStartCommand": 42}""").orElseThrow();
+
+        assertThat(seed.forwardPorts()).isEmpty();
+        assertThat(seed.containerEnv()).isEmpty();
+        assertThat(seed.runArgs()).containsExactly("--init", "2");
+        assertThat(seed.hostRequirements()).isEqualTo(new DevcontainerSeed.HostRequirements(null, null, null, null));
+        assertThat(seed.postStartCommand()).isNull();
+    }
+
+    @Test
+    void parseJson_scalarsAreCoercedLikeTheSpecTooling() {
+        DevcontainerSeed seed = parser.parseJson("""
+                {"name": 42, "init": 1, "privileged": "true", "hostRequirements": {"cpus": "4"},
+                 "forwardPorts": [3000, "db:5432", null],
+                 "mounts": ["a", null, 3, {"type": "bind", "n": 1}]}""").orElseThrow();
+
+        assertThat(seed.name()).isEqualTo("42");
+        assertThat(seed.init()).isTrue();
+        assertThat(seed.privileged()).isTrue();
+        assertThat(seed.hostRequirements().cpus()).isEqualTo(4);
+        assertThat(seed.forwardPorts()).containsExactly("3000", "db:5432", "");
+        assertThat(seed.mounts()).containsExactly("a", "", "", "type=bind,n=1");
+    }
+
+    @Test
+    void parseJson_mistypedScalar_rejectsTheFile() {
+        assertThat(parser.parseJson("""
+                {"image": ["ubuntu"]}""")).isEmpty();
+        assertThat(parser.parseJson("""
+                {"privileged": "yes"}""")).isEmpty();
+        assertThat(parser.parseJson("""
+                {"runArgs": ["--init", {"x": 1}]}""")).isEmpty();
+        assertThat(parser.parseJson("""
+                {"features": {"ghcr.io/devcontainers/features/java:1": "latest"}}""")).isEmpty();
     }
 }

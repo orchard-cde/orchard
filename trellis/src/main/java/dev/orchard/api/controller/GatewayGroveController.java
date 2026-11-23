@@ -29,7 +29,7 @@ public class GatewayGroveController {
 
     /**
      * Routes a grove for the gateway. 200 route, 404 unknown grove, 409 when
-     * the grove exists but its seedling is not running (not routable).
+     * the grove exists but its plot is not running (not routable).
      */
     @GetMapping("/groves/{groveId}")
     public ResponseEntity<GatewayGroveResponse> resolveGrove(@PathVariable UUID groveId) {

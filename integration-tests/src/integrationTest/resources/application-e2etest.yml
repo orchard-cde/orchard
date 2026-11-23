@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:orchard-e2e;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:orchard-e2e-${random.uuid};DB_CLOSE_DELAY=-1
 
 orchard:
   security:

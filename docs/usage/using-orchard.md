@@ -80,7 +80,7 @@ trowel grove list
 trowel grove show <grove-id>
 ```
 
-This shows the grove's state, seedling (VM) info, fruit (container) status, and SSH connection details.
+This shows the grove's state, plot info, fruit (container) status, and SSH connection details. A VM plot shows its host and SSH port; a container plot shows its runtime and has no SSH details, so `ssh-config` returns 409 for it.
 
 ## Connecting to a Grove
 
@@ -91,6 +91,8 @@ trowel grove connect <grove-id>
 ```
 
 You can also connect directly with VS Code Remote SSH using the SSH config from `trowel grove show`.
+
+`IdentitiesOnly=yes` still offers identities configured in `~/.ssh/config` (such as a `Host *` `IdentityFile`) alongside the target's key.
 
 ## Clearing a Grove
 

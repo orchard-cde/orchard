@@ -10,7 +10,6 @@ import java.nio.file.Path;
 public final class QemuPlatformDefaults {
 
     private QemuPlatformDefaults() {
-        // utility class — no instances
     }
 
     /**

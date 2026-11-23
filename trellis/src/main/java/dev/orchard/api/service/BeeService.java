@@ -1,16 +1,20 @@
 package dev.orchard.api.service;
 
 import dev.orchard.api.dto.CreateBeeRequest;
+import dev.orchard.api.event.BeeAttachedEvent;
 import dev.orchard.api.event.BeeRemovedEvent;
 import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.apiary.BeeKeeper;
 import dev.orchard.apiary.BeeKeeperRegistry;
 import dev.orchard.core.model.*;
+import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.roots.entity.BeeEntity;
+import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.BeeRepository;
+import dev.orchard.roots.repository.FruitRepository;
 import dev.orchard.roots.repository.GroveRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,16 +40,19 @@ public class BeeService {
     private final CredentialResolver credentialResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final ProviderRegistry providerRegistry;
+    private final FruitRepository fruitRepository;
 
     public BeeService(BeeKeeperRegistry beeKeeperRegistry, BeeRepository beeRepository,
             GroveRepository groveRepository, CredentialResolver credentialResolver,
-            ApplicationEventPublisher eventPublisher, ProviderRegistry providerRegistry) {
+            ApplicationEventPublisher eventPublisher, ProviderRegistry providerRegistry,
+            FruitRepository fruitRepository) {
         this.beeKeeperRegistry = beeKeeperRegistry;
         this.beeRepository = beeRepository;
         this.groveRepository = groveRepository;
         this.credentialResolver = credentialResolver;
         this.eventPublisher = eventPublisher;
         this.providerRegistry = providerRegistry;
+        this.fruitRepository = fruitRepository;
     }
 
     @Transactional
@@ -67,19 +74,22 @@ public class BeeService {
         Map<String, String> mergedConfig = new HashMap<>(configOverrides);
         mergedConfig.putAll(credentials);
 
+        String workspaceRoot = workspaceRootFor(groveEntity);
         BeeSpec spec = new BeeSpec(request.beeType(), request.version(), mergedConfig);
         Bee bee = Bee.hatching(groveId, spec);
 
         BeeEntity entity = BeeEntity.fromModel(bee);
         beeRepository.save(entity);
+        publishAfterCommit(new BeeAttachedEvent(
+            bee.id(), groveId, spec.type(), spec.version(), bee.state(), bee.hatchedAt()));
 
         final Bee beeToProvision = bee;
         final BeeKeeper keeper = beeKeeper;
-        final CommandRunner runner = commandRunnerFor(groveEntity);
+        final CommandRunner runner = commandRunnerFor(groveEntity.plot());
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                CompletableFuture.runAsync(() -> provisionBee(beeToProvision, keeper, runner));
+                CompletableFuture.runAsync(() -> provisionBee(beeToProvision, keeper, runner, workspaceRoot));
             }
         });
 
@@ -118,12 +128,17 @@ public class BeeService {
                 log.warn("Grove {} not found for bee {}, cannot wake", bee.groveId(), beeId);
                 return bee;
             }
-            CommandRunner runner = commandRunnerFor(groveEntity);
+            CommandRunner runner = reachableRunnerFor(groveEntity);
+            if (runner == null) {
+                log.warn("Grove {} is not reachable for bee {}, cannot wake", bee.groveId(), beeId);
+                return bee;
+            }
 
+            String workspaceRoot = workspaceRootFor(groveEntity);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    CompletableFuture.runAsync(() -> releaseBee(bee, keeper, runner));
+                    CompletableFuture.runAsync(() -> releaseBee(bee, keeper, runner, workspaceRoot));
                 }
             });
 
@@ -144,7 +159,7 @@ public class BeeService {
 
             BeeKeeper keeper = beeKeeperRegistry.get(bee.type()).orElse(null);
             GroveEntity groveEntity = keeper != null ? groveRepository.findById(bee.groveId()).orElse(null) : null;
-            CommandRunner runner = groveEntity != null ? commandRunnerFor(groveEntity) : null;
+            CommandRunner runner = groveEntity != null ? reachableRunnerFor(groveEntity) : null;
 
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -164,6 +179,29 @@ public class BeeService {
 
             return smokedBee;
         });
+    }
+
+    private static final Set<BeeState> RUNNING_STATES =
+        EnumSet.of(BeeState.HATCHING, BeeState.BUZZING, BeeState.POLLINATING);
+
+    /**
+     * Moves every running Bee in the Grove to HIBERNATING and clears its process id, because
+     * stopping the Grove's plot kills the process. Joins the caller's transaction; events are
+     * published only after it commits.
+     */
+    @Transactional
+    public void hibernateAll(UUID groveId) {
+        for (BeeEntity entity : beeRepository.findByGroveId(groveId)) {
+            BeeState previousState = entity.getState();
+            if (!RUNNING_STATES.contains(previousState)) {
+                continue;
+            }
+            entity.setState(BeeState.HIBERNATING);
+            entity.setProcessId(null);
+            beeRepository.save(entity);
+            publishAfterCommit(BeeStateChangedEvent.of(
+                entity.getId(), groveId, previousState, BeeState.HIBERNATING));
+        }
     }
 
     private static final Set<BeeState> REMOVABLE_STATES =
@@ -201,10 +239,10 @@ public class BeeService {
                 + "removal was attempted; state now: " + entity.getState());
     }
 
-    private void provisionBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {
+    private void provisionBee(Bee bee, BeeKeeper keeper, CommandRunner runner, String workspaceRoot) {
         BeeSpec spec = bee.spec();
-        installBee(bee, keeper, spec, runner)
-            .thenCompose(releasedBee -> releaseBee(releasedBee, keeper, runner))
+        installBee(bee, keeper, spec, runner, workspaceRoot)
+            .thenCompose(releasedBee -> releaseBee(releasedBee, keeper, runner, workspaceRoot))
             .exceptionally(ex -> {
                 log.error("Bee provisioning failed for bee {}", bee.id(), ex);
                 updateBeeState(bee.id(), BeeState.SMOKED, bee.state());
@@ -212,15 +250,17 @@ public class BeeService {
             });
     }
 
-    private CompletableFuture<Bee> installBee(Bee bee, BeeKeeper keeper, BeeSpec spec, CommandRunner runner) {
-        return keeper.install(bee, spec, runner).thenCompose(installedBee -> {
+    private CompletableFuture<Bee> installBee(Bee bee, BeeKeeper keeper, BeeSpec spec, CommandRunner runner,
+            String workspaceRoot) {
+        return keeper.install(bee, spec, runner, workspaceRoot).thenCompose(installedBee -> {
             updateBeeState(bee.id(), BeeState.HIBERNATING, bee.state());
             return CompletableFuture.completedFuture(installedBee);
         });
     }
 
-    private CompletableFuture<Bee> releaseBee(Bee bee, BeeKeeper keeper, CommandRunner runner) {
-        return keeper.release(bee, runner).thenCompose(releasedBee -> {
+    private CompletableFuture<Bee> releaseBee(Bee bee, BeeKeeper keeper, CommandRunner runner,
+            String workspaceRoot) {
+        return keeper.release(bee, runner, workspaceRoot).thenCompose(releasedBee -> {
             BeeState previousState = BeeState.HIBERNATING;
             BeeEntity entity = beeRepository.findById(bee.id()).orElseThrow();
             entity.setState(BeeState.BUZZING);
@@ -293,25 +333,30 @@ public class BeeService {
         }
     }
 
-    private CommandRunner commandRunnerFor(GroveEntity groveEntity) {
-        Seedling.SeedlingSpec spec = new Seedling.SeedlingSpec(
-            groveEntity.getSeedlingCpuCores() != null ? groveEntity.getSeedlingCpuCores() : 0,
-            groveEntity.getSeedlingMemoryMb() != null ? groveEntity.getSeedlingMemoryMb() : 0,
-            groveEntity.getSeedlingDiskGb() != null ? groveEntity.getSeedlingDiskGb() : 0,
-            null,
-            null
-        );
-        Seedling seedling = new Seedling(
-            groveEntity.getSeedlingId(),
-            groveEntity.getId(),
-            groveEntity.getSeedlingProviderInstanceId(),
-            groveEntity.getSeedlingIpAddress(),
-            groveEntity.getSeedlingSshPort() != null ? groveEntity.getSeedlingSshPort() : 22,
-            groveEntity.getSeedlingState(),
-            spec,
-            groveEntity.getPlantedAt(),
-            null
-        );
-        return providerRegistry.getDefault().vine(seedling).commands();
+    private CommandRunner reachableRunnerFor(GroveEntity groveEntity) {
+        if (groveEntity.getState() != GroveState.FLOURISHING) {
+            return null;
+        }
+        Plot plot = groveEntity.plot();
+        if (plot.state() != PlotState.ROOTED) {
+            return null;
+        }
+        return commandRunnerFor(plot);
+    }
+
+    private String workspaceRootFor(GroveEntity groveEntity) {
+        return switch (groveEntity.plot()) {
+            case VmPlot vm -> providerRegistry.require(vm.providerId()).workspacePath(vm);
+            case ContainerPlot container -> fruitRepository.findByGroveId(groveEntity.getId()).stream()
+                .findFirst()
+                .map(FruitEntity::toModel)
+                .map(Fruit::workspaceFolder)
+                .orElseThrow(() -> new IllegalStateException("container grove has no fruit workspace yet"));
+        };
+    }
+
+    private CommandRunner commandRunnerFor(Plot plot) {
+        GroveProvider provider = providerRegistry.require(plot.providerId());
+        return provider.vine(plot).commands();
     }
 }

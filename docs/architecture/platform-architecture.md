@@ -1,6 +1,6 @@
 # Orchard Architecture
 
-This document describes the architecture of the Orchard CDE (Cloud Development Environment) platform, focusing on how clients communicate with the backend, how seedling providers are managed, and considerations for scalability.
+This document describes the architecture of the Orchard CDE (Cloud Development Environment) platform, focusing on how clients communicate with the backend, how grove providers are managed, and considerations for scalability.
 
 For the themed naming glossary, see [README.md](../../README.md#themed-glossary).
 
@@ -84,6 +84,8 @@ Trowel communicates with the Trellis backend over **HTTP/1.1 REST with JSON** pa
 | `grove clear` | DELETE | `/api/groves/{id}` | Destroy a grove |
 | `status` | GET | `/api/health` | Check server health |
 
+Bees and fruits are grove-scoped. Bees live under `/api/groves/{id}/bees` (see [Bee Architecture §7](bee-architecture.md#7-rest-api)); fruits have no endpoint of their own and are returned as the `fruits` array of `GET /api/groves/{id}`. There is no `/api/bees` collection and no `/api/groves/{id}/fruits`.
+
 ```mermaid
 sequenceDiagram
     participant CLI as Trowel CLI
@@ -116,6 +118,7 @@ Backend implementation in `trellis/src/main/java/dev/orchard/api/controller/Grov
 - **Endpoint**: `GET /api/groves/{groveId}/events` (`text/event-stream`)
 - **Event name**: `grove-state-changed`
 - **Timeout**: 30 minutes
+- **Heartbeat**: `GroveSseRegistry` writes an SSE comment to every open stream every 15 seconds, so idle connections survive proxy read timeouts (nginx defaults to 60 seconds); `EventSource` ignores comments
 - Emitters managed via `ConcurrentHashMap<UUID, CopyOnWriteArrayList<SseEmitter>>`
 
 The `useGroveEvents()` hook auto-reconnects with exponential backoff (max 3 retries).
@@ -151,7 +154,7 @@ sequenceDiagram
     API-->>UI: event: grove-state-changed {state: FLOURISHING}
 
     UI->>API: GET /api/groves/{id} (fetch full details)
-    API-->>UI: 200 OK {grove with seedling + fruits}
+    API-->>UI: 200 OK {grove with plot + fruits}
 ```
 
 ### 1.3 Authentication Architecture
@@ -182,33 +185,52 @@ provider hierarchy.
 
 ```java
 public interface GroveProvider {
-    String getProviderId();
+    ProviderType type();                                            // getProviderId() defaults to type().id()
     boolean isAvailable();                                          // Health check
-    CompletableFuture<Seedling> plantSubstrate(Seedling seedling);  // Acquire substrate
-    CompletableFuture<Seedling> water(Seedling seedling);           // Resume stopped VM
-    CompletableFuture<Seedling> dormant(Seedling seedling);         // Suspend VM
-    CompletableFuture<Void> uproot(Seedling seedling);              // Destroy VM
-    CompletableFuture<Seedling> inspect(Seedling seedling);         // Check status
-    CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit);
-    CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit);
-    Vine vine(Seedling seedling);                                   // How to reach in
-    void verifyDevcontainerCli(Seedling seedling, String expectedVersion);
+    PlotSizes sizes();                                              // Machine-size tiers (default catalogue)
+    Plot reserve(UUID groveId, SeedlingSpec seedlingSpec);          // Stamp a GERMINATING plot; acquires nothing
+    CompletableFuture<Plot> plantSubstrate(Plot draft);             // Acquire substrate
+    CompletableFuture<Plot> water(Plot plot);                       // Resume stopped substrate
+    CompletableFuture<Plot> dormant(Plot plot);                     // Suspend substrate
+    CompletableFuture<Void> uproot(Plot plot);                      // Destroy substrate
+    CompletableFuture<Plot> inspect(Plot plot);                     // Check status
+    CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit);
+    CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit);
+    CompletableFuture<Fruit> pickFruit(Plot plot, Fruit fruit);     // Stop containers, keep them
+    CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit);    // Start them again, rerun post-start
+    Vine vine(Plot plot);                                           // How to reach in
+    void verifyDevcontainerCli(Plot plot, String expectedVersion);
 }
 ```
 
 All operations return `CompletableFuture` for non-blocking async provisioning.
 
-`AbstractGroveProvider<L>` holds the shared VM behaviour: the `plantSubstrate` template (`launch`
-→ `awaitRunning` → `resolveEndpoint` → `awaitReachable`, mapped to `SAPLING` or `BLIGHTED`), fruit
-forwarding to the shared `FruitGrower`, and an SSH-backed `Vine`. `plantSubstrate` is `final`; a
-substrate that cannot express itself as those steps implements `GroveProvider` directly instead.
+`AbstractGroveProvider<P extends Plot, L>` is the substrate-agnostic base: the `plantSubstrate`
+template (`launch` → `ready`, mapped to `ROOTED` or `BLIGHTED`), `reserve` via `draft`, fruit
+forwarding to the shared `FruitGrower`, and `vine`/`verifyDevcontainerCli`. A substrate supplies
+`draft`, `launch`, `ready`, `vineFor` and `workspacePath`; the guarantee-bearing methods are `final`,
+so container and other non-VM substrates extend the base rather than implementing `GroveProvider`
+directly.
+
+`AbstractVmGroveProvider<L>` is the VM layer on top of it: `ready` becomes `awaitRunning` →
+`resolveEndpoint` → `awaitReachable`, `vineFor` returns an SSH-backed `Vine`, and the workspace
+path is `/workspace`.
 
 ### 2.2 ProviderRegistry
 
 `nursery/src/main/java/dev/orchard/nursery/ProviderRegistry.java`:
 - Stores providers in a `ConcurrentHashMap<String, GroveProvider>` keyed by provider ID
 - Configurable default provider via `orchard.nursery.provider` property
+- `require(id)` returns the provider or throws `IllegalStateException("Provider '<id>' is not registered")`; `get(id)` returns an `Optional`; `getDefault()` returns the configured default
 - Short name mapping (e.g., `"qemu"` → `"qemu-local"`, `"aws"` → `"aws-ec2"`) handled in `NurseryConfig.resolveProviderId()`
+
+### 2.2.1 Plot persistence and provenance
+
+The grove stores its whole `Plot` as JSON; that is the only record of the plot. `GroveEntity.plot()` and `setPlot` convert through `PlotSerializer`, with an `@type` tag of `vm` or `container`. `authorizedKeys` is a launch-time input and is never persisted, so a reloaded `VmPlot` has none.
+
+- **Dispatch by provenance.** Every operation on an existing grove (teardown, stop/start, bee command runner, reconciler liveness) resolves its provider with `ProviderRegistry.require(plot.providerId())`. A grove therefore keeps using the provider that created its plot even if `orchard.nursery.provider` changes. `getDefault()` is used only where no plot exists yet: `plantGrove` (to size and `reserve` the first plot) and `HealthController`.
+- **Unregistered provider.** Reachable only if config changes between restarts. `require` throws `IllegalStateException`; async teardown catches it and ends the grove `ORPHANED`, the reconciler marks the grove `BLIGHTED`, and request paths surface the existing 409. No dedicated exception type exists and `GlobalExceptionHandler` is unchanged; a bare `Optional.orElseThrow()` would map to 404 and is not used.
+- **Stale-route guards.** QEMU reuses ports from a fixed range, so a stopped or cleared grove's `host:sshPort` can belong to another cultivator's VM. Two independent guards: (1) a cleared grove's plot is persisted `WITHERED` and a stopped grove's plot `DORMANT`; watering a `DORMANT` plot returns it `ROOTED` with a refreshed endpoint (QEMU allocates a fresh port); (2) `GatewayGroveService.isRoutable` requires grove `FLOURISHING`, a `VmPlot` with non-null `host`, and plot state `ROOTED`. Container plots are never routable. The gateway route carries `host` and `sshPort`.
 
 ### 2.3 Available Providers
 
@@ -232,7 +254,7 @@ sequenceDiagram
     participant FS as Filesystem
     participant VM as QEMU Process
 
-    GS->>QP: plantSubstrate(seedling)
+    GS->>QP: plantSubstrate(plot)
     QP->>FS: Create VM directory
     QP->>FS: Create COW disk image (qemu-img create)
     QP->>FS: Generate cloud-init ISO
@@ -240,7 +262,7 @@ sequenceDiagram
     QP->>VM: Start QEMU process
     QP->>VM: Wait for SSH port open (TCP probe)
     QP->>VM: Wait for SSH auth ready
-    QP-->>GS: Seedling (SAPLING, ip + port)
+    QP-->>GS: Plot (ROOTED, host + port)
 ```
 
 **Cloud-init provisions the VM with**:
@@ -261,7 +283,7 @@ sequenceDiagram
 **Phase 1 — Synchronous (within transaction)**:
 1. Ensure cultivator exists
 2. Create `Grove` record (state: `PLANTING`)
-3. Create `Seedling` record (state: `GERMINATING`) with spec (small/medium/large)
+3. Reserve a plot via `GroveProvider.reserve` (state: `GERMINATING`), sized from the `SeedlingSpec` for the requested tier (small/medium/large) and persisted on the grove
 4. Persist to database
 5. Register async callback via `TransactionSynchronization.afterCommit()`
 
@@ -279,14 +301,14 @@ sequenceDiagram
     participant DB as GroveRepository
     participant EP as EventPublisher
 
-    GS->>PR: getDefault()
+    GS->>PR: require(plot.providerId())
     PR-->>GS: GroveProvider
-    GS->>SP: plantSubstrate(seedling)
-    SP-->>GS: Seedling (SAPLING)
+    GS->>SP: plantSubstrate(plot)
+    SP-->>GS: Plot (ROOTED)
     GS->>DB: updateGroveState(GROWING)
     GS->>EP: GroveStateChangedEvent
 
-    Note over GS,CR: GroveService reaches the Grove via GroveProvider.vine(seedling).commands()
+    Note over GS,CR: GroveService reaches the Grove via GroveProvider.vine(plot).commands()
     GS->>CR: Poll cloud-init status (every 5s, max 60 attempts)
     CR-->>GS: "done"
 
@@ -299,13 +321,13 @@ sequenceDiagram
 
     Note over FG,SSH: FruitGrower still constructs SshExecutor directly (see #86)
     alt Single container
-        GS->>FG: grow(seedling, fruit)
+        GS->>FG: grow(target, fruit)
         FG->>SSH: docker pull/build + docker run
         FG-->>GS: Fruit (RIPE)
     else Docker Compose
         GS->>SSH: docker compose config --services
         SSH-->>GS: [service1, service2, ...]
-        GS->>FG: growCompose(seedling, fruits, composeFile)
+        GS->>FG: growCompose(target, fruits, composeFile)
         FG->>SSH: docker compose up -d
         FG-->>GS: List<Fruit> (RIPE)
     end
@@ -331,21 +353,30 @@ stateDiagram-v2
     FLOURISHING --> CLEARING : User requests clear
     CLEARING --> CLEARED : Teardown complete
 
+    FLOURISHING --> DORMANT : stop
+    GROWING --> DORMANT : stop
+    BLIGHTED --> DORMANT : stop (plot ROOTED)
+    DORMANT --> BLIGHTED : stop failed
+    DORMANT --> PLANTING : start (plot DORMANT)
+    BLIGHTED --> PLANTING : start (plot DORMANT)
+    DORMANT --> CLEARING : User requests clear
+
     FLOURISHING --> BLIGHTED : Reconciler detects unreachable
 ```
 
-#### Seedling States
+#### Plot States
 
 ```mermaid
 stateDiagram-v2
     [*] --> GERMINATING
     GERMINATING --> SPROUTING : VM starting
-    SPROUTING --> SAPLING : SSH ready
+    SPROUTING --> ROOTED : SSH ready
 
-    SAPLING --> WILTING : Suspend (dormant)
-    WILTING --> SAPLING : Resume (water)
-
-    SAPLING --> WITHERED : Terminated
+    ROOTED --> WILTING : dormant
+    WILTING --> DORMANT : powered off
+    DORMANT --> ROOTED : water
+    DORMANT --> WITHERED : uproot (clear)
+    WILTING --> WITHERED : terminated
     GERMINATING --> BLIGHTED : Failed
     SPROUTING --> BLIGHTED : Failed
 ```
@@ -365,14 +396,32 @@ stateDiagram-v2
 
 ### 3.3 Grove Teardown
 
-`GroveService.clearGrove()`:
+`GroveService.clearGrove()` is the only path that deletes a plot's disk. It ends in `tearDownAndRecord`:
 
-1. Set grove state to `CLEARING`, persist, register async callback
-2. **After commit**: Check VM reachability via TCP socket probe (3s timeout)
-3. If reachable: stop and remove all containers via `FruitGrower.compost()`
-4. Delete fruit entities from database
-5. Terminate VM via `GroveProvider.uproot()`
-6. Set grove state to `CLEARED`
+1. The grove is already persisted `CLEARING`. Register the async callback
+2. **After commit, Phase 1 (substrate):** resolve the provider with `require(plot.providerId())`
+3. Best-effort composting, only if some fruit has a `containerId`: `provider.inspect(plot)` must return `ROOTED`, otherwise (or if `inspect` throws) composting is skipped. Each `compostFruit` failure is logged at WARN and skipped
+4. `provider.uproot(plot)`. An unregistered provider or an `uproot` failure keeps every record and sets `ORPHANED`
+5. **Phase 2 (bookkeeping):** save `CLEARED` with the plot `WITHERED` in one write, then delete the fruit rows captured when teardown began. Failures in this phase are logged, not escalated to `ORPHANED`, since the substrate is already gone
+
+### 3.4 Grove Stop and Start
+
+Stop powers the plot off and keeps its disk, containers and every record; start brings the same plot and containers back. Neither re-plants, clones, or runs `devcontainer up`. A refused stop or start throws `IllegalStateException`, which `GlobalExceptionHandler` answers with 409 naming the grove and plot states.
+
+| Operation | Allowed when | Synchronous (request transaction) | Async, after commit |
+|---|---|---|---|
+| `stopGrove` | grove `GROWING`/`FLOURISHING`, or `BLIGHTED` with plot `ROOTED` | grove `DORMANT`; `BeeService.hibernateAll` marks `HATCHING`/`BUZZING`/`POLLINATING` bees `HIBERNATING` | `inspect(plot)`: already `DORMANT` → persist it and stop there; otherwise `pickFruit` each fruit with a container → fruits `PICKED`, then `dormant(plot)` → plot `DORMANT` |
+| `startGrove` | plot `DORMANT` and grove `DORMANT` or `BLIGHTED` | grove `PLANTING` | `water(plot)` → plot `ROOTED`, grove `GROWING`; `ripenFruit` each fruit → fruits `RIPE`, grove `FLOURISHING`; zero fruits or a fruit without a container fails the start |
+
+The synchronous transition is itself a `transitionIfState` from the state the request read, so of two concurrent stops or starts only one proceeds; the other is refused with 409. QEMU's `water` also refuses a plot whose VM it still tracks as running.
+
+`ripenFruit` reruns the post-start hook the way it ran at plant time: for a devcontainer grown through the devcontainer CLI, `devcontainer run-user-commands --container-id … --skip-post-attach` (the CLI's markers skip create-time hooks and rerun `postStartCommand` once per container start); for devfile and legacy-docker fruit, `docker exec`. A failing post-start hook is logged at WARN and the fruit is still `RIPE`; only containers that do not start fail the ripen.
+
+Start does not wake bees; the cultivator wakes each with `POST /api/groves/{groveId}/bees/{beeId}/actions/wake`.
+
+Every async write goes through `advance`: one transaction runs `GroveRepository.transitionIfState` (`UPDATE … WHERE id = ? AND state = ?`) and, only if it updated a row, saves the fruit rows and publishes `GroveStateChangedEvent`. Zero rows means the grove moved on, so the stop or start abandons without further provider calls or writes; a `clear` committed mid-stop or mid-start therefore wins.
+
+Any async failure sets the grove `BLIGHTED` (through `advance`, expecting the state the step left) with the plot as last known. A failed stop or a failed ripen leaves the plot `ROOTED`, so the grove can be stopped again; a failed water leaves it `DORMANT`, so it can be started again.
 
 ---
 
@@ -380,7 +429,7 @@ stateDiagram-v2
 
 `nursery/src/main/java/dev/orchard/nursery/FruitGrower.java`
 
-All container operations are executed remotely via SSH to the seedling VM.
+All container operations are executed remotely via SSH to the VM plot.
 
 ### Single Container Workflow
 1. If seed has `image`: `docker pull {image}` then `docker run -d` with env vars, port forwards, workspace mount at `/workspace`
@@ -397,13 +446,13 @@ All container operations are executed remotely via SSH to the seedling VM.
 
 ### SSH Execution
 
-`FruitGrower`'s container-management commands (this section) still go through `SshExecutor` directly, constructed inline per call — deliberately out of scope for the `Vine`/`GroveProvider` seam introduced in #86. Control-plane exec elsewhere (e.g. `GroveService`'s cloud-init polling, git clone, and devcontainer.json read/write in [§3.1](#31-end-to-end-sequence)) instead goes through `GroveProvider.vine(seedling).commands()`, a `CommandRunner`, whose only implementation today (`SshVine`) is backed by `SshExecutor` for VM substrates.
+`FruitGrower`'s container-management commands (this section) still go through `SshExecutor` directly, constructed inline per call — deliberately out of scope for the `Vine`/`GroveProvider` seam introduced in #86. Control-plane exec elsewhere (e.g. `GroveService`'s cloud-init polling, git clone, and devcontainer.json read/write in [§3.1](#31-end-to-end-sequence)) instead goes through `GroveProvider.vine(plot).commands()`, a `CommandRunner`, whose only implementation today (`SshVine`) is backed by `SshExecutor` for VM substrates.
 
 `SshExecutor` itself:
 - Invokes the local `ssh` binary via `ProcessBuilder`
 - Options: `StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`, `ConnectTimeout=10`
 - Key: `~/.ssh/orchard_ed25519`
-- Connects as user `cultivator` on the seedling's IP and SSH port
+- Connects as user `cultivator` on the VM plot's host and SSH port
 
 ---
 
@@ -415,10 +464,16 @@ Runs on application startup via `ApplicationRunner`:
 
 | Previous State | Action | New State |
 |---------------|--------|-----------|
-| `FLOURISHING` + VM reachable | Leave as-is | `FLOURISHING` |
-| `FLOURISHING` + VM unreachable | Mark failed | `BLIGHTED` |
+| `FLOURISHING` + `inspect` returns `ROOTED` | Leave as-is | `FLOURISHING` |
+| `FLOURISHING` + `inspect` returns `DORMANT` (powered off outside Orchard) | Persist the `DORMANT` plot | `BLIGHTED` (startable) |
+| `FLOURISHING` + `inspect` returns another state or throws | Mark failed | `BLIGHTED` |
+| `DORMANT` + `inspect` returns `ROOTED` or `WILTING` (restart mid-stop) | Re-run `dormant`, persist the plot | `DORMANT` |
+| `DORMANT` + `inspect` returns `DORMANT` | Persist the plot | `DORMANT` |
+| `DORMANT` + `dormant` or `inspect` fails or returns another state | Mark failed | `BLIGHTED` |
 | `PREPARING`, `PLANTING`, `GROWING` | Stuck from previous run | `BLIGHTED` |
-| `CLEARING` | Interrupted teardown | `CLEARED` |
+| `CLEARING` | Interrupted teardown, not re-attempted | `ORPHANED` |
+
+Liveness is `registry.require(plot.providerId()).inspect(plot)`, never a socket probe. Any exception (unregistered provider, failed `inspect`, unreadable or missing plot) counts as unreachable and is logged at ERROR.
 
 ---
 

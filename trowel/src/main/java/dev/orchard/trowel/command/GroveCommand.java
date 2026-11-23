@@ -4,12 +4,16 @@ import dev.orchard.core.model.SeedSpec;
 import dev.orchard.trowel.Trowel;
 import dev.orchard.trowel.client.OrchardClient;
 import dev.orchard.trowel.client.OrchardClient.GroveResponse;
+import dev.orchard.trowel.ssh.SshKeyPaths;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -237,7 +241,7 @@ public class GroveCommand implements Callable<Integer> {
                 );
 
                 GroveResponse grove = client.stopGrove(groveId);
-                System.out.println("Grove " + grove.name() + " has been stopped.");
+                System.out.println("Grove " + grove.name() + " is stopping.");
                 printGrove(grove);
 
                 return 0;
@@ -306,13 +310,19 @@ public class GroveCommand implements Callable<Integer> {
                     return 1;
                 }
 
+                List<String> argv;
+                try {
+                    argv = connectArgv(grove.sshConnectionString(), SshKeyPaths.keysDir(), parent.parent.getSshKeyName());
+                } catch (IllegalStateException e) {
+                    System.err.println(e.getMessage());
+                    return 1;
+                }
+
                 System.out.println("Connecting to grove: " + grove.name());
-                System.out.println("Command: " + grove.sshConnectionString());
+                System.out.println("Command: " + String.join(" ", argv));
                 System.out.println();
 
-                // Execute SSH
-                String[] sshParts = grove.sshConnectionString().split(" ");
-                ProcessBuilder pb = new ProcessBuilder(sshParts);
+                ProcessBuilder pb = new ProcessBuilder(argv);
                 pb.inheritIO();
                 Process process = pb.start();
                 return process.waitFor();
@@ -324,7 +334,38 @@ public class GroveCommand implements Callable<Integer> {
         }
     }
 
-    // Helper methods
+    static List<String> connectArgv(String connectionString, Path keysDir, String keyName) {
+        Path key = keyName == null ? null : keysDir.resolve(keyName);
+        if (key == null || !Files.isRegularFile(key)) {
+            throw new IllegalStateException("no SSH key provisioned for this target; run: trowel ssh-key add");
+        }
+        List<String> parts = new ArrayList<>(List.of(connectionString.split(" ")));
+        parts.addAll(1, List.of("-i", key.toString(), "-o", "IdentitiesOnly=yes"));
+        return parts;
+    }
+
+    static void printPlot(OrchardClient.PlotInfo plot) {
+        System.out.println();
+        boolean vm = "VM".equals(plot.kind());
+        System.out.println(vm ? "  Plot (VM):" : "  Plot (container):");
+        System.out.println("    State:     " + plot.state());
+        if (vm) {
+            if (plot.host() != null) {
+                System.out.println("    Host:      " + plot.host()
+                    + (plot.sshPort() != null ? ":" + plot.sshPort() : ""));
+            }
+        } else if (plot.runtime() != null) {
+            System.out.println("    Runtime:   " + plot.runtime());
+        }
+        var resources = new ArrayList<String>();
+        if (plot.cpuCores() != null) resources.add(plot.cpuCores() + " CPU");
+        if (plot.memoryMb() != null) resources.add(plot.memoryMb() + " MB RAM");
+        if (plot.diskGb() != null) resources.add(plot.diskGb() + " GB disk");
+        if (!resources.isEmpty()) {
+            System.out.println("    Resources: " + String.join(", ", resources));
+        }
+    }
+
     private static void printGrove(GroveResponse grove) {
         System.out.println();
         System.out.println("Grove: " + grove.name());
@@ -338,14 +379,8 @@ public class GroveCommand implements Callable<Integer> {
         }
         System.out.println("  Planted:     " + grove.plantedAt());
 
-        if (grove.seedling() != null) {
-            System.out.println();
-            System.out.println("  Seedling (VM):");
-            System.out.println("    State:     " + grove.seedling().state());
-            System.out.println("    IP:        " + grove.seedling().ipAddress());
-            System.out.println("    SSH Port:  " + grove.seedling().sshPort());
-            System.out.println("    Resources: " + grove.seedling().cpuCores() + " CPU, " +
-                grove.seedling().memoryMb() + " MB RAM, " + grove.seedling().diskGb() + " GB disk");
+        if (grove.plot() != null) {
+            printPlot(grove.plot());
         }
 
         if (grove.fruits() != null && !grove.fruits().isEmpty()) {

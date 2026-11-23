@@ -1,11 +1,16 @@
 package dev.orchard.nursery;
 
 import dev.orchard.core.model.Fruit;
-import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.core.model.PlotSizes;
+import dev.orchard.core.model.ProviderType;
+import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +41,23 @@ class ProviderRegistryTest {
 
         assertThat(registry.getDefaultProviderId()).isEqualTo("qemu");
         assertThat(registry.hasProvider("aws")).isTrue();
+    }
+
+    @Test
+    void require_registered_returnsProvider() {
+        StubProvider provider = new StubProvider("qemu");
+        registry.register(provider);
+
+        assertThat(registry.require("qemu")).isSameAs(provider);
+    }
+
+    @Test
+    void require_unregistered_throwsIllegalStateNotNoSuchElement() {
+        registry.register(new StubProvider("qemu"));
+
+        assertThatThrownBy(() -> registry.require("aws"))
+            .isExactlyInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("aws");
     }
 
     @Test
@@ -114,6 +136,34 @@ class ProviderRegistryTest {
         assertThat(registry.get("qemu-local")).contains(provider);
     }
 
+    @Test
+    void sizes_defaultsToTheDefaultCatalogue() {
+        assertThat(new StubProvider("x").sizes()).isSameAs(PlotSizes.DEFAULT);
+    }
+
+    @Test
+    void close_closesAutoCloseableProviders_andContinuesOnFailure() {
+        java.util.List<String> closed = new java.util.ArrayList<>();
+        registry.register(new ClosingProvider("a", () -> { throw new IllegalStateException("boom"); }));
+        registry.register(new ClosingProvider("b", () -> closed.add("b")));
+        registry.register(new StubProvider("plain"));
+
+        registry.close();
+
+        assertThat(closed).containsExactly("b");
+    }
+
+    private static final class ClosingProvider extends StubProvider implements AutoCloseable {
+        private final Runnable onClose;
+
+        ClosingProvider(String id, Runnable onClose) {
+            super(id);
+            this.onClose = onClose;
+        }
+
+        @Override public void close() { onClose.run(); }
+    }
+
     private static class StubProvider implements GroveProvider {
         private final String providerId;
 
@@ -121,16 +171,22 @@ class ProviderRegistryTest {
             this.providerId = providerId;
         }
 
+        @Override public ProviderType type() { return ProviderType.QEMU_LOCAL; }
         @Override public String getProviderId() { return providerId; }
         @Override public boolean isAvailable() { return true; }
-        @Override public CompletableFuture<Seedling> plantSubstrate(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Seedling> water(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Seedling> dormant(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Void> uproot(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Seedling> inspect(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Fruit> growFruit(Seedling s, Fruit f) { throw new UnsupportedOperationException(); }
-        @Override public CompletableFuture<Void> compostFruit(Seedling s, Fruit f) { throw new UnsupportedOperationException(); }
-        @Override public Vine vine(Seedling s) { throw new UnsupportedOperationException(); }
-        @Override public void verifyDevcontainerCli(Seedling s, String expectedVersion) { throw new UnsupportedOperationException(); }
+        @Override public Plot reserve(UUID groveId, SeedlingSpec r) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Plot> plantSubstrate(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Plot> water(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Plot> dormant(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Void> uproot(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Plot> inspect(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Fruit> growFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Void> compostFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Fruit> pickFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public CompletableFuture<Fruit> ripenFruit(Plot s, Fruit f) { throw new UnsupportedOperationException(); }
+        @Override public Vine vine(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public CommandRunner host(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public String workspacePath(Plot s) { throw new UnsupportedOperationException(); }
+        @Override public void verifyDevcontainerCli(Plot s, String expectedVersion) { throw new UnsupportedOperationException(); }
     }
 }

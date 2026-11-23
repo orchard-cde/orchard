@@ -1,12 +1,15 @@
 package dev.orchard.api.controller;
 
+import dev.orchard.api.event.BeeAttachedEvent;
 import dev.orchard.api.event.BeeRemovedEvent;
 import dev.orchard.api.event.BeeStateChangedEvent;
 import dev.orchard.core.model.BeeState;
+import dev.orchard.core.model.BeeType;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,6 +26,37 @@ class BeeEventBroadcasterTest {
     private final UUID beeId = UUID.randomUUID();
     private final UUID groveId = UUID.randomUUID();
     private final Instant at = Instant.parse("2026-09-21T12:34:56Z");
+
+    @Test
+    void onBeeAttached_broadcastsBeeAttachedToThatGrovesStream() {
+        broadcaster.onBeeAttached(new BeeAttachedEvent(
+            beeId, groveId, BeeType.CLAUDE_CODE, "1.0", BeeState.HATCHING, at));
+
+        assertThat(payloadFor("bee-attached")).isEqualTo(Map.of(
+            "beeId", beeId.toString(),
+            "groveId", groveId.toString(),
+            "beeType", "CLAUDE_CODE",
+            "version", "1.0",
+            "state", "HATCHING",
+            "attachedAt", "2026-09-21T12:34:56Z"
+        ));
+    }
+
+    @Test
+    void onBeeAttached_withoutVersion_stillCarriesTheVersionKey() {
+        broadcaster.onBeeAttached(new BeeAttachedEvent(
+            beeId, groveId, BeeType.CLAUDE_CODE, null, BeeState.HATCHING, at));
+
+        Map<String, Object> expected = new HashMap<>(Map.of(
+            "beeId", beeId.toString(),
+            "groveId", groveId.toString(),
+            "beeType", "CLAUDE_CODE",
+            "state", "HATCHING",
+            "attachedAt", "2026-09-21T12:34:56Z"
+        ));
+        expected.put("version", null);
+        assertThat(payloadFor("bee-attached")).isEqualTo(expected);
+    }
 
     @Test
     void onBeeStateChanged_broadcastsBeeStateChangedToThatGrovesStream() {

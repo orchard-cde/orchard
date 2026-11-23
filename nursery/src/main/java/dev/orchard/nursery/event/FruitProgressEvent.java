@@ -6,15 +6,12 @@ import java.util.UUID;
  * Event published when a Fruit grow progresses through a recognisable phase boundary.
  *
  * <p>{@link dev.orchard.nursery.FruitGrower} emits one of these on phase transitions only —
- * never per CLI log line — so the broadcaster (Lane G) can fan them out to STOMP subscribers
- * without flooding the broker. See spec Locked decisions #15 (broadcaster placement) and #19
- * (phase taxonomy).
+ * never per CLI log line — so the broadcaster can fan them out to STOMP subscribers
+ * without flooding the broker.
  *
- * <p><b>Module placement note:</b> the spec originally proposed
- * {@code api/.../event/FruitProgressEvent.java}, but FruitGrower lives in {@code nursery} which
- * sits below {@code api} in the dependency graph ({@code api -> nursery -> core}). Placing the
- * event in {@code api} would create a cycle. Lane G's broadcaster (in {@code trellis}) imports
- * this class directly — trellis already depends on nursery.
+ * <p>Lives in {@code nursery} rather than {@code api}: FruitGrower is in {@code nursery}, which
+ * sits below {@code api} in the dependency graph ({@code api -> nursery -> core}), so placing
+ * it in {@code api} would create a cycle. The {@code trellis} broadcaster imports it directly.
  *
  * @param fruitId     identifier of the Fruit whose grow this event describes
  * @param groveId     identifier of the Grove that owns the Fruit

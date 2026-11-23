@@ -1,6 +1,12 @@
 package dev.orchard.trowel.command;
 
 import dev.orchard.trowel.Trowel;
+import dev.orchard.trowel.auth.NoAuthProvider;
+import dev.orchard.trowel.client.OrchardClient;
+import dev.orchard.trowel.config.ConfigLoader;
+import dev.orchard.trowel.config.OrchardConfig;
+import dev.orchard.trowel.ssh.SshKeyPaths;
+import dev.orchard.trowel.ssh.SshKeyStore;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
@@ -35,7 +41,9 @@ public class DevServerCommand implements Callable<Integer> {
     static final String DEV_GATEWAY_CLIENT_SECRET = "orchard-dev-gateway-secret";
 
     // The gateway's admin/actuator port (server.port), separate from its SSH port.
-    static final int GATEWAY_ADMIN_PORT = 8081;
+    static final int GATEWAY_ADMIN_PORT = 18081;
+
+    static final String DEV_SERVER_KEY = "dev-server";
 
     @ParentCommand
     Trowel parent;
@@ -92,9 +100,9 @@ public class DevServerCommand implements Callable<Integer> {
         return orchardHome().resolve("logs").resolve("orchard-gateway.log");
     }
 
-    // Same key path trellis/QEMU resolves by default (see QemuPlatformDefaults.defaultSshKeyPath()
-    // and GroveController.resolveSshKeyPath()): ~/.ssh/orchard_ed25519. The gateway's
-    // internal-ssh-key-path MUST match this, since it's the key authorized on seedlings.
+    // Same key path trellis/QEMU resolves by default (QemuPlatformDefaults.defaultSshKeyPath()):
+    // ~/.ssh/orchard_ed25519. The gateway's internal-ssh-key-path MUST match this, since it's
+    // the key authorized on seedlings.
     static String internalSshKeyPath() {
         return Path.of(System.getProperty("user.home"), ".ssh", "orchard_ed25519").toString();
     }
@@ -128,11 +136,11 @@ public class DevServerCommand implements Callable<Integer> {
         @Option(names = {"--verbose", "-v"}, description = "Enable debug logging")
         boolean verbose;
 
-        @Option(names = {"--port", "-p"}, description = "UI (browser) port (default: 7777)", defaultValue = "7777")
-        int port = 7777;
+        @Option(names = {"--port", "-p"}, description = "UI (browser) port (default: 17777)", defaultValue = "17777")
+        int port = 17777;
 
-        @Option(names = {"--core-port"}, description = "Orchard core API port (default: 7778)", defaultValue = "7778")
-        int corePort = 7778;
+        @Option(names = {"--core-port"}, description = "Orchard core API port (default: 17778)", defaultValue = "17778")
+        int corePort = 17778;
 
         @Option(names = {"--no-ui"}, description = "Start orchard core only, without the UI")
         boolean noUi;
@@ -143,14 +151,17 @@ public class DevServerCommand implements Callable<Integer> {
         @Option(names = {"--open"}, description = "Open the UI in your browser once it is ready")
         boolean open;
 
-        @Option(names = {"--fence-port"}, description = "Fence auth server port (default: 7779)", defaultValue = "7779")
-        int fencePort = 7779;
+        @Option(names = {"--fence-port"}, description = "Fence auth server port (default: 17779)", defaultValue = "17779")
+        int fencePort = 17779;
 
         @Option(names = {"--no-auth"}, description = "Start without the fence auth server (disables OAuth2)")
         boolean noAuth;
 
-        @Option(names = {"--gateway-ssh-port"}, description = "SSH gateway port (default: 2222)", defaultValue = "2222")
-        int gatewaySshPort = 2222;
+        @Option(names = {"--gateway-ssh-port"}, description = "SSH gateway port (default: 12222)", defaultValue = "12222")
+        int gatewaySshPort = 12222;
+
+        @Option(names = {"--provider"}, description = "Grove provider: qemu or container (default: qemu)", defaultValue = "qemu")
+        String provider = "qemu";
 
         @Option(names = {"--no-gateway"}, description = "Start without the SSH gateway")
         boolean noGateway;
@@ -228,7 +239,7 @@ public class DevServerCommand implements Callable<Integer> {
                     System.out.println("Skipping gateway: disabled via --no-gateway.");
                 }
 
-                // ADJ-1: resolve UI binary BEFORE launching anything (fail fast -> nothing started)
+                // Resolve the UI binary before launching anything so a failure starts nothing
                 Path uiBinary = null;
                 if (!noUi && !foreground) {
                     try {
@@ -237,16 +248,15 @@ public class DevServerCommand implements Callable<Integer> {
                         uiBinary = new dev.orchard.trowel.devserver.UiBackendResolver(uiBackendBinary(), v).resolve();
                     } catch (dev.orchard.trowel.devserver.UiBackendUnavailableException e) {
                         System.err.println(e.getMessage());
-                        return 1;   // nothing launched
+                        return 1;
                     }
                 }
 
-                // ADJ-3: foreground can't run the UI (it blocks on core inheritIO)
+                // Foreground can't run the UI: it blocks on core's inheritIO
                 if (foreground && !noUi) {
                     System.out.println("foreground mode runs core only (:" + corePort + "); omit -f to also run the UI");
                 }
 
-                // Start fence before core when auth is enabled
                 Process fenceProcess = null;
                 if (!noAuth) {
                     fenceProcess = startFence();
@@ -254,7 +264,6 @@ public class DevServerCommand implements Callable<Integer> {
                         return 1;
                     }
                 }
-
                 var command = buildCommand(coreBinary);
 
                 if (foreground) {
@@ -274,6 +283,8 @@ public class DevServerCommand implements Callable<Integer> {
             command.add(binary.toString());
             command.add("--spring.profiles.active=devserver");
             command.add("--server.port=" + corePort);
+            command.add("--orchard.nursery.provider=" + provider);
+            command.add("--orchard.gateway.ssh-port=" + gatewaySshPort);
 
             String cultivatorId = resolveCultivatorId();
             if (cultivatorId != null && !cultivatorId.isBlank()) {
@@ -291,6 +302,71 @@ public class DevServerCommand implements Callable<Integer> {
             }
 
             return command;
+        }
+
+        /** Foreground counterpart of the background path's provisioning: needs core and the gateway up. */
+        void provisionKeyOnceHealthy(Process core, Process gateway) {
+            if (gateway == null) {
+                return;
+            }
+            System.out.print("  Waiting for server to start");
+            if (!waitForHealth(core, corePort, "/api/health", 30)) {
+                System.out.println(" not ready; connect key not provisioned.");
+                return;
+            }
+            System.out.println(" ready!");
+            provisionKey(coreClient());
+        }
+
+        private OrchardClient coreClient() {
+            return new OrchardClient(coreUrl(),
+                parent != null && parent.parent != null ? parent.parent.getAuthProvider() : new NoAuthProvider());
+        }
+
+        private String coreUrl() {
+            return "http://localhost:" + corePort;
+        }
+
+        void provisionKey(OrchardClient client) {
+            try {
+                String targetName = parent != null && parent.parent != null ? parent.parent.getTargetName() : null;
+                OrchardConfig config = ConfigLoader.load();
+                if (config != null && config.targets() != null) {
+                    String name = targetName != null ? targetName : config.active();
+                    OrchardConfig.Target target = name == null ? null : config.targets().get(name);
+                    if (target != null && !isCoreUrl(target.server())) {
+                        return;
+                    }
+                    if (target != null && target.sshKey() != null
+                            && Files.exists(SshKeyPaths.privateKey(target.sshKey()))) {
+                        return;
+                    }
+                }
+
+                OrchardConfig planned = SshKeyCommand.planSshKey(DEV_SERVER_KEY, targetName, coreUrl());
+                SshKeyStore.loadOrCreate(DEV_SERVER_KEY);
+                String publicLine = Files.readString(SshKeyPaths.publicKey(DEV_SERVER_KEY)).trim();
+                boolean registered = client.listSshPublicKeys().stream()
+                    .anyMatch(k -> publicLine.equals(k.publicKey() == null ? null : k.publicKey().trim()));
+                if (!registered) {
+                    client.registerSshPublicKey(DEV_SERVER_KEY, publicLine);
+                }
+                ConfigLoader.save(planned);
+            } catch (SshKeyCommand.TargetNotFoundException e) {
+                System.err.println(e.getMessage());
+            } catch (Exception e) {
+                String message = String.valueOf(e.getMessage());
+                if (message.startsWith("Server returned 401") || message.startsWith("Server returned 403")) {
+                    System.out.println("  connect needs a registered key: run trowel login, then trowel ssh-key add");
+                } else {
+                    System.err.println("  could not provision the connect key: " + message);
+                }
+            }
+        }
+
+        /** A target on another server must never get this dev-server's key or send its credentials here. */
+        private boolean isCoreUrl(String server) {
+            return server != null && server.replaceAll("/+$", "").equals(coreUrl());
         }
 
         ArrayList<String> buildUiCommand(Path uiBinary) {
@@ -317,8 +393,8 @@ public class DevServerCommand implements Callable<Integer> {
             pb.inheritIO();
             Process process = pb.start();
 
-            // Foreground mode has no health-check gate on core, so best-effort start the
-            // gateway right away (it lazily contacts fence/trellis on first SSH session).
+            // Best-effort start the gateway before core is healthy (it lazily contacts fence/trellis
+            // on first SSH session); only key provisioning waits for core.
             Process gatewayProcess = null;
             if (shouldStartGateway()) {
                 gatewayProcess = startGateway();
@@ -337,6 +413,8 @@ public class DevServerCommand implements Callable<Integer> {
                     gatewayFinal.destroy();
                 }
             }));
+
+            provisionKeyOnceHealthy(process, gatewayProcess);
 
             int exitCode = process.waitFor();
 
@@ -367,7 +445,6 @@ public class DevServerCommand implements Callable<Integer> {
             System.out.println("  Core PID: " + pid);
             System.out.println("  Core logs: " + logFile());
 
-            // Wait for health check
             System.out.print("  Waiting for server to start");
             boolean coreHealthy = waitForHealth(process, corePort, "/api/health", 30);
 
@@ -403,9 +480,10 @@ public class DevServerCommand implements Callable<Integer> {
                     }
                     return 1;
                 }
+                provisionKey(coreClient());
             }
 
-            if (uiBinary != null) {   // i.e. !noUi && !foreground
+            if (uiBinary != null) {
                 int r = startUiBackend(uiBinary, process);
                 if (r != 0) {
                     if (fenceProcess != null && fenceProcess.isAlive()) {
@@ -418,14 +496,13 @@ public class DevServerCommand implements Callable<Integer> {
                     }
                     return r;
                 }
-                printConnectionInfo(port);   // BFF URL is what to open
+                printConnectionInfo(port);
             } else {
                 printCoreOnlyInfo(corePort);
             }
             return 0;
         }
 
-        // ADJ-2: package-visible, gains Process param and bails if it died
         boolean waitForHealth(Process process, int port, String healthPath, int timeoutSeconds) {
             HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(2))
@@ -434,7 +511,7 @@ public class DevServerCommand implements Callable<Integer> {
             long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
 
             while (System.currentTimeMillis() < deadline) {
-                // ADJ-2: bail fast if the process already died
+                // Bail fast if the process already died
                 if (process != null && !process.isAlive()) {
                     System.out.println(" exited.");
                     return false;
@@ -454,7 +531,6 @@ public class DevServerCommand implements Callable<Integer> {
                         return true;
                     }
                 } catch (Exception e) {
-                    // Server not ready yet
                 }
             }
             return false;
@@ -487,7 +563,6 @@ public class DevServerCommand implements Callable<Integer> {
             }
             System.out.println(" ready!");
 
-            // ADJ-4: optional browser open
             if (open) {
                 String url = "http://localhost:" + port;
                 String os = System.getProperty("os.name").toLowerCase();
@@ -506,6 +581,7 @@ public class DevServerCommand implements Callable<Integer> {
             command.add("-jar");
             command.add(fenceJar.toString());
             command.add("--server.port=" + fencePort);
+            command.add("--fence.issuer=http://localhost:" + fencePort);
             command.add("--spring.profiles.active=standalone");
             command.add("--fence.gateway-client.client-secret=" + DEV_GATEWAY_CLIENT_SECRET);
             return command;
@@ -674,7 +750,6 @@ public class DevServerCommand implements Callable<Integer> {
                 System.out.println("Orchard dev-server: \u001B[1;32mrunning\u001B[0m");
                 System.out.println("  PID: " + info.pid());
 
-                // Try health endpoint to get more info
                 try {
                     HttpClient client = HttpClient.newBuilder()
                         .connectTimeout(Duration.ofSeconds(2))
@@ -743,13 +818,13 @@ public class DevServerCommand implements Callable<Integer> {
         } catch (Exception e) { return null; }
     }
 
-    static ServerInfo readServerInfo() { return readInfo(pidFile(), 7778); }
+    static ServerInfo readServerInfo() { return readInfo(pidFile(), 17778); }
 
-    static ServerInfo readUiInfo()     { return readInfo(uiPidFile(), 7777); }
+    static ServerInfo readUiInfo()     { return readInfo(uiPidFile(), 17777); }
 
-    static ServerInfo readFenceInfo()  { return readInfo(fencePidFile(), 7779); }
+    static ServerInfo readFenceInfo()  { return readInfo(fencePidFile(), 17779); }
 
-    static ServerInfo readGatewayInfo() { return readInfo(gatewayPidFile(), 2222); }
+    static ServerInfo readGatewayInfo() { return readInfo(gatewayPidFile(), 12222); }
 
     private static boolean isServerRunning() {
         ServerInfo info = readServerInfo();

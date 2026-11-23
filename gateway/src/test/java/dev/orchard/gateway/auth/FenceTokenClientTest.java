@@ -7,6 +7,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -57,5 +58,31 @@ class FenceTokenClientTest {
         assertThat(client.accessToken()).isEqualTo("jwt-1");
         assertThat(client.accessToken()).isEqualTo("jwt-2");
         server.verify();
+    }
+
+    @Test
+    void defaultsExpiryWhenAbsent() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        FenceTokenClient client = new FenceTokenClient(builder.build(), properties());
+
+        server.expect(requestTo("http://localhost:7779/oauth2/token")).andRespond(withSuccess(
+                "{\"access_token\":\"jwt-1\",\"scope\":\"gateway\"}", MediaType.APPLICATION_JSON));
+
+        assertThat(client.accessToken()).isEqualTo("jwt-1");
+        assertThat(client.accessToken()).isEqualTo("jwt-1");
+        server.verify();
+    }
+
+    @Test
+    void responseWithoutAccessTokenFails() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        FenceTokenClient client = new FenceTokenClient(builder.build(), properties());
+
+        server.expect(requestTo("http://localhost:7779/oauth2/token")).andRespond(withSuccess(
+                "{\"error\":\"invalid_client\"}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(client::accessToken).hasMessageContaining("no access_token");
     }
 }

@@ -33,6 +33,12 @@ public class FruitEntity {
 
     private String serviceName;
 
+    private String composeProjectName;
+
+    private String workspaceFolder;
+
+    private String remoteUser;
+
     @Column(nullable = false)
     private String state;
 
@@ -53,6 +59,9 @@ public class FruitEntity {
         entity.containerId = fruit.containerId();
         entity.containerName = fruit.containerName();
         entity.serviceName = fruit.serviceName();
+        entity.composeProjectName = fruit.composeProjectName();
+        entity.workspaceFolder = fruit.workspaceFolder();
+        entity.remoteUser = fruit.remoteUser();
         entity.state = fruit.state().name();
         entity.buddedAt = fruit.buddedAt();
         entity.ripenedAt = fruit.ripenedAt();
@@ -85,6 +94,9 @@ public class FruitEntity {
             containerId,
             containerName,
             serviceName,
+            composeProjectName,
+            workspaceFolder,
+            remoteUser,
             seed,
             FruitState.valueOf(state),
             List.of(),
@@ -93,19 +105,20 @@ public class FruitEntity {
         );
     }
 
-    // Getters
     public UUID getId() { return id; }
     public UUID getGroveId() { return groveId; }
     public UUID getPlotId() { return plotId; }
     public String getContainerId() { return containerId; }
     public String getContainerName() { return containerName; }
     public String getServiceName() { return serviceName; }
+    public String getComposeProjectName() { return composeProjectName; }
+    public String getWorkspaceFolder() { return workspaceFolder; }
+    public String getRemoteUser() { return remoteUser; }
     public String getState() { return state; }
     public String getSeedJson() { return seedJson; }
     public Instant getBuddedAt() { return buddedAt; }
     public Instant getRipenedAt() { return ripenedAt; }
 
-    // Setters for state updates
     public void setState(String state) { this.state = state; }
     public void setContainerId(String containerId) { this.containerId = containerId; }
     public void setRipenedAt(Instant ripenedAt) { this.ripenedAt = ripenedAt; }

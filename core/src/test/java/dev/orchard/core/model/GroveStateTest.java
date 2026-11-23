@@ -14,7 +14,7 @@ class GroveStateTest {
 
     /**
      * Guards the persistence contract: state is stored as a string in a VARCHAR(50) column with no
-     * CHECK constraint (V1__initial_schema.sql:21), so the constant name is the wire format and
+     * CHECK constraint (`groves.state` in V1__initial_schema.sql), so the constant name is the wire format and
      * must fit. Renaming ORPHANED is a schema-visible change even though no migration declares it.
      */
     @Test

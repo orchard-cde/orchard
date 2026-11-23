@@ -11,6 +11,7 @@ import dev.orchard.nursery.GroveProvider;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.nursery.SeedlingProvisioningException;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ShellQuote;
 import dev.orchard.roots.entity.FruitEntity;
 import dev.orchard.roots.entity.GroveEntity;
 import dev.orchard.roots.repository.FruitRepository;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -36,6 +38,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 @Service
 public class GroveService {
@@ -55,6 +58,8 @@ public class GroveService {
     private final DevfileParser devfileParser;
     private final SeedSerializer seedSerializer;
     private final ApplicationEventPublisher eventPublisher;
+    private final BeeService beeService;
+    private final TransactionTemplate transactionTemplate;
 
     public GroveService(
             GroveRepository groveRepository,
@@ -63,7 +68,9 @@ public class GroveService {
             DevcontainerCliConfig devcontainerCliConfig,
             CultivatorService cultivatorService,
             ApplicationEventPublisher eventPublisher,
-            SshPublicKeyService sshPublicKeyService) {
+            SshPublicKeyService sshPublicKeyService,
+            BeeService beeService,
+            TransactionTemplate transactionTemplate) {
         this.groveRepository = groveRepository;
         this.fruitRepository = fruitRepository;
         this.providerRegistry = providerRegistry;
@@ -74,6 +81,8 @@ public class GroveService {
         this.devfileParser = new DevfileParser();
         this.seedSerializer = new SeedSerializer();
         this.eventPublisher = eventPublisher;
+        this.beeService = beeService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @Transactional
@@ -83,10 +92,8 @@ public class GroveService {
         // Parse --spec up front so an invalid value fails before any rows are created.
         final SeedSpec seedSpec = SeedSpec.fromFlag(request.spec());
 
-        // Ensure cultivator exists (auto-creates for local-dev)
         cultivatorService.ensureCultivator(cultivatorId);
 
-        // Create initial grove
         String name = request.name() != null ? request.name() :
             extractRepoName(request.repositoryUrl()) + "-" + request.branch();
 
@@ -94,30 +101,23 @@ public class GroveService {
         grove = grove.withState(GroveState.PLANTING);
         grove = grove.withSeedSpec(seedSpec);
 
-        // Determine seedling spec
-        Seedling.SeedlingSpec spec = switch (request.machineSize()) {
-            case "medium" -> new Seedling.SeedlingSpec(4, 8192, 40, "medium", request.serialOutput());
-            case "large" -> new Seedling.SeedlingSpec(8, 16384, 80, "large", request.serialOutput());
-            default -> new Seedling.SeedlingSpec(2, 4096, 20, "small", request.serialOutput());
+        GroveProvider provider = providerRegistry.getDefault();
+        PlotSizes sizes = provider.sizes();
+        SeedlingSpec seedlingSpec = switch (request.machineSize()) {
+            case "medium" -> SeedlingSpec.of("medium", sizes.medium(), request.serialOutput());
+            case "large" -> SeedlingSpec.of("large", sizes.large(), request.serialOutput());
+            default -> SeedlingSpec.of("small", sizes.small(), request.serialOutput());
         };
 
-        // Create seedling
-        Seedling seedling = Seedling.germinate(grove.id(), spec);
-        grove = grove.withSeedling(seedling);
+        grove = grove.withPlot(provider.reserve(grove.id(), seedlingSpec));
 
-        // Save initial state
         GroveEntity entity = GroveEntity.fromModel(grove);
         groveRepository.save(entity);
 
         // Start async provisioning after the transaction commits,
         // so the grove row exists before updateGroveState() runs
         final Grove groveToProvision = grove;
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                CompletableFuture.runAsync(() -> provisionGrove(groveToProvision, seedSpec));
-            }
-        });
+        runAfterCommit(() -> provisionGrove(groveToProvision, seedSpec));
 
         return grove;
     }
@@ -126,49 +126,53 @@ public class GroveService {
         try {
             log.info("Starting provisioning for grove {}", grove.id());
 
-            // Bake the cultivator's registered SSH public keys into the seedling so the
+            // Bake the cultivator's registered SSH public keys into a VM plot so the
             // provider's cloud-init grants them access alongside the shared trellis key.
-            List<String> registeredKeys = sshPublicKeyService.listForCultivator(grove.cultivatorId())
-                .stream()
-                .map(SshPublicKey::publicKey)
-                .toList();
-            Seedling seedlingToPlant = grove.seedling().withAuthorizedKeys(registeredKeys);
+            Plot plotToPlant = grove.plot();
+            if (plotToPlant instanceof VmPlot vm) {
+                List<String> registeredKeys = sshPublicKeyService.listForCultivator(grove.cultivatorId())
+                    .stream()
+                    .map(SshPublicKey::publicKey)
+                    .toList();
+                plotToPlant = vm.withAuthorizedKeys(registeredKeys);
+            }
 
-            // Plant seedling (start VM)
-            GroveProvider provider = providerRegistry.getDefault();
-            Seedling plantedSeedling = provider.plantSubstrate(seedlingToPlant).join();
-            grove = grove.withSeedling(plantedSeedling);
+            GroveProvider provider = providerRegistry.require(plotToPlant.providerId());
+            Plot plantedPlot = provider.plantSubstrate(plotToPlant).join();
+            grove = grove.withPlot(plantedPlot);
             grove = grove.withState(GroveState.GROWING);
             updateGroveState(grove);
 
-            if (plantedSeedling.state() == SeedlingState.BLIGHTED) {
+            if (plantedPlot.state() == PlotState.BLIGHTED) {
                 grove = grove.withState(GroveState.BLIGHTED);
                 updateGroveState(grove);
                 return;
             }
 
-            // Wait for cloud-init to finish (installs docker, git, node, devcontainer CLI, etc.)
-            waitForCloudInit(plantedSeedling);
+            // A VM boots asynchronously; cloud-init installs docker, git, node, devcontainer CLI, etc.
+            if (plantedPlot instanceof VmPlot) {
+                waitForCloudInit(provider, plantedPlot);
+            }
 
-            // Verify devcontainer CLI was installed by cloud-init's runcmd block
-            provider.verifyDevcontainerCli(plantedSeedling, devcontainerCliConfig.version());
+            // The pinned devcontainer CLI must be on the host channel: cloud-init installs it on a VM;
+            // a container plot uses the trellis host's.
+            provider.verifyDevcontainerCli(plantedPlot, devcontainerCliConfig.version());
 
-            // Clone repository to VM
-            String commitSha = cloneRepository(plantedSeedling, grove.repositoryUrl(), grove.branch());
+            String commitSha = cloneRepository(provider, plantedPlot, grove.repositoryUrl(), grove.branch());
             if (commitSha != null) {
                 grove = grove.withCommit(commitSha);
                 updateGroveState(grove);
             }
 
             // Discover seed from the cloned repo, honoring the requested --spec precedence.
-            Seed seed = discoverSeed(plantedSeedling, seedSpec);
+            Seed seed = discoverSeed(provider, plantedPlot, seedSpec);
 
             // Ensure a devcontainer.json exists in the workspace when using the devcontainer
             // path — when the repo has none, we fall back to a default Seed but devcontainer
             // up still needs the file on disk. No-op for devfile-based seeds.
-            ensureWorkspaceConfig(plantedSeedling, seed);
+            ensureWorkspaceConfig(provider, plantedPlot, seed);
 
-            grove = provisionPrimaryFruit(grove, plantedSeedling, seed);
+            grove = provisionPrimaryFruit(provider, grove, plantedPlot, seed);
 
             log.info("Grove {} is now {}", grove.id(), grove.state());
 
@@ -189,21 +193,24 @@ public class GroveService {
      *       devfile {@code container} component. The devcontainer CLI is not involved.</li>
      * </ul>
      */
-    private Grove provisionPrimaryFruit(Grove grove, Seedling seedling, Seed seed) {
+    private Grove provisionPrimaryFruit(GroveProvider provider, Grove grove, Plot plot, Seed seed) {
         String serviceName = switch (seed) {
             case DevcontainerSeed dc -> dc.dockerComposeFile() != null ? dc.service() : null;
             case DevfileSeed ignored -> null;
             default -> null;
         };
 
-        Fruit fruit = Fruit.bud(grove.id(), seedling.id(), seed, serviceName);
+        Fruit fruit = Fruit.bud(grove.id(), plot.id(), seed, serviceName);
         grove = grove.withFruit(fruit);
         saveFruits(grove.fruits());
         updateGroveState(grove);
 
-        Fruit grownFruit = providerRegistry.getDefault().growFruit(seedling, fruit).join();
+        Fruit grownFruit = provider.growFruit(plot, fruit).join();
         grove = grove.withFruit(grownFruit);
         saveFruits(grove.fruits());
+        if (grove.plot() instanceof ContainerPlot container && grownFruit.remoteUser() != null) {
+            grove = grove.withPlot(container.withRemoteUser(grownFruit.remoteUser()));
+        }
 
         if (grownFruit.state() == FruitState.RIPE) {
             grove = grove.withState(GroveState.FLOURISHING);
@@ -250,9 +257,9 @@ public class GroveService {
         return CloudInitStatus.DONE;
     }
 
-    private void waitForCloudInit(Seedling seedling) {
-        log.info("Waiting for cloud-init to complete on seedling {}", seedling.id());
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+    private void waitForCloudInit(GroveProvider provider, Plot plot) {
+        log.info("Waiting for cloud-init to complete on plot {}", plot.id());
+        CommandRunner ssh = provider.host(plot);
         int maxAttempts = 60; // up to ~5 minutes
         for (int i = 0; i < maxAttempts; i++) {
             try {
@@ -263,17 +270,17 @@ public class GroveService {
                 CloudInitStatus status = classifyCloudInitStatus(raw);
                 if (status == CloudInitStatus.FAILED) {
                     throw new SeedlingProvisioningException(
-                        "cloud-init failed on seedling " + seedling.id()
+                        "cloud-init failed on plot " + plot.id()
                             + " — provisioning cannot continue. Last 40 lines of "
                             + "/var/log/cloud-init-output.log:\n" + cloudInitLogTail(ssh));
                 }
                 if (status == CloudInitStatus.DONE) {
-                    log.info("Cloud-init finished on seedling {} ({})", seedling.id(), raw);
+                    log.info("Cloud-init finished on plot {} ({})", plot.id(), raw);
                     return;
                 }
-                log.debug("Cloud-init still running on seedling {}: {}", seedling.id(), raw);
+                log.debug("Cloud-init still running on plot {}: {}", plot.id(), raw);
             } catch (IOException e) {
-                log.debug("Cloud-init check failed on seedling {}: {}", seedling.id(), e.getMessage());
+                log.debug("Cloud-init check failed on plot {}: {}", plot.id(), e.getMessage());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
@@ -285,7 +292,7 @@ public class GroveService {
                 return;
             }
         }
-        log.warn("Timeout waiting for cloud-init on seedling {} after {} attempts", seedling.id(), maxAttempts);
+        log.warn("Timeout waiting for cloud-init on plot {} after {} attempts", plot.id(), maxAttempts);
     }
 
     /** Best-effort tail of the remote cloud-init log, for diagnosing a failed boot. */
@@ -300,17 +307,31 @@ public class GroveService {
         }
     }
 
-    private String cloneRepository(Seedling seedling, String repoUrl, String branch) {
-        log.info("Cloning {} branch {} to seedling {}", repoUrl, branch, seedling.id());
+    /** Remote transports a container grove may clone over; its host is the trellis machine itself. */
+    private static final Pattern CONTAINER_REPO_URL = Pattern.compile(
+        "(?i)(https?|ssh)://.+|[A-Za-z0-9._-]+@[^/:\\s]+:.+");
+
+    /** Git run without the host user's configuration, credential helpers, hooks or prompts. */
+    private static final String LOCKED_DOWN_GIT = "env GIT_TERMINAL_PROMPT=0 GIT_CONFIG_GLOBAL=/dev/null "
+        + "GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c credential.helper=";
+
+    private String cloneRepository(GroveProvider provider, Plot plot, String repoUrl, String branch) {
+        boolean container = plot instanceof ContainerPlot;
+        if (container && !CONTAINER_REPO_URL.matcher(repoUrl).matches()) {
+            throw new IllegalArgumentException("unsupported repository URL for a container grove: " + repoUrl);
+        }
+        String git = container ? LOCKED_DOWN_GIT : "git";
+        log.info("Cloning {} branch {} to plot {}", repoUrl, branch, plot.id());
         try {
-            CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
-            ssh.execute("mkdir -p /workspace");
-            ssh.execute("git clone --branch %s --depth 1 %s /workspace".formatted(branch, repoUrl));
-            String commitSha = ssh.execute("git -C /workspace rev-parse HEAD").trim();
+            CommandRunner host = provider.host(plot);
+            String ws = ShellQuote.quote(provider.workspacePath(plot));
+            host.execute("%s clone --branch %s --depth 1 -- %s %s".formatted(
+                git, ShellQuote.quote(branch), ShellQuote.quote(repoUrl), ws));
+            String commitSha = host.execute(git + " -C " + ws + " rev-parse HEAD").trim();
             log.info("Repository cloned, commit: {}", commitSha);
             return commitSha;
         } catch (IOException | InterruptedException e) {
-            log.error("Failed to clone repository {} to seedling {}: {}", repoUrl, seedling.id(), e.getMessage());
+            log.error("Failed to clone repository {} to plot {}: {}", repoUrl, plot.id(), e.getMessage());
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
@@ -318,26 +339,27 @@ public class GroveService {
         }
     }
 
-    /** Standard on-VM locations for a devcontainer config, in precedence order. */
+    /** Standard workspace-relative locations for a devcontainer config, in precedence order. */
     private static final List<String> DEVCONTAINER_PATHS = List.of(
-        "/workspace/.devcontainer/devcontainer.json",
-        "/workspace/.devcontainer.json");
+        ".devcontainer/devcontainer.json",
+        ".devcontainer.json");
 
-    /** Standard on-VM locations for a devfile, in precedence order. */
+    /** Standard workspace-relative locations for a devfile, in precedence order. */
     private static final List<String> DEVFILE_PATHS = List.of(
-        "/workspace/devfile.yaml",
-        "/workspace/devfile.yml",
-        "/workspace/.devfile.yaml",
-        "/workspace/.devfile.yml");
+        "devfile.yaml",
+        "devfile.yml",
+        ".devfile.yaml",
+        ".devfile.yml");
 
     /** Shared defaults for a synthesized seed when a repo ships no workspace config. */
     private static final String DEFAULT_SEED_NAME = "orchard-workspace";
     private static final String DEFAULT_SEED_IMAGE = "mcr.microsoft.com/devcontainers/base:ubuntu";
     private static final List<String> DEFAULT_SEED_PORTS = List.of("8080", "3000");
 
-    private Seed discoverSeed(Seedling seedling, SeedSpec spec) {
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
-        return resolveSeed(spec, ssh::readFile, devcontainerParser, devfileParser);
+    private Seed discoverSeed(GroveProvider provider, Plot plot, SeedSpec spec) {
+        CommandRunner host = provider.host(plot);
+        String ws = provider.workspacePath(plot);
+        return resolveSeed(spec, rel -> host.readFile(ws + "/" + rel), devcontainerParser, devfileParser);
     }
 
     /**
@@ -350,7 +372,8 @@ public class GroveService {
      *   <li>{@link SeedSpec#DEVFILE} — devfile.yaml only; a default devfile seed when absent.</li>
      * </ul>
      *
-     * <p>Reader-injected so the rules are unit-testable without a live VM.
+     * <p>Reader-injected so the rules are unit-testable without a live plot; the reader receives
+     * workspace-relative paths.
      */
     static Seed resolveSeed(SeedSpec spec,
                             Function<String, Optional<String>> reader,
@@ -417,40 +440,42 @@ public class GroveService {
     }
 
     /**
-     * Ensures the workspace on the seedling has the configuration file it needs to start.
+     * Ensures the workspace on the plot has the configuration file it needs to start.
      *
      * <ul>
-     *   <li>{@link DevcontainerSeed} — writes {@code /workspace/.devcontainer/devcontainer.json}
+     *   <li>{@link DevcontainerSeed} — writes {@code <workspace>/.devcontainer/devcontainer.json}
      *       if not already present, so that {@code devcontainer up} doesn't fail with
      *       "Config not found".</li>
      *   <li>{@link DevfileSeed} — no-op; the devfile is already on disk (we discovered it from
      *       the cloned repo), and the docker-direct grow path doesn't need a config file.</li>
      * </ul>
      */
-    private void ensureWorkspaceConfig(Seedling seedling, Seed seed) {
+    private void ensureWorkspaceConfig(GroveProvider provider, Plot plot, Seed seed) {
         switch (seed) {
-            case DevcontainerSeed dc -> ensureDevcontainerConfig(seedling, dc);
+            case DevcontainerSeed dc -> ensureDevcontainerConfig(provider, plot, dc);
             case DevfileSeed ignored -> log.debug(
-                "Devfile-based seed — skipping devcontainer.json write on seedling {}", seedling.id());
+                "Devfile-based seed — skipping devcontainer.json write on plot {}", plot.id());
             default -> log.warn("Unknown seed type {} — skipping workspace config write", seed.getClass().getSimpleName());
         }
     }
 
     /**
-     * Ensures a devcontainer.json exists at /workspace/.devcontainer/devcontainer.json
-     * on the seedling. If the cloned repo already has one, this is a no-op (the file
+     * Ensures a devcontainer.json exists at <workspace>/.devcontainer/devcontainer.json
+     * on the plot. If the cloned repo already has one, this is a no-op (the file
      * test returns fast). Otherwise it serialises the given Seed to a valid
-     * devcontainer.json so that {@code devcontainer up --workspace-folder /workspace}
+     * devcontainer.json so that {@code devcontainer up --workspace-folder <workspace>}
      * does not fail with "Config not found".
      */
-    private void ensureDevcontainerConfig(Seedling seedling, DevcontainerSeed seed) {
-        CommandRunner ssh = providerRegistry.getDefault().vine(seedling).commands();
+    private void ensureDevcontainerConfig(GroveProvider provider, Plot plot, DevcontainerSeed seed) {
+        CommandRunner host = provider.host(plot);
+        String configPath = ShellQuote.quote(provider.workspacePath(plot) + "/.devcontainer/devcontainer.json");
+        String configDir = ShellQuote.quote(provider.workspacePath(plot) + "/.devcontainer");
         try {
-            if (ssh.execute("test -f /workspace/.devcontainer/devcontainer.json && echo yes || echo no")
+            if (host.execute("test -f " + configPath + " && echo yes || echo no")
                     .trim().equals("yes")) {
                 return;
             }
-            log.info("Writing devcontainer.json to workspace on seedling {} from seed", seedling.id());
+            log.info("Writing devcontainer.json to workspace on plot {} from seed", plot.id());
 
             ObjectNode root = devcontainerMapper.createObjectNode();
             if (seed.image() != null) {
@@ -472,16 +497,16 @@ public class GroveService {
 
             String json = devcontainerMapper.writeValueAsString(root);
             String b64 = Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
-            ssh.execute("mkdir -p /workspace/.devcontainer && echo '" + b64 + "' | base64 -d > /workspace/.devcontainer/devcontainer.json");
+            host.execute("mkdir -p " + configDir + " && echo " + ShellQuote.quote(b64)
+                + " | base64 -d > " + configPath);
         } catch (IOException | InterruptedException e) {
-            log.warn("Failed to ensure devcontainer.json on seedling {}", seedling.id(), e);
+            log.warn("Failed to ensure devcontainer.json on plot {}", plot.id(), e);
         }
     }
 
     @Transactional
     public void updateGroveState(Grove grove) {
         try {
-            // Look up previous state before persisting
             GroveState previousState = groveRepository.findById(grove.id())
                 .map(GroveEntity::getState)
                 .orElse(null);
@@ -489,26 +514,14 @@ public class GroveService {
             GroveEntity entity = GroveEntity.fromModel(grove);
             groveRepository.save(entity);
 
-            // Publish event if state actually changed
-            if (previousState != null && previousState != grove.state()) {
-                eventPublisher.publishEvent(GroveStateChangedEvent.of(
-                    grove.id(),
-                    grove.cultivatorId(),
-                    grove.name(),
-                    previousState,
-                    grove.state()
-                ));
-                log.info("Published state change event for grove {}: {} -> {}",
-                    grove.id(), previousState, grove.state());
+            if (previousState != null) {
+                publishStateChange(grove, previousState);
             }
         } catch (Exception e) {
             log.error("Failed to update grove state", e);
         }
     }
 
-    /**
-     * Saves all fruits for a grove to the database.
-     */
     @Transactional
     public void saveFruits(List<Fruit> fruits) {
         if (fruits == null || fruits.isEmpty()) {
@@ -558,13 +571,7 @@ public class GroveService {
             groveRepository.save(entity);
 
             Grove grove = entityToModel(entity);
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    CompletableFuture.runAsync(
-                        () -> tearDownAndRecord(groveId, grove, entity, GroveState.CLEARED));
-                }
-            });
+            runAfterCommit(() -> tearDownAndRecord(groveId, grove, entity));
         });
     }
 
@@ -577,15 +584,15 @@ public class GroveService {
      * <p>Package-private so tests can drive it directly; production enters via
      * {@code afterCommit} → {@code runAsync}, which no test can reach.
      */
-    void tearDownAndRecord(UUID groveId, Grove grove, GroveEntity entity, GroveState successState) {
+    void tearDownAndRecord(UUID groveId, Grove grove, GroveEntity entity) {
         // Phase 1 — release the substrate. A failure here may have left a resource behind, so
         // every record is retained and the grove is marked ORPHANED.
         try {
-            compostFruitsIfReachable(groveId, grove);
-
-            if (grove.seedling() != null) {
-                log.info("Uprooting seedling {} for grove {}", grove.seedling().id(), groveId);
-                providerRegistry.getDefault().uproot(grove.seedling()).join();
+            if (grove.plot() != null) {
+                GroveProvider provider = providerRegistry.require(grove.plot().providerId());
+                compostFruitsIfReachable(groveId, grove, provider);
+                log.info("Uprooting plot {} for grove {}", grove.plot().id(), groveId);
+                provider.uproot(grove.plot()).join();
             }
         } catch (Exception e) {
             log.error("Substrate teardown failed for grove {} — marking ORPHANED and retaining "
@@ -600,143 +607,249 @@ public class GroveService {
         // the save() below is what fails, the row keeps CLEARING and the reconciler marks it
         // ORPHANED at the next startup instead.
         try {
-            // On the stop path this detached entity already holds successState, so rewriting it
-            // would clobber a startGrove that ran in between. Guards the state column only — the
-            // fruit rows are protected separately, below.
-            if (entity.getState() != successState) {
-                entity.setState(successState);
-                groveRepository.save(entity);
+            entity.setState(GroveState.CLEARED);
+            if (grove.plot() != null) {
+                entity.setPlot(grove.plot().withState(PlotState.WITHERED));
             }
-            // Only the generation captured when teardown began: re-querying at completion would
-            // delete rows a subsequent startGrove created, since this runs asynchronously.
-            List<UUID> capturedFruitIds = grove.fruits() == null ? List.of()
-                : grove.fruits().stream().map(Fruit::id).toList();
-            fruitRepository.deleteAllById(capturedFruitIds);
-            log.info("Grove {} reached {}", groveId, successState);
+            groveRepository.save(entity);
+            fruitRepository.deleteAllById(grove.fruits() == null ? List.of()
+                : grove.fruits().stream().map(Fruit::id).toList());
+            log.info("Grove {} reached {}", groveId, GroveState.CLEARED);
         } catch (Exception e) {
             log.error("Grove {} substrate was released but bookkeeping failed; state or fruit rows "
                 + "may be stale. The substrate is NOT leaked.", groveId, e);
         }
     }
 
-    /**
-     * Best-effort container cleanup, gated on a raw socket probe.
-     *
-     * <p>The probe is a known defect carried forward deliberately: the spec's "Must-fix along the
-     * way" requires a substrate-aware reachability check obtained through the provider, which needs
-     * provider-owned inspection (#228). Do not opportunistically replace it here. A probe miss no
-     * longer masks an {@code uproot} failure.
-     */
-    private void compostFruitsIfReachable(UUID groveId, Grove grove) {
-        boolean vmReachable = false;
-        if (grove.seedling() != null && grove.seedling().ipAddress() != null) {
-            try (var socket = new java.net.Socket()) {
-                socket.connect(new java.net.InetSocketAddress(
-                    grove.seedling().ipAddress(), grove.seedling().sshPort()), 3000);
-                vmReachable = true;
-            } catch (java.io.IOException e) {
-                log.info("VM unreachable for grove {} — skipping container cleanup", groveId);
-            }
+    /** Best-effort container cleanup, gated on provider inspection. */
+    private void compostFruitsIfReachable(UUID groveId, Grove grove, GroveProvider provider) {
+        if (grove.fruits() == null || grove.fruits().stream().noneMatch(f -> f.containerId() != null)) {
+            return;
         }
-        if (vmReachable && grove.fruits() != null && !grove.fruits().isEmpty()) {
-            for (Fruit fruit : grove.fruits()) {
-                if (fruit.containerId() != null) {
-                    log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
-                    providerRegistry.getDefault().compostFruit(grove.seedling(), fruit).join();
+        try {
+            if (provider.inspect(grove.plot()).join().state() != PlotState.ROOTED) {
+                log.info("Plot not running for grove {} — skipping container cleanup", groveId);
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("Inspecting plot for grove {} failed — skipping container cleanup", groveId, e);
+            return;
+        }
+        for (Fruit fruit : grove.fruits()) {
+            if (fruit.containerId() != null) {
+                log.info("Composting fruit {} for grove {}", fruit.id(), groveId);
+                try {
+                    provider.compostFruit(grove.plot(), fruit).join();
+                } catch (Exception e) {
+                    log.warn("Composting fruit {} for grove {} failed — continuing", fruit.id(), groveId, e);
                 }
             }
         }
     }
 
     /**
-     * Stops a running grove by tearing down its fruit and seedling, transitioning it to
-     * {@link GroveState#DORMANT}. Only groves in {@link GroveState#GROWING} or
-     * {@link GroveState#FLOURISHING} can be stopped.
+     * Stops a grove without destroying it: the grove becomes {@link GroveState#DORMANT} at once,
+     * then its fruits are picked and its plot powered off, keeping disk and containers. Allowed
+     * from {@link GroveState#GROWING}, {@link GroveState#FLOURISHING}, or {@link GroveState#BLIGHTED}
+     * with a {@link PlotState#ROOTED} plot.
+     *
+     * @throws IllegalStateException if the grove cannot be stopped in its current state
      */
     @Transactional
     public Optional<Grove> stopGrove(UUID groveId) {
         return groveRepository.findById(groveId).map(entity -> {
             GroveState state = entity.getState();
-            if (state != GroveState.GROWING && state != GroveState.FLOURISHING) {
-                log.warn("Cannot stop grove {} in state {}", groveId, state);
-                return entityToModel(entity);
+            Plot plot = entity.plot();
+            boolean running = state == GroveState.GROWING || state == GroveState.FLOURISHING;
+            boolean blightedButRooted = state == GroveState.BLIGHTED && plot.state() == PlotState.ROOTED;
+            if (!running && !blightedButRooted) {
+                throw refusal("stop", groveId, state, plot);
             }
+            GroveProvider provider = providerRegistry.require(plot.providerId());
 
             log.info("Stopping grove {}", groveId);
-            entity.setState(GroveState.DORMANT);
-            groveRepository.save(entity);
-
-            Grove grove = entityToModel(entity);
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    CompletableFuture.runAsync(
-                        () -> tearDownAndRecord(groveId, grove, entity, GroveState.DORMANT));
-                }
-            });
-
+            Grove grove = transitionNow(entity, plot, GroveState.DORMANT, "stop");
+            beeService.hibernateAll(groveId);
+            runAfterCommit(() -> completeStop(grove, provider));
             return grove;
         });
     }
 
     /**
-     * Restarts a dormant grove by re-provisioning its seedling and fruit, transitioning it
-     * back to {@link GroveState#GROWING} / {@link GroveState#FLOURISHING}.
-     * Only groves in {@link GroveState#DORMANT} can be started.
+     * Starts a stopped grove on the same plot: powers it on and starts the same containers,
+     * walking {@link GroveState#PLANTING} → {@link GroveState#GROWING} →
+     * {@link GroveState#FLOURISHING}. Allowed only while the plot is {@link PlotState#DORMANT}
+     * and the grove is {@link GroveState#DORMANT} or {@link GroveState#BLIGHTED}.
+     *
+     * @throws IllegalStateException if the grove cannot be started in its current state
      */
     @Transactional
     public Optional<Grove> startGrove(UUID groveId) {
         return groveRepository.findById(groveId).map(entity -> {
             GroveState state = entity.getState();
-            if (state != GroveState.DORMANT) {
-                log.warn("Cannot start grove {} in state {}", groveId, state);
-                return entityToModel(entity);
+            Plot plot = entity.plot();
+            boolean stopped = state == GroveState.DORMANT || state == GroveState.BLIGHTED;
+            if (!stopped || plot.state() != PlotState.DORMANT) {
+                throw refusal("start", groveId, state, plot);
             }
+            GroveProvider provider = providerRegistry.require(plot.providerId());
 
             log.info("Starting grove {}", groveId);
-            Grove grove = entityToModel(entity);
-            Seedling seedling = Seedling.germinate(grove.id(), grove.seedling().spec());
-            grove = grove.withSeedling(seedling);
-            grove = grove.withState(GroveState.PLANTING);
-            updateGroveState(grove);
-
-            final Grove groveToProvision = grove;
-            final SeedSpec seedSpec = grove.seedSpec() != null ? grove.seedSpec() : SeedSpec.AUTO;
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    CompletableFuture.runAsync(() -> provisionGrove(groveToProvision, seedSpec));
-                }
-            });
-
+            Grove grove = transitionNow(entity, plot, GroveState.PLANTING, "start");
+            runAfterCommit(() -> completeStart(grove, provider));
             return grove;
         });
     }
 
-    private Grove entityToModel(GroveEntity entity) {
-        Seedling seedling = null;
-        if (entity.getSeedlingId() != null) {
-            var spec = new Seedling.SeedlingSpec(
-                entity.getSeedlingCpuCores() != null ? entity.getSeedlingCpuCores() : 2,
-                entity.getSeedlingMemoryMb() != null ? entity.getSeedlingMemoryMb() : 4096,
-                entity.getSeedlingDiskGb() != null ? entity.getSeedlingDiskGb() : 20,
-                "small",
-                null
-            );
-            seedling = new Seedling(
-                entity.getSeedlingId(),
-                entity.getId(),
-                entity.getSeedlingProviderInstanceId(),
-                entity.getSeedlingIpAddress(),
-                entity.getSeedlingSshPort() != null ? entity.getSeedlingSshPort() : 22,
-                entity.getSeedlingState(),
-                spec,
-                entity.getPlantedAt(),
-                null
-            );
-        }
+    private static void runAfterCommit(Runnable task) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                CompletableFuture.runAsync(task);
+            }
+        });
+    }
 
-        // Load fruits from the separate fruits table
+    private static IllegalStateException refusal(String action, UUID groveId, GroveState state, Plot plot) {
+        return new IllegalStateException("Cannot %s grove %s: grove is %s and its plot is %s"
+            .formatted(action, groveId, state, plot.state()));
+    }
+
+    /**
+     * Moves the grove from the state the request observed, conditionally, so that of two
+     * concurrent requests only one proceeds and the other is refused.
+     */
+    private Grove transitionNow(GroveEntity entity, Plot plot, GroveState next, String action) {
+        GroveState observed = entity.getState();
+        int rows = groveRepository.transitionIfState(
+            entity.getId(), observed, next, GroveEntity.serializePlot(plot));
+        if (rows != 1) {
+            throw refusal(action, entity.getId(), observed, plot);
+        }
+        Grove grove = entityToModel(entity).withState(next);
+        publishStateChange(grove, observed);
+        return grove;
+    }
+
+    /**
+     * The async half of {@link #stopGrove}. Package-private so tests can drive it directly.
+     * A plot that already inspects {@link PlotState#DORMANT} has nothing left to stop and is
+     * recorded as such. Any other failure leaves the grove {@link GroveState#BLIGHTED} with its
+     * plot as last persisted, still {@link PlotState#ROOTED}, so stop can be retried.
+     */
+    void completeStop(Grove grove, GroveProvider provider) {
+        Grove current = grove;
+        try {
+            Plot inspected = inspectQuietly(provider, current.plot());
+            if (inspected != null && inspected.state() == PlotState.DORMANT) {
+                if (advance(grove.id(), GroveState.DORMANT, current.withPlot(inspected))) {
+                    log.info("Grove {} is DORMANT; its plot was already powered off", grove.id());
+                }
+                return;
+            }
+            for (Fruit fruit : current.fruits()) {
+                if (fruit.containerId() != null) {
+                    current = current.withFruit(provider.pickFruit(current.plot(), fruit).join());
+                }
+            }
+            if (!advance(grove.id(), GroveState.DORMANT, current)) {
+                return;
+            }
+            current = current.withPlot(provider.dormant(current.plot()).join());
+            if (advance(grove.id(), GroveState.DORMANT, current)) {
+                log.info("Grove {} is DORMANT", grove.id());
+            }
+        } catch (Exception e) {
+            log.error("Stopping grove {} failed — marking BLIGHTED", grove.id(), e);
+            blight(GroveState.DORMANT, current);
+        }
+    }
+
+    /**
+     * The async half of {@link #startGrove}. Package-private so tests can drive it directly.
+     * Any failure leaves the grove {@link GroveState#BLIGHTED} with its plot as last known:
+     * {@link PlotState#DORMANT} if watering failed (start again), {@link PlotState#ROOTED} if
+     * ripening failed (stop again). A grove with no fruit, or a fruit without a container, has no
+     * workspace to start and fails the same way rather than reaching FLOURISHING.
+     */
+    void completeStart(Grove grove, GroveProvider provider) {
+        Grove current = grove;
+        GroveState expected = GroveState.PLANTING;
+        try {
+            current = current.withPlot(provider.water(current.plot()).join()).withState(GroveState.GROWING);
+            if (!advance(grove.id(), expected, current)) {
+                return;
+            }
+            expected = GroveState.GROWING;
+            if (current.fruits().isEmpty() || current.fruits().stream().anyMatch(f -> f.containerId() == null)) {
+                throw new IllegalStateException("grove " + grove.id() + " has no container to start");
+            }
+            for (Fruit fruit : current.fruits()) {
+                Fruit ripened = provider.ripenFruit(current.plot(), fruit).join();
+                if (ripened.state() != FruitState.RIPE) {
+                    throw new IllegalStateException("fruit " + fruit.id() + " ended " + ripened.state());
+                }
+                current = current.withFruit(ripened);
+            }
+            current = current.withState(GroveState.FLOURISHING);
+            if (advance(grove.id(), expected, current)) {
+                log.info("Grove {} is FLOURISHING", grove.id());
+            }
+        } catch (Exception e) {
+            log.error("Starting grove {} failed — marking BLIGHTED", grove.id(), e);
+            blight(expected, current);
+        }
+    }
+
+    private Plot inspectQuietly(GroveProvider provider, Plot plot) {
+        try {
+            return provider.inspect(plot).join();
+        } catch (Exception e) {
+            log.warn("Inspecting plot {} failed — assuming it may still be running", plot.id(), e);
+            return null;
+        }
+    }
+
+    private void blight(GroveState expected, Grove current) {
+        try {
+            advance(current.id(), expected, current.withState(GroveState.BLIGHTED));
+        } catch (Exception e) {
+            log.error("Could not mark grove {} BLIGHTED", current.id(), e);
+        }
+    }
+
+    /**
+     * Writes {@code next} only if the grove is still in {@code expected}, together with its fruit
+     * rows, in one transaction. Returns false when the grove has moved on (e.g. a clear landed),
+     * in which case nothing is written and the caller abandons.
+     */
+    private boolean advance(UUID groveId, GroveState expected, Grove next) {
+        boolean applied = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            int rows = groveRepository.transitionIfState(
+                groveId, expected, next.state(), GroveEntity.serializePlot(next.plot()));
+            if (rows != 1) {
+                return false;
+            }
+            saveFruits(next.fruits());
+            publishStateChange(next, expected);
+            return true;
+        }));
+        if (!applied) {
+            log.info("Grove {} is no longer {} — abandoning its move to {}", groveId, expected, next.state());
+        }
+        return applied;
+    }
+
+    private void publishStateChange(Grove grove, GroveState previous) {
+        if (previous == grove.state()) {
+            return;
+        }
+        eventPublisher.publishEvent(GroveStateChangedEvent.of(
+            grove.id(), grove.cultivatorId(), grove.name(), previous, grove.state()));
+        log.info("Published state change event for grove {}: {} -> {}", grove.id(), previous, grove.state());
+    }
+
+    private Grove entityToModel(GroveEntity entity) {
         List<Fruit> fruits = fruitRepository.findByGroveId(entity.getId())
             .stream()
             .map(FruitEntity::toModel)
@@ -751,7 +864,7 @@ public class GroveService {
             entity.getCommitSha(),
             entity.getState(),
             entity.getSeedSpec() != null ? entity.getSeedSpec() : SeedSpec.AUTO,
-            seedling,
+            entity.plot(),
             fruits,
             entity.getPlantedAt(),
             entity.getLastAccessedAt()

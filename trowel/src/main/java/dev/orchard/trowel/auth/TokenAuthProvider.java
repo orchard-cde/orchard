@@ -36,11 +36,9 @@ public class TokenAuthProvider implements AuthProvider {
             return "Bearer " + accessToken;
         }
 
-        // Token is expired or near-expiry — refresh
         FenceClient fenceClient = createFenceClient();
         var tokenResponse = fenceClient.refreshToken(refreshToken);
 
-        // Persist refreshed tokens back to config
         persistRefreshedTokens(tokenResponse);
 
         return "Bearer " + tokenResponse.accessToken();
@@ -73,8 +71,9 @@ public class TokenAuthProvider implements AuthProvider {
             oldTarget.cultivator(),
             oldTarget.fenceServer(),
             tokenResponse.accessToken(),
-            tokenResponse.refreshToken(),
-            newExpiresAt
+            tokenResponse.refreshToken() != null ? tokenResponse.refreshToken() : oldTarget.refreshToken(),
+            newExpiresAt,
+            oldTarget.sshKey()
         ));
 
         ConfigLoader.save(new OrchardConfig(config.active(), targets));

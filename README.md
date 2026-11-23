@@ -16,11 +16,11 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 ## Features
 
 - **devcontainer Support**: Full compatibility with the `.devcontainer` specification
-- **VM-based Isolation**: Each workspace runs in its own QEMU VM with Docker
+- **VM-based Isolation**: Each workspace runs in its own QEMU VM with Docker, or on the local docker/podman engine with the container provider
 - **VS Code Remote SSH**: Connect directly from your local VS Code
 - **Web UI (Canopy)**: Manage workspaces from your browser — [separate repo](https://github.com/orchard-cde/orchard-ui)
 - **CLI (Trowel)**: Plant and manage groves from the command line
-- **AI Coding Assistants**: Attach AI-powered Bees (OpenCode, Claude Code, Gemini, Codex) to any grove
+- **AI Coding Assistants**: Attach AI-powered Bees to any grove — OpenCode today; Claude Code ([#41](https://github.com/orchard-cde/orchard/issues/41)), Gemini ([#42](https://github.com/orchard-cde/orchard/issues/42)) and Codex ([#43](https://github.com/orchard-cde/orchard/issues/43)) are planned
 
 ## Quick Start
 
@@ -28,7 +28,7 @@ Orchard is a cloud development environment (CDE) platform that provisions ready-
 
 - Java 25+
 - Docker & Docker Compose
-- QEMU (for local VM provisioning)
+- QEMU for `--provider qemu`, or a reachable docker or podman engine for `--provider container`; the container provider builds groves on that engine with the devcontainer CLI (`npm install -g @devcontainers/cli@0.87.0`)
 
 ### Start the Platform
 
@@ -43,16 +43,17 @@ docker compose up -d postgres
 # Build the project
 ./gradlew build -x test
 
-# Start the dev server — runs orchard core (:7778) + the Canopy UI BFF (:7777)
-trowel dev-server start        # open http://localhost:7777
-trowel dev-server start --no-ui  # core only on :7778 (API only, no UI)
+# Start the dev server — runs orchard core (:17778) + the Canopy UI BFF (:17777)
+trowel dev-server start        # open http://localhost:17777
+trowel dev-server start --no-ui  # core only on :17778 (API only, no UI)
+trowel dev-server start --provider container  # groves on the local docker/podman engine (default: qemu)
 ```
 
 `trowel dev-server start` launches **two processes**:
 
-- **orchard-server** (core, API only) on port **7778**
-- **orchard-ui-backend** (Canopy UI BFF) on port **7777** — serves the Canopy UI and
-  reverse-proxies `/api/**` to core. Open **http://localhost:7777** in your browser.
+- **orchard-server** (core, API only) on port **17778**
+- **orchard-ui-backend** (Canopy UI BFF) on port **17777** — serves the Canopy UI and
+  reverse-proxies `/api/**` to core. Open **http://localhost:17777** in your browser.
 
 In dev mode, the UI auto-authenticates as the cultivator configured in your trowel config
 (`~/.orchard/config.toml`), so no localStorage setup is needed.
@@ -74,7 +75,7 @@ Next.js dev server for hot-reload instead:
 
 ```bash
 # In the sibling orchard-ui/ repository
-npm run dev   # Next.js on :3000, talks to the core API at http://localhost:7778
+npm run dev   # Next.js on :3000, talks to the core API at http://localhost:17778
 ```
 
 ### Using the CLI (Trowel)
@@ -103,10 +104,33 @@ java -jar trowel/build/libs/trowel-0.1.0-SNAPSHOT-all.jar grove connect <grove-i
 
 Pre-built native binaries are available for each [release](https://github.com/orchard-cde/orchard/releases):
 
-| Binary | linux-amd64 | linux-arm64 | macos-arm64 |
-|---|---|---|---|
-| **orchard-server** | `orchard-server-linux-amd64.tar.gz` | `orchard-server-linux-arm64.tar.gz` | `orchard-server-macos-arm64.tar.gz` |
-| **trowel** | `trowel-linux-amd64.tar.gz` | `trowel-linux-arm64.tar.gz` | `trowel-macos-arm64.tar.gz` |
+| Binary | linux-amd64 | linux-arm64 |
+|---|---|---|
+| **orchard-server** | `orchard-server-linux-amd64.tar.gz` | `orchard-server-linux-arm64.tar.gz` |
+| **trowel** | `trowel-linux-amd64.tar.gz` | `trowel-linux-arm64.tar.gz` |
+
+macOS binaries are not published yet ([#146](https://github.com/orchard-cde/orchard/issues/146)).
+On macOS, build from source with `./gradlew :trowel:fatJar` (see [Using the CLI](#using-the-cli-trowel)).
+
+### Install trowel
+
+The install script downloads the latest trowel release for your OS and architecture,
+verifies its checksum, and installs it to `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orchard-cde/orchard/main/scripts/install-trowel.sh | bash
+```
+
+Pin a release by passing its tag, and override the install directory with `TROWEL_INSTALL_DIR`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/orchard-cde/orchard/main/scripts/install-trowel.sh | bash -s v0.6.0
+TROWEL_INSTALL_DIR=/usr/local/bin bash scripts/install-trowel.sh
+```
+
+If the install directory is not on your `PATH`, the script prints the `export PATH=...` line to add.
+
+### Manual download
 
 Each tarball contains a single statically-linked executable. Download, extract, and run:
 
@@ -114,15 +138,6 @@ Each tarball contains a single statically-linked executable. Download, extract, 
 # Example: download and run trowel on Linux amd64
 curl -L https://github.com/orchard-cde/orchard/releases/latest/download/trowel-linux-amd64.tar.gz | tar xz
 ./trowel --version
-```
-
-### macOS Gatekeeper
-
-On macOS, you may need to remove the quarantine attribute before running:
-
-```bash
-xattr -d com.apple.quarantine orchard-server
-xattr -d com.apple.quarantine trowel
 ```
 
 ### Verify Checksums
@@ -148,8 +163,8 @@ sha256sum --check checksums-sha256.txt --ignore-missing
 ├───────────────┬────────────────────────┬────────────────────┤
 │    Harvest    │        Nursery         │       Apiary       │
 │  Devcontainer │    VM Provisioning     │   BeeKeeper (AI)   │
-│    Parsing    │    (QEMU, AWS, GCP,    │ OpenCode, Claude,  │
-│               │         Azure)         │   Gemini, Codex    │
+│    Parsing    │    (QEMU, AWS, GCP,    │      OpenCode      │
+│               │         Azure)         │  (others planned)  │
 ├───────────────┴────────────────────────┴────────────────────┤
 │                    Vine (Substrate Exec)                    │
 │            CommandRunner / SshVine / SshExecutor            │
@@ -158,7 +173,7 @@ sha256sum --check checksums-sha256.txt --ignore-missing
 │               JPA Entities, Spring Data Repos               │
 ├─────────────────────────────────────────────────────────────┤
 │                     Core (Domain Models)                    │
-│        Grove, Seedling, Fruit, Seed, Bee, Cultivator        │
+│        Grove, Plot, Fruit, Seed, Bee, Cultivator            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -168,15 +183,16 @@ We use orchard/gardening terminology throughout the codebase:
 
 | Term | Meaning |
 |------|---------|
-| **Grove** | A development workspace (VM + container) |
+| **Grove** | A development workspace: a plot plus the fruit growing on it |
 | **Cultivator** | A user who tends groves |
-| **Seedling** | A VM being provisioned |
-| **Sapling** | A running, ready VM |
+| **Plot** | The substrate a grove is planted in (a VM today); holds one or more fruit |
+| **Seedling** | What is planted into a plot |
+| **Sapling** | A `ROOTED` plot, ready to grow fruit |
 | **Fruit** | A running devcontainer |
 | **Seed** | A devcontainer.json specification |
 | **Trowel** | The CLI tool for planting |
 | **Canopy** | The web UI - see the forest through the trees |
-| **Nursery** | VM provider management |
+| **Nursery** | Substrate provider management: acquires plots |
 | **Harvest** | Building container images |
 | **Trellis** | The Spring Boot application server |
 | **Greenhouse** | Prebuild service for image caching (TBD) |
@@ -196,7 +212,7 @@ orchard/
 ├── greenhouse/ # Prebuild service (image caching)
 ├── apiary/     # AI assistant integration (BeeKeeper extension point)
 ├── fence/      # Authentication subsystem (OAuth2/OIDC device flow)
-├── gateway/    # SSH gateway (MINA SSHD jumphost relaying to seedlings)
+├── gateway/    # SSH gateway (MINA SSHD jumphost relaying to VM plots)
 ├── trellis/    # Spring Boot application (REST API + services)
 └── trowel/     # Command-line interface
 ```
@@ -230,12 +246,16 @@ spring:
 
 orchard:
   nursery:
-    provider: qemu  # qemu, aws, gcp, azure
+    provider: qemu  # qemu, container, aws, gcp, azure
   qemu:
     base-image-path: /tmp/orchard/images/base.qcow2
     vm-storage-path: ${user.home}/.orchard/data/vms
     # enable-kvm/serial-output default per-platform (KVM on Linux, HVF on macOS)
 ```
+
+The container provider runs repository-controlled commands and mounts with the trellis user's rights on the host (`initializeCommand`, devfile `preStart`, `runArgs`, `mounts`). Use it single-tenant, with trusted repositories only. Container groves clone once at plant time, on the host, with no host git configuration, credential helpers or hooks. HTTPS URLs are the default; `ssh://` and `git@host:path` URLs also work and use the trellis host's SSH setup.
+
+On any non-local deployment, set `orchard.gateway.ssh-host` to the gateway's public host.
 
 ### CLI (`~/.orchard/config.toml`)
 
@@ -243,7 +263,7 @@ orchard:
 active = "local"
 
 [targets.local]
-server = "http://localhost:7778"
+server = "http://localhost:17778"
 cultivator = "<your-uuid>"
 ```
 
@@ -256,7 +276,8 @@ cultivator = "<your-uuid>"
 - [x] Real-time status updates (Server-Sent Events)
 - [x] VS Code extension for direct integration — [orchard-vscode-extension](https://github.com/orchard-cde/orchard-vscode-extension)
 - [ ] Multi-container workspace support
-- [ ] AI coding assistant integration (BeeKeeper adapters — OpenCode, Claude Code, Gemini, Codex)
+- [x] AI coding assistant integration — OpenCode BeeKeeper adapter
+- [ ] Claude Code, Gemini and Codex BeeKeeper adapters ([#41](https://github.com/orchard-cde/orchard/issues/41), [#42](https://github.com/orchard-cde/orchard/issues/42), [#43](https://github.com/orchard-cde/orchard/issues/43))
 
 ## License
 

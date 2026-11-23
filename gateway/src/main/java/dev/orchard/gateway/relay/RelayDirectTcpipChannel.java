@@ -1,6 +1,7 @@
 package dev.orchard.gateway.relay;
 
 import dev.orchard.gateway.api.GatewayRoute;
+import dev.orchard.gateway.api.RouteKind;
 import dev.orchard.gateway.auth.KeyAuthenticator;
 import org.apache.sshd.client.channel.ChannelDirectTcpip;
 import org.apache.sshd.client.future.DefaultOpenFuture;
@@ -58,6 +59,9 @@ public class RelayDirectTcpipChannel extends AbstractServerChannel {
 
             ServerSession serverSession = (ServerSession) getSession();
             GatewayRoute route = serverSession.getAttribute(KeyAuthenticator.ROUTE_KEY);
+            if (route != null && route.kind() == RouteKind.CONTAINER) {
+                throw new UnsupportedOperationException("port forwarding is not available for container groves");
+            }
             ClientSession client = relay.relaySession(serverSession, route);
             // ChannelDirectTcpip's constructor takes only (SshdSocketAddress, SshdSocketAddress)
             // - no ClientSession parameter. The channel is registered on that session via

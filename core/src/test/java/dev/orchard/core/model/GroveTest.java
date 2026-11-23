@@ -2,6 +2,7 @@ package dev.orchard.core.model;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -38,10 +39,10 @@ class GroveTest {
     }
 
     @Test
-    void plant_setsNullSeedlingAndEmptyFruits() {
+    void plant_setsNullPlotAndEmptyFruits() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
 
-        assertThat(grove.seedling()).isNull();
+        assertThat(grove.plot()).isNull();
         assertThat(grove.fruits()).isEmpty();
         assertThat(grove.commitSha()).isNull();
     }
@@ -79,13 +80,13 @@ class GroveTest {
     }
 
     @Test
-    void withSeedling_attachesSeedling() {
+    void withPlot_attachesPlot() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = createReadySeedling(grove.id());
+        VmPlot plot = createReadyPlot(grove.id());
 
-        Grove updated = grove.withSeedling(seedling);
+        Grove updated = grove.withPlot(plot);
 
-        assertThat(updated.seedling()).isEqualTo(seedling);
+        assertThat(updated.plot()).isEqualTo(plot);
     }
 
     @Test
@@ -162,11 +163,11 @@ class GroveTest {
     @Test
     void isReady_trueWhenFullyReady() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = createReadySeedling(grove.id());
-        Fruit fruit = createRipeFruit(grove.id(), seedling.id());
+        VmPlot plot = createReadyPlot(grove.id());
+        Fruit fruit = createRipeFruit(grove.id(), plot.id());
 
         grove = grove.withState(GroveState.FLOURISHING)
-                .withSeedling(seedling)
+                .withPlot(plot)
                 .withFruit(fruit);
 
         assertThat(grove.isReady()).isTrue();
@@ -175,18 +176,18 @@ class GroveTest {
     @Test
     void isReady_falseWhenNotFlourishing() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = createReadySeedling(grove.id());
-        Fruit fruit = createRipeFruit(grove.id(), seedling.id());
+        VmPlot plot = createReadyPlot(grove.id());
+        Fruit fruit = createRipeFruit(grove.id(), plot.id());
 
         grove = grove.withState(GroveState.GROWING)
-                .withSeedling(seedling)
+                .withPlot(plot)
                 .withFruit(fruit);
 
         assertThat(grove.isReady()).isFalse();
     }
 
     @Test
-    void isReady_falseWhenSeedlingNull() {
+    void isReady_falseWhenPlotNull() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main")
                 .withState(GroveState.FLOURISHING)
                 .withFruit(createRipeFruit(UUID.randomUUID(), UUID.randomUUID()));
@@ -195,13 +196,13 @@ class GroveTest {
     }
 
     @Test
-    void isReady_falseWhenSeedlingNotReady() {
+    void isReady_falseWhenPlotNotRooted() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = Seedling.germinate(grove.id(), Seedling.SeedlingSpec.small());
+        VmPlot plot = VmPlot.germinate(grove.id(), "qemu", SeedlingSpec.from(VmSpec.small()));
 
         grove = grove.withState(GroveState.FLOURISHING)
-                .withSeedling(seedling)
-                .withFruit(createRipeFruit(grove.id(), seedling.id()));
+                .withPlot(plot)
+                .withFruit(createRipeFruit(grove.id(), plot.id()));
 
         assertThat(grove.isReady()).isFalse();
     }
@@ -209,9 +210,9 @@ class GroveTest {
     @Test
     void isReady_falseWhenFruitsEmpty() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = createReadySeedling(grove.id());
+        VmPlot plot = createReadyPlot(grove.id());
 
-        grove = grove.withState(GroveState.FLOURISHING).withSeedling(seedling);
+        grove = grove.withState(GroveState.FLOURISHING).withPlot(plot);
 
         assertThat(grove.isReady()).isFalse();
     }
@@ -219,56 +220,79 @@ class GroveTest {
     @Test
     void isReady_falseWhenAnyFruitNotReady() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = createReadySeedling(grove.id());
-        Fruit ripeFruit = createRipeFruit(grove.id(), seedling.id());
-        Fruit buddingFruit = Fruit.bud(grove.id(), seedling.id(),
+        VmPlot plot = createReadyPlot(grove.id());
+        Fruit ripeFruit = createRipeFruit(grove.id(), plot.id());
+        Fruit buddingFruit = Fruit.bud(grove.id(), plot.id(),
                 Seed.devcontainer().name("unripe").image("ubuntu").build());
 
         grove = grove.withState(GroveState.FLOURISHING)
-                .withSeedling(seedling)
+                .withPlot(plot)
                 .withFruits(List.of(ripeFruit, buddingFruit));
 
         assertThat(grove.isReady()).isFalse();
     }
 
     @Test
-    void getSshConnectionString_returnsFormattedString() {
+    void isReady_trueOnlyForRootedPlot() {
         Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = createReadySeedling(grove.id());
-        grove = grove.withSeedling(seedling);
+        VmPlot sapling = createReadyPlot(grove.id());
+        grove = grove.withState(GroveState.FLOURISHING)
+                .withFruit(createRipeFruit(grove.id(), sapling.id()));
 
-        String ssh = grove.getSshConnectionString();
-
-        assertThat(ssh).contains("ssh -o StrictHostKeyChecking=no");
-        assertThat(ssh).contains("-o UserKnownHostsFile=/dev/null");
-        assertThat(ssh).contains(".ssh/orchard_ed25519");
-        assertThat(ssh).contains("-p 2222");
-        assertThat(ssh).contains("cultivator@192.168.1.1");
+        assertThat(grove.withPlot(sapling).isReady()).isTrue();
+        for (PlotState other : PlotState.values()) {
+            if (other != PlotState.ROOTED) {
+                assertThat(grove.withPlot(sapling.withState(other)).isReady()).as(other.name()).isFalse();
+            }
+        }
+        assertThat(grove.withPlot(createContainerPlot(grove.id()).withState(PlotState.ROOTED)).isReady())
+                .isTrue();
     }
 
     @Test
-    void getSshConnectionString_returnsNullWhenSeedlingNull() {
-        Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
+    void sshReachableVm_presentForRootedVmPlotWithHost() {
+        VmPlot plot = createReadyPlot(UUID.randomUUID());
+        Grove grove = Grove.plant(cultivatorId, "g", "https://github.com/test/repo", "main").withPlot(plot);
 
-        assertThat(grove.getSshConnectionString()).isNull();
+        assertThat(grove.sshReachableVm()).contains(plot);
     }
 
     @Test
-    void getSshConnectionString_returnsNullWhenIpNull() {
-        Grove grove = Grove.plant(cultivatorId, "my-grove", "https://github.com/test/repo", "main");
-        Seedling seedling = Seedling.germinate(grove.id(), Seedling.SeedlingSpec.small());
-        grove = grove.withSeedling(seedling);
+    void sshReachableVm_emptyForNullPlotContainerPlotAndNullHost() {
+        Grove grove = Grove.plant(cultivatorId, "g", "https://github.com/test/repo", "main");
+        VmPlot noHost = new VmPlot(UUID.randomUUID(), grove.id(), "qemu", "inst-1", PlotState.ROOTED,
+                Instant.now(), Instant.now(), null, 2222, List.of(), VmSpec.small());
 
-        assertThat(grove.getSshConnectionString()).isNull();
+        assertThat(grove.sshReachableVm()).isEmpty();
+        assertThat(grove.withPlot(createContainerPlot(grove.id()).withState(PlotState.ROOTED))
+                .sshReachableVm()).isEmpty();
+        assertThat(grove.withPlot(noHost).sshReachableVm()).isEmpty();
     }
 
-    private Seedling createReadySeedling(UUID groveId) {
-        return new Seedling(UUID.randomUUID(), groveId, "inst-1", "192.168.1.1", 2222,
-                SeedlingState.SAPLING, Seedling.SeedlingSpec.small(), Instant.now(), Instant.now());
+    @Test
+    void sshReachableVm_emptyForEveryNonRootedState() {
+        Grove grove = Grove.plant(cultivatorId, "g", "https://github.com/test/repo", "main");
+        VmPlot sapling = createReadyPlot(grove.id());
+        for (PlotState other : PlotState.values()) {
+            if (other != PlotState.ROOTED) {
+                assertThat(grove.withPlot(sapling.withState(other)).sshReachableVm()).as(other.name()).isEmpty();
+            }
+        }
     }
 
-    private Fruit createRipeFruit(UUID groveId, UUID seedlingId) {
-        return Fruit.bud(groveId, seedlingId,
+    private VmPlot createReadyPlot(UUID groveId) {
+        return new VmPlot(UUID.randomUUID(), groveId, "qemu", "inst-1", PlotState.ROOTED,
+                Instant.now(), Instant.now(), "192.168.1.1", 2222, List.of(), VmSpec.small());
+    }
+
+    private ContainerPlot createContainerPlot(UUID groveId) {
+        return new ContainerPlot(UUID.randomUUID(), groveId, "docker", "c-1", PlotState.GERMINATING,
+                Instant.now(), null, Path.of("/srv/groves/g1"), ContainerRuntime.PODMAN,
+                new ContainerSpec(2, 4096), null);
+    }
+
+    private Fruit createRipeFruit(UUID groveId, UUID plotId) {
+        return Fruit.bud(groveId, plotId,
                 Seed.devcontainer().name("test").image("ubuntu").build()).withState(FruitState.RIPE);
     }
 }

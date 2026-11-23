@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Smoke coverage for the QEMU cloud-init classpath template. Mirrors {@code Ec2UserDataTest}'s
  * style — verifies the rendered YAML contains the runtime-injected ssh key + CLI version
- * and the nodejs / devcontainer install lines that bootstrap each Seedling.
+ * and the nodejs / devcontainer install lines that bootstrap each VM plot.
  */
 class QemuCloudInitTemplateTest {
 

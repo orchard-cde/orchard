@@ -2,7 +2,9 @@ package dev.orchard.roots.entity;
 
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.GroveState;
+import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.SeedSpec;
+import dev.orchard.harvest.PlotSerializer;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -11,6 +13,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "groves")
 public class GroveEntity {
+
+    private static final PlotSerializer plotSerializer = new PlotSerializer();
 
     @Id
     private UUID id;
@@ -43,22 +47,14 @@ public class GroveEntity {
     @Column(nullable = false)
     private Instant lastAccessedAt;
 
-    // Seedling fields (embedded for simplicity)
-    private UUID seedlingId;
-    private String seedlingProviderInstanceId;
-    private String seedlingIpAddress;
-    private Integer seedlingSshPort;
-    @Enumerated(EnumType.STRING)
-    private dev.orchard.core.model.SeedlingState seedlingState;
-    private Integer seedlingCpuCores;
-    private Integer seedlingMemoryMb;
-    private Integer seedlingDiskGb;
+    @Column(columnDefinition = "TEXT")
+    private String plotJson;
 
     protected GroveEntity() {}
 
     /**
      * Creates a GroveEntity from a Grove domain model.
-     * Note: Fruits are now stored separately in the fruits table via FruitEntity.
+     * Fruits are persisted separately via FruitEntity.
      */
     public static GroveEntity fromModel(Grove grove) {
         GroveEntity entity = new GroveEntity();
@@ -73,24 +69,11 @@ public class GroveEntity {
         entity.plantedAt = grove.plantedAt();
         entity.lastAccessedAt = grove.lastAccessedAt();
 
-        if (grove.seedling() != null) {
-            var s = grove.seedling();
-            entity.seedlingId = s.id();
-            entity.seedlingProviderInstanceId = s.providerInstanceId();
-            entity.seedlingIpAddress = s.ipAddress();
-            entity.seedlingSshPort = s.sshPort();
-            entity.seedlingState = s.state();
-            if (s.spec() != null) {
-                entity.seedlingCpuCores = s.spec().cpuCores();
-                entity.seedlingMemoryMb = s.spec().memoryMb();
-                entity.seedlingDiskGb = s.spec().diskGb();
-            }
-        }
+        entity.setPlot(grove.plot());
 
         return entity;
     }
 
-    // Getters for query purposes
     public UUID getId() { return id; }
     public UUID getCultivatorId() { return cultivatorId; }
     public String getName() { return name; }
@@ -101,18 +84,23 @@ public class GroveEntity {
     public SeedSpec getSeedSpec() { return seedSpec; }
     public Instant getPlantedAt() { return plantedAt; }
     public Instant getLastAccessedAt() { return lastAccessedAt; }
-    public UUID getSeedlingId() { return seedlingId; }
-    public String getSeedlingIpAddress() { return seedlingIpAddress; }
-    public Integer getSeedlingSshPort() { return seedlingSshPort; }
-    public dev.orchard.core.model.SeedlingState getSeedlingState() { return seedlingState; }
-    public String getSeedlingProviderInstanceId() { return seedlingProviderInstanceId; }
-    public Integer getSeedlingCpuCores() { return seedlingCpuCores; }
-    public Integer getSeedlingMemoryMb() { return seedlingMemoryMb; }
-    public Integer getSeedlingDiskGb() { return seedlingDiskGb; }
 
     public void setState(GroveState state) { this.state = state; }
     public void setLastAccessedAt(Instant lastAccessedAt) { this.lastAccessedAt = lastAccessedAt; }
-    public void setSeedlingState(dev.orchard.core.model.SeedlingState state) { this.seedlingState = state; }
-    public void setSeedlingIpAddress(String ip) { this.seedlingIpAddress = ip; }
-    public void setSeedlingProviderInstanceId(String id) { this.seedlingProviderInstanceId = id; }
+
+    public Plot plot() {
+        if (plotJson == null || plotJson.isBlank()) {
+            throw new IllegalStateException("grove " + id + " has no plot_json; it predates the plot schema."
+                + " trowel dev-server users: delete ~/.orchard/data/ once and restart");
+        }
+        return plotSerializer.deserialize(plotJson);
+    }
+
+    public void setPlot(Plot plot) {
+        this.plotJson = serializePlot(plot);
+    }
+
+    public static String serializePlot(Plot plot) {
+        return plot == null ? null : plotSerializer.serialize(plot);
+    }
 }

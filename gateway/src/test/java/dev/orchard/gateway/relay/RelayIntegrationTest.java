@@ -186,7 +186,6 @@ class RelayIntegrationTest {
         }
     }
 
-    // ---------------------------------------------------------------- helpers
 
     private ClientSession authenticatedSession() throws Exception {
         ClientSession session = client.connect(groveId.toString(), "127.0.0.1", gateway.getPort())
@@ -274,7 +273,7 @@ class RelayIntegrationTest {
     }
 
     private org.apache.sshd.common.keyprovider.KeyPairProvider testHostKeyProvider() {
-        // Same fix as HostKeyProvider (Task 7): SimpleGeneratorHostKeyProvider.setAlgorithm
+        // Same fix as HostKeyProvider: SimpleGeneratorHostKeyProvider.setAlgorithm
         // takes a JCA KeyPairGenerator algorithm name ("EdDSA" / SecurityUtils.EDDSA), not
         // the SSH wire key-type identifier (KeyPairProvider.SSH_ED25519) - the latter throws
         // NoSuchAlgorithmException.
@@ -362,7 +361,7 @@ class RelayIntegrationTest {
      * probe {@link KeyAuthenticator} more than once per auth attempt.
      */
     private static HttpServer startTrellisStub(
-            UUID groveId, UUID cultivatorId, int seedlingPort, String clientWireLine, String clientFingerprint) throws Exception {
+            UUID groveId, UUID cultivatorId, int sshPort, String clientWireLine, String clientFingerprint) throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 
         server.createContext("/oauth2/token", exchange -> {
@@ -371,9 +370,9 @@ class RelayIntegrationTest {
             sendJson(exchange, 200, body);
         });
 
-        String groveJson = ("{\"groveId\":\"%s\",\"cultivatorId\":\"%s\",\"seedlingIp\":\"127.0.0.1\","
-                + "\"seedlingPort\":%d,\"state\":\"FLOURISHING\"}")
-                .formatted(groveId, cultivatorId, seedlingPort);
+        String groveJson = ("{\"groveId\":\"%s\",\"cultivatorId\":\"%s\",\"kind\":\"vm\",\"host\":\"127.0.0.1\","
+                + "\"sshPort\":%d,\"state\":\"FLOURISHING\"}")
+                .formatted(groveId, cultivatorId, sshPort);
         server.createContext("/api/gateway/groves/" + groveId, exchange -> {
             exchange.getRequestBody().readAllBytes();
             sendJson(exchange, 200, groveJson);

@@ -60,7 +60,6 @@ public class PrebuildEntity {
         );
     }
 
-    // Getters
     public UUID getId() { return id; }
     public String getRepositoryUrl() { return repositoryUrl; }
     public String getBranch() { return branch; }
@@ -70,7 +69,6 @@ public class PrebuildEntity {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getCompletedAt() { return completedAt; }
 
-    // Setters for state updates
     public void setState(String state) { this.state = state; }
     public void setCommitSha(String commitSha) { this.commitSha = commitSha; }
     public void setImageRef(String imageRef) { this.imageRef = imageRef; }

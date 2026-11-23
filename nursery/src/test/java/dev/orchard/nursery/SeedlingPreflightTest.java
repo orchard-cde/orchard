@@ -1,10 +1,18 @@
 package dev.orchard.nursery;
 
-import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.ContainerPlot;
+import dev.orchard.core.model.ContainerRuntime;
+import dev.orchard.core.model.ContainerSpec;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.vine.CommandRunner;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.UUID;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -12,11 +20,11 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Validates the +P1 provisioning preflight contract: before declaring a Seedling READY
- * (SAPLING), the caller must confirm {@code devcontainer --version} matches the pinned
+ * Validates the provisioning preflight contract: before declaring a VM plot READY
+ * (ROOTED), the caller must confirm {@code devcontainer --version} matches the pinned
  * {@link DevcontainerCliConfig#version()}.
  *
- * <p>Exercises {@link GroveProvider#verifyDevcontainerCli(Seedling, String, CommandRunner)},
+ * <p>Exercises {@link GroveProvider#verifyDevcontainerCli(Plot, String, CommandRunner)},
  * the sole production path, against a canned {@link CommandRunner} rather than a real substrate
  * connection — reaching the substrate is {@link GroveProvider}'s business (see
  * {@link GroveProvider#vine}), which is covered by the integration tests.
@@ -57,25 +65,25 @@ class SeedlingPreflightTest {
         }
     }
 
-    private static Seedling stubSeedling() {
-        return TestSeedlings.fake();
+    private static VmPlot stubPlot() {
+        return TestPlots.fake();
     }
 
     @Test
     void correctVersionPasses() {
-        Seedling seedling = stubSeedling();
+        VmPlot plot = stubPlot();
         CommandRunner runner = new CannedVersionRunner("0.87.0", false);
 
-        assertThatCode(() -> GroveProvider.verifyDevcontainerCli(seedling, "0.87.0", runner))
+        assertThatCode(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))
             .doesNotThrowAnyException();
     }
 
     @Test
     void wrongVersionThrows() {
-        Seedling seedling = stubSeedling();
+        VmPlot plot = stubPlot();
         CommandRunner runner = new CannedVersionRunner("0.86.0", false);
 
-        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(seedling, "0.87.0", runner))
+        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))
             .isInstanceOf(SeedlingProvisioningException.class)
             .hasMessageContaining("version mismatch")
             .hasMessageContaining("expected 0.87.0")
@@ -84,12 +92,25 @@ class SeedlingPreflightTest {
 
     @Test
     void cliMissingThrows() {
-        Seedling seedling = stubSeedling();
+        VmPlot plot = stubPlot();
         CommandRunner runner = new CannedVersionRunner("(unused)", true);
 
-        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(seedling, "0.87.0", runner))
+        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))
             .isInstanceOf(SeedlingProvisioningException.class)
             .hasMessageContaining("missing devcontainer CLI")
             .hasRootCauseInstanceOf(IOException.class);
+    }
+
+    @Test
+    void verifyDevcontainerCli_containerPlot_missingCli_namesNpmInstall() {
+        ContainerPlot plot = new ContainerPlot(UUID.randomUUID(), UUID.randomUUID(), "docker-local",
+            "c-1", PlotState.ROOTED, Instant.now(), null, Path.of("/tmp/ws"), ContainerRuntime.DOCKER,
+            new ContainerSpec(2, 2048), null);
+        CommandRunner runner = new CannedVersionRunner("(unused)", true);
+
+        assertThatThrownBy(() -> GroveProvider.verifyDevcontainerCli(plot, "0.87.0", runner))
+            .isInstanceOf(SeedlingProvisioningException.class)
+            .hasMessageContaining("npm install -g @devcontainers/cli@0.87.0")
+            .message().doesNotContain("cloud-init");
     }
 }

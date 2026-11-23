@@ -37,6 +37,7 @@ class BeeEventCommitOrderingTest {
                 () -> "jdbc:h2:mem:orchard-bee-ordering-" + System.nanoTime());
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("orchard.nursery.provider", () -> "none");
+        registry.add("orchard.security.oauth2.enabled", () -> "false");
     }
 
     /**

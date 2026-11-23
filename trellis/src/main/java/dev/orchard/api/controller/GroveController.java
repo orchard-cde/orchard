@@ -2,8 +2,11 @@ package dev.orchard.api.controller;
 
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.dto.GroveResponse;
+import dev.orchard.api.service.GatewayGroveService;
 import dev.orchard.api.service.GroveService;
+import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.Grove;
+import dev.orchard.core.model.VmPlot;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -19,9 +22,15 @@ import java.util.UUID;
 public class GroveController {
 
     private final GroveService groveService;
+    private final GatewayGroveService gatewayGroveService;
 
-    public GroveController(GroveService groveService) {
+    public GroveController(GroveService groveService, GatewayGroveService gatewayGroveService) {
         this.groveService = groveService;
+        this.gatewayGroveService = gatewayGroveService;
+    }
+
+    private GroveResponse toResponse(Grove grove) {
+        return GroveResponse.fromModel(grove, gatewayGroveService.connectionString(grove).orElse(null));
     }
 
     @PostMapping
@@ -35,13 +44,13 @@ public class GroveController {
         Grove grove = groveService.plantGrove(cultivatorId, groveRequest);
         return ResponseEntity
             .status(HttpStatus.CREATED)
-            .body(GroveResponse.fromModel(grove));
+            .body(toResponse(grove));
     }
 
     @GetMapping("/{groveId}")
     public ResponseEntity<GroveResponse> getGrove(@PathVariable UUID groveId) {
         return groveService.getGrove(groveId)
-            .map(grove -> ResponseEntity.ok(GroveResponse.fromModel(grove)))
+            .map(grove -> ResponseEntity.ok(toResponse(grove)))
             .orElse(ResponseEntity.notFound().build());
     }
 
@@ -55,7 +64,7 @@ public class GroveController {
         }
         List<GroveResponse> groves = groveService.getGrovesForCultivator(cultivatorId, all)
             .stream()
-            .map(GroveResponse::fromModel)
+            .map(this::toResponse)
             .toList();
         return ResponseEntity.ok(groves);
     }
@@ -67,19 +76,22 @@ public class GroveController {
     }
 
     /**
-     * Returns an SSH config block for connecting to the grove's seedling.
+     * Returns an SSH config block for connecting to the grove's VM plot.
      * This is consumed by the VS Code extension to set up Remote-SSH connections.
      */
     @GetMapping(value = "/{groveId}/ssh-config", produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<String> getSshConfig(@PathVariable UUID groveId) {
         return groveService.getGrove(groveId)
             .map(grove -> {
-                if (grove.seedling() == null || grove.seedling().ipAddress() == null) {
+                if (grove.plot() instanceof ContainerPlot) {
+                    throw new IllegalStateException("grove is not SSH-reachable");
+                }
+                VmPlot vm = grove.sshReachableVm().orElse(null);
+                if (vm == null) {
                     return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                        .body("Grove seedling is not ready yet");
+                        .body("Grove plot is not ready yet");
                 }
 
-                var seedling = grove.seedling();
                 String hostName = "orchard-" + grove.name().replaceAll("[^a-zA-Z0-9-]", "-");
                 String identityFile = resolveSshKeyPath();
                 String sshConfig = String.format("""
@@ -95,8 +107,8 @@ public class GroveController {
                     """,
                     grove.name(),
                     hostName,
-                    seedling.ipAddress(),
-                    seedling.sshPort(),
+                    vm.host(),
+                    vm.sshPort(),
                     identityFile
                 );
 
@@ -108,14 +120,14 @@ public class GroveController {
     @PostMapping("/{groveId}/actions/stop")
     public ResponseEntity<GroveResponse> stopGrove(@PathVariable UUID groveId) {
         return groveService.stopGrove(groveId)
-            .map(grove -> ResponseEntity.ok(GroveResponse.fromModel(grove)))
+            .map(grove -> ResponseEntity.ok(toResponse(grove)))
             .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping("/{groveId}/actions/start")
     public ResponseEntity<GroveResponse> startGrove(@PathVariable UUID groveId) {
         return groveService.startGrove(groveId)
-            .map(grove -> ResponseEntity.ok(GroveResponse.fromModel(grove)))
+            .map(grove -> ResponseEntity.ok(toResponse(grove)))
             .orElse(ResponseEntity.notFound().build());
     }
 

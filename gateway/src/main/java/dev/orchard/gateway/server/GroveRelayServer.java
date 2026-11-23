@@ -57,7 +57,6 @@ public class GroveRelayServer {
         server.setCommandFactory(seedlingRelay.commandFactory());
         server.setSubsystemFactories(List.of(seedlingRelay.subsystemFactory()));
 
-        // Replace MINA's direct-tcpip factory with the two-hop relay.
         List<ChannelFactory> factories = new ArrayList<>(ServerBuilder.DEFAULT_CHANNEL_FACTORIES);
         factories.replaceAll(f -> "direct-tcpip".equals(f.getName())
                 ? new RelayDirectTcpipFactory(seedlingRelay)

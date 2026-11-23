@@ -43,7 +43,7 @@ class TrowelTargetResolutionTest {
                 active = "local"
 
                 [targets.local]
-                server = "http://localhost:7778"
+                server = "http://localhost:17778"
                 cultivator = "local-uuid"
                 """);
     }
@@ -74,7 +74,7 @@ class TrowelTargetResolutionTest {
         int exitCode = execute("--target", "local", "config", "show");
 
         assertThat(exitCode).isZero();
-        assertThat(outContent.toString()).contains("http://localhost:7778");
+        assertThat(outContent.toString()).contains("http://localhost:17778");
     }
 
     @Test
@@ -83,7 +83,7 @@ class TrowelTargetResolutionTest {
                 active = "local"
 
                 [targets.local]
-                server = "http://localhost:7778"
+                server = "http://localhost:17778"
                 cultivator = "local-uuid"
                 """);
 
@@ -99,9 +99,9 @@ class TrowelTargetResolutionTest {
                 active = "local"
 
                 [targets.local]
-                server = "http://localhost:7778"
+                server = "http://localhost:17778"
                 cultivator = "local-uuid"
-                fence_server = "http://localhost:7779"
+                fence_server = "http://localhost:17779"
                 access_token = "my-access-token"
                 refresh_token = "my-refresh-token"
                 expires_at = %d

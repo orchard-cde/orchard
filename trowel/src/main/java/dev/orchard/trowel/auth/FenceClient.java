@@ -138,9 +138,22 @@ public class FenceClient {
         String deviceCode,
         String userCode,
         String verificationUri,
+        String verificationUriComplete,
         int expiresIn,
-        int interval
-    ) {}
+        Integer interval
+    ) {
+        private static final int DEFAULT_POLL_INTERVAL_SECONDS = 5;
+
+        public String browserUri() {
+            return verificationUriComplete != null && !verificationUriComplete.isBlank()
+                ? verificationUriComplete
+                : verificationUri;
+        }
+
+        public int pollIntervalSeconds() {
+            return interval == null ? DEFAULT_POLL_INTERVAL_SECONDS : interval;
+        }
+    }
 
     public record TokenResponse(
         String accessToken,

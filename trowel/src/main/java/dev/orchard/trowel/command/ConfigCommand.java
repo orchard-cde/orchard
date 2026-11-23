@@ -125,7 +125,9 @@ public class ConfigCommand implements Callable<Integer> {
             String newServer = server != null ? server : existing.server();
             String newCultivator = cultivatorId != null ? cultivatorId : existing.cultivator();
             var updated = new LinkedHashMap<>(config.targets());
-            updated.put(name, new OrchardConfig.Target(newServer, newCultivator));
+            updated.put(name, new OrchardConfig.Target(
+                newServer, newCultivator, existing.fenceServer(), existing.accessToken(),
+                existing.refreshToken(), existing.expiresAt(), existing.sshKey()));
             OrchardConfig newConfig = new OrchardConfig(config.active(), updated);
 
             try {

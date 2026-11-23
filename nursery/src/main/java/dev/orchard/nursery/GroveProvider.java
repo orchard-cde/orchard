@@ -1,10 +1,17 @@
 package dev.orchard.nursery;
 
+import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.Fruit;
-import dev.orchard.core.model.Seedling;
+import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.PlotState;
+import dev.orchard.core.model.SeedlingSpec;
+import dev.orchard.core.model.PlotSizes;
+import dev.orchard.core.model.ProviderType;
+import dev.orchard.core.model.VmPlot;
 import dev.orchard.vine.CommandRunner;
 import dev.orchard.vine.Vine;
 
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -13,25 +20,51 @@ import java.util.concurrent.CompletableFuture;
  *
  * <p>Deliberately granular rather than a single end-to-end {@code plant(Grove, Seed)}. Grove-level
  * orchestration — state transitions, event publishing, persistence — stays in {@code GroveService};
- * moving it here would be a behaviour change rather than the adapter this stage is meant to be. The
+ * moving it here would change behaviour rather than just adapt the substrate. The
  * end-to-end shape is revisited once a second substrate exists to justify it. See issue #86.
  *
- * <p>{@code Seedling} appears in these signatures because VM substrates are the only implementation
- * today. It is provider-internal by design and generalizes to a substrate handle in a later stage;
- * callers must not assume a seedling is SSH-reachable.
+ * <p>{@link Plot} is sealed. A provider that supports only one substrate narrows the plot it is
+ * handed and refuses the others with {@link IllegalArgumentException}.
  */
 public interface GroveProvider {
 
-    String getProviderId();
+    ProviderType type();
+
+    default String getProviderId() {
+        return type().id();
+    }
 
     boolean isAvailable();
 
-    /** Acquires the substrate. Resolves to SAPLING on success, BLIGHTED on failure. */
-    CompletableFuture<Seedling> plantSubstrate(Seedling seedling);
+    /** Override when this provider's substrate sizes differently from {@link PlotSizes#DEFAULT}. */
+    default PlotSizes sizes() {
+        return PlotSizes.DEFAULT;
+    }
 
-    CompletableFuture<Seedling> water(Seedling seedling);
+    /**
+     * Reserves a plot for a seedling: a new {@code GERMINATING} plot with a fresh id and this
+     * provider's id, sized from the seedling spec. Synchronous and acquires nothing;
+     * {@link #plantSubstrate} acquires the substrate.
+     */
+    Plot reserve(UUID groveId, SeedlingSpec seedlingSpec);
 
-    CompletableFuture<Seedling> dormant(Seedling seedling);
+    /** Acquires the substrate. Resolves to ROOTED on success, BLIGHTED on failure. */
+    CompletableFuture<Plot> plantSubstrate(Plot draft);
+
+    /**
+     * Powers a {@link PlotState#DORMANT} plot back on over its existing disk; callers pass only
+     * DORMANT plots ({@code GroveService.startGrove} enforces it). The future
+     * resolves to the plot {@link PlotState#ROOTED} with a refreshed endpoint once it is reachable,
+     * and completes exceptionally if it could not be started.
+     */
+    CompletableFuture<Plot> water(Plot plot);
+
+    /**
+     * Powers a plot off, keeping its disk. The future resolves to the plot
+     * {@link PlotState#DORMANT} only once the substrate is confirmed powered off, and completes
+     * exceptionally otherwise; callers must then treat the plot as possibly still running.
+     */
+    CompletableFuture<Plot> dormant(Plot plot);
 
     /**
      * Releases the substrate (e.g. terminates the underlying VM/instance).
@@ -40,12 +73,12 @@ public interface GroveProvider {
      * Callers must treat that as "the resource may still exist" — never assume the substrate is
      * gone just because this method was called.
      */
-    CompletableFuture<Void> uproot(Seedling seedling);
+    CompletableFuture<Void> uproot(Plot plot);
 
-    CompletableFuture<Seedling> inspect(Seedling seedling);
+    CompletableFuture<Plot> inspect(Plot plot);
 
     /** Materializes one fruit on an already-planted substrate. */
-    CompletableFuture<Fruit> growFruit(Seedling seedling, Fruit fruit);
+    CompletableFuture<Fruit> growFruit(Plot plot, Fruit fruit);
 
     /**
      * Removes one fruit's container from an already-planted substrate.
@@ -54,13 +87,39 @@ public interface GroveProvider {
      * Callers must treat that as "the resource may still exist" — never assume the container is
      * gone just because this method was called.
      */
-    CompletableFuture<Void> compostFruit(Seedling seedling, Fruit fruit);
+    CompletableFuture<Void> compostFruit(Plot plot, Fruit fruit);
 
     /**
-     * How to reach into this grove. Available before the substrate is routable — provisioning and
-     * diagnostic callers depend on that.
+     * Stops one fruit's containers without removing them, so {@link #ripenFruit} can start the
+     * same containers again.
+     *
+     * <p>The returned future completes exceptionally if any container could not be stopped.
      */
-    Vine vine(Seedling seedling);
+    CompletableFuture<Fruit> pickFruit(Plot plot, Fruit fruit);
+
+    /**
+     * Starts a picked fruit's containers again and re-runs its post-start hook.
+     *
+     * <p>The returned future completes exceptionally if any container could not be started. A
+     * failing post-start hook is logged and does not fail it.
+     */
+    CompletableFuture<Fruit> ripenFruit(Plot plot, Fruit fruit);
+
+    /**
+     * How to reach into this grove's workload. Available before the substrate is routable for a
+     * VM — provisioning and diagnostic callers depend on that. For a container plot it needs a
+     * running fruit.
+     */
+    Vine vine(Plot plot);
+
+    /**
+     * The channel to where the container and devcontainer CLIs run and the workspace lives: the VM
+     * itself, or the local machine for a container plot.
+     */
+    CommandRunner host(Plot plot);
+
+    /** The workspace folder as seen by the {@link #host} channel. */
+    String workspacePath(Plot plot);
 
     /**
      * Verifies the devcontainer CLI on the substrate. Called after the substrate is reachable and
@@ -68,37 +127,42 @@ public interface GroveProvider {
      *
      * @throws SeedlingProvisioningException if the CLI is missing or the version mismatches
      */
-    void verifyDevcontainerCli(Seedling seedling, String expectedVersion);
+    void verifyDevcontainerCli(Plot plot, String expectedVersion);
 
     /**
-     * Verifies the devcontainer CLI is installed and matches the expected version on the seedling.
+     * Verifies the devcontainer CLI is installed and matches the expected version on the plot.
      *
-     * <p>Called by the orchestrating caller (e.g. {@code GroveService}) after the seedling has
-     * already reached {@code SAPLING} and cloud-init has finished — not by the provider during
+     * <p>Called by the orchestrating caller (e.g. {@code GroveService}) after the plot has
+     * already reached {@code ROOTED} and cloud-init has finished — not by the provider during
      * {@link #plantSubstrate}. Cloud-init may still be installing the CLI when
-     * {@code plantSubstrate()} returns a SAPLING, so verifying any earlier would race a legitimate
+     * {@code plantSubstrate()} returns a ROOTED, so verifying any earlier would race a legitimate
      * in-progress install. See issue #148.
      *
-     * <p>{@link #verifyDevcontainerCli(Seedling, String)} delegates here with an explicit
-     * {@link CommandRunner} obtained from its {@link #vine}. This static is the sole production
+     * <p>{@link #verifyDevcontainerCli(Plot, String)} delegates here with an explicit
+     * {@link CommandRunner} obtained from its {@link #host}. This static is the sole production
      * path — it takes the {@link CommandRunner} as a plain per-call argument, the same seam
      * {@link DevcontainerCli} uses.
      *
      * @throws SeedlingProvisioningException if the CLI is missing or the version mismatches.
      */
-    static void verifyDevcontainerCli(Seedling seedling, String expectedVersion, CommandRunner runner) {
+    static void verifyDevcontainerCli(Plot plot, String expectedVersion, CommandRunner runner) {
         try {
             String version = runner.execute("devcontainer --version").trim();
             if (!expectedVersion.equals(version)) {
                 throw new SeedlingProvisioningException(
-                    "devcontainer CLI version mismatch on seedling " + seedling.id()
+                    "devcontainer CLI version mismatch on plot " + plot.id()
                         + ": expected " + expectedVersion + ", got " + version);
             }
         } catch (SeedlingProvisioningException sse) {
             throw sse;
         } catch (Exception e) {
+            String remedy = switch (plot) {
+                case VmPlot vm -> "check cloud-init logs";
+                case ContainerPlot container ->
+                    "install it with: npm install -g @devcontainers/cli@" + expectedVersion;
+            };
             throw new SeedlingProvisioningException(
-                "Seedling " + seedling.id() + " missing devcontainer CLI — check cloud-init logs", e);
+                "Plot " + plot.id() + " missing devcontainer CLI — " + remedy, e);
         }
     }
 }

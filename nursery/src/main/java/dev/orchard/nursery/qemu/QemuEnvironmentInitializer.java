@@ -128,20 +128,17 @@ public class QemuEnvironmentInitializer {
         Path downloadPath = baseImagePath.getParent().resolve("downloading-" + arch + ".img");
 
         try {
-            // Create parent directory
             Files.createDirectories(baseImagePath.getParent());
 
             String imageUrl = QemuPlatformDefaults.ubuntuImageUrl();
             downloadFile(imageUrl, downloadPath);
 
-            // Convert to qcow2
             log.info("Converting image to qcow2 format...");
             runCommand(qemuImgBinary.toString(),
                     "convert", "-f", "qcow2", "-O", "qcow2",
                     downloadPath.toString(), baseImagePath.toString());
             log.info("Conversion complete: {}", baseImagePath);
 
-            // Resize
             log.info("Resizing image to {}...", RESIZE_TARGET);
             runCommand(qemuImgBinary.toString(),
                     "resize", baseImagePath.toString(), RESIZE_TARGET);
@@ -182,7 +179,6 @@ public class QemuEnvironmentInitializer {
 
         log.info("Generating Orchard SSH key pair at {}...", sshKeyPath);
         try {
-            // Ensure .ssh directory exists
             Files.createDirectories(sshKeyPath.getParent());
 
             runCommand("ssh-keygen", "-t", "ed25519",

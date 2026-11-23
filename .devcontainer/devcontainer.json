@@ -1,0 +1,9 @@
+{
+  "name": "orchard",
+  "image": "mcr.microsoft.com/devcontainers/java:25-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "./gradlew --version",
+  "postStartCommand": "echo started > /tmp/orchard-poststart"
+}
