@@ -2,6 +2,7 @@ package dev.orchard.e2e;
 
 import dev.orchard.api.dto.GroveResponse;
 import dev.orchard.api.service.GroveService;
+import dev.orchard.nursery.DevcontainerCli;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.trellis.OrchardApplication;
 import org.junit.jupiter.api.AfterAll;
@@ -54,6 +55,9 @@ class GroveLifecycleE2ETest {
 
     @Autowired
     private ProviderRegistry providers;
+
+    @Autowired
+    private DevcontainerCli devcontainerCli;
 
     @LocalServerPort
     private int port;
@@ -131,7 +135,8 @@ class GroveLifecycleE2ETest {
         groves.stopAndAwaitDormant(groveId);
         groves.start(groveId);
         GroveResponse unset = awaitFlourishing(groveId);
-        assertThat(FruitShell.of(groveService, providers, groveId).loginEnv(E2E_SECRET_NAME))
+        var unsetFruit = GroveClient.PrimaryFruit.of(groveService, providers, groveId);
+        assertThat(GroveClient.fruitLoginEnv(devcontainerCli, unsetFruit, E2E_SECRET_NAME))
             .as("unset: fruit login shell sees no value").isEmpty();
         assertThat(runOnSeedling(unset.plot().sshPort(), "bash -lc 'printf %s \"$ORCHARD_E2E_SECRET\"'"))
             .as("unset: seedling login shell sees no value").isEmpty();
@@ -163,7 +168,8 @@ class GroveLifecycleE2ETest {
     }
 
     private void assertSecretDelivered(UUID groveId, int sshPort, String secret, String step) throws Exception {
-        FruitShell.of(groveService, providers, groveId).assertSecretDelivered(E2E_SECRET_NAME, secret, step);
+        var fruit = GroveClient.PrimaryFruit.of(groveService, providers, groveId);
+        GroveClient.assertSecretDelivered(devcontainerCli, fruit, E2E_SECRET_NAME, secret, step);
         assertThat(runOnSeedling(sshPort, "bash -lc 'printf %s \"$ORCHARD_E2E_SECRET\"'"))
             .as("%s: seedling login shell sees the secret", step).isEqualTo(secret);
         assertThat(runOnSeedling(sshPort, "findmnt -no FSTYPE,OPTIONS /run/orchard/secrets"))

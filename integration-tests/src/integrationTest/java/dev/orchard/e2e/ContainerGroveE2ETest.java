@@ -9,6 +9,7 @@ import dev.orchard.core.model.BeeType;
 import dev.orchard.core.model.ContainerPlot;
 import dev.orchard.core.model.PlotState;
 import dev.orchard.nursery.GroveProvider;
+import dev.orchard.nursery.DevcontainerCli;
 import dev.orchard.nursery.ProviderRegistry;
 import dev.orchard.trellis.OrchardApplication;
 import dev.orchard.vine.ContainerLabels;
@@ -69,6 +70,9 @@ class ContainerGroveE2ETest {
     private ProviderRegistry providers;
 
     @Autowired
+    private DevcontainerCli devcontainerCli;
+
+    @Autowired
     private GroveService groveService;
 
     @Autowired
@@ -106,12 +110,16 @@ class ContainerGroveE2ETest {
         }
     }
 
+    private void assertFruitSecretDelivered(UUID groveId, String secret, String step) throws Exception {
+        var fruit = GroveClient.PrimaryFruit.of(groveService, providers, groveId);
+        GroveClient.assertSecretDelivered(devcontainerCli, fruit, E2E_SECRET_NAME, secret, step);
+    }
+
     private void exerciseContainerGrove(UUID groveId, String secret, CapturedOutput output) throws Exception {
         GroveResponse flourishing;
         try (var probe = SecretLeakProbe.onHost(secret)) {
             flourishing = groves.awaitRooted(groveId, "flourishing");
-            FruitShell.of(groveService, providers, groveId)
-                .assertSecretDelivered(E2E_SECRET_NAME, secret, "flourishing");
+            assertFruitSecretDelivered(groveId, secret, "flourishing");
         }
         SecretLeakProbe.assertRowsFree(jdbc, secret, "flourishing");
         SecretLeakProbe.assertApiFree(restTemplate, groveId, secret, "flourishing");
@@ -135,7 +143,7 @@ class ContainerGroveE2ETest {
         try (var probe = SecretLeakProbe.onHost(secret)) {
             groves.start(groveId);
             resumed = groves.awaitRooted(groveId, "start");
-            FruitShell.of(groveService, providers, groveId).assertSecretDelivered(E2E_SECRET_NAME, secret, "start");
+            assertFruitSecretDelivered(groveId, secret, "start");
         }
         ContainerPlot resumedPlot = containerPlot(resumed, PlotState.ROOTED);
         assertThat(provider.vine(resumedPlot).commands().execute("cat /etc/os-release"))
@@ -150,7 +158,8 @@ class ContainerGroveE2ETest {
         groves.stopAndAwaitDormant(groveId);
         groves.start(groveId);
         groves.awaitRooted(groveId, "unset");
-        assertThat(FruitShell.of(groveService, providers, groveId).loginEnv(E2E_SECRET_NAME))
+        var unsetFruit = GroveClient.PrimaryFruit.of(groveService, providers, groveId);
+        assertThat(GroveClient.fruitLoginEnv(devcontainerCli, unsetFruit, E2E_SECRET_NAME))
             .as("unset: fruit login shell sees no value").isEmpty();
 
         groves.clearAndAwaitCleared(groveId);
