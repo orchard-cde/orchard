@@ -34,6 +34,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -48,6 +51,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SecretServiceTest {
 
@@ -287,6 +291,49 @@ class SecretServiceTest {
     }
 
     @Test
+    @Test
+    void sweep_putCommitsBetweenDbReadAndInFlightCheck_keepsCommittedEntry() throws Exception {
+        CountDownLatch vaultWritten = new CountDownLatch(1);
+        CountDownLatch dbRead = new CountDownLatch(1);
+        CountDownLatch putReturned = new CountDownLatch(1);
+        vault.onPut = () -> {
+            vault.onPut = () -> {};
+            vaultWritten.countDown();
+            await(dbRead);
+        };
+        when(repository.findAllVaultKeys()).thenAnswer(inv -> {
+            List<String> snapshot = rows.values().stream().map(SecretEntity::getVaultKey).toList();
+            dbRead.countDown();
+            await(putReturned);
+            return snapshot;
+        });
+        CompletableFuture<SecretService.Stored> put = CompletableFuture.supplyAsync(() -> {
+            try {
+                return service.put(cultivatorId, "API_TOKEN", bytes("v1"));
+            } finally {
+                putReturned.countDown();
+            }
+        });
+        await(vaultWritten);
+
+        service.sweep();
+        SecretService.Stored stored = put.get(10, TimeUnit.SECONDS);
+
+        assertThat(vault.keys()).containsExactly(stored.secret().vaultKey());
+        assertThat(service.resolve(cultivatorId, List.of("API_TOKEN")).get("API_TOKEN")).isEqualTo(bytes("v1"));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("latch timed out");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
     void onReady_sweepsOrphans() {
         vault.put("orphan-key", bytes("x"));
 

@@ -183,8 +183,10 @@ public class SecretService {
 
     public int sweep() {
         Set<String> orphans = new HashSet<>(vault.keys());
-        orphans.removeAll(new HashSet<>(repository.findAllVaultKeys()));
-        orphans.removeAll(inFlight);
+        Set<String> inFlightSnapshot = Set.copyOf(inFlight);
+        Set<String> committed = new HashSet<>(repository.findAllVaultKeys());
+        orphans.removeAll(inFlightSnapshot);
+        orphans.removeAll(committed);
         int removed = 0;
         for (String key : orphans) {
             try {
