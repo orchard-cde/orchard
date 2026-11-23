@@ -2,6 +2,7 @@ package dev.orchard.nursery;
 
 import dev.orchard.core.model.ContainerRuntime;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ContainerLabels;
 import dev.orchard.vine.ExecTarget;
 import org.junit.jupiter.api.Test;
 
@@ -256,9 +257,45 @@ class DevcontainerCliTest {
         CommandRunner runner = stubRunnerCapturing(calls);
         var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
 
-        cli.exec(target(runner, "/srv/custom-workspace"), "echo hi");
+        cli.exec(target(runner, "/srv/custom-workspace"), PLOT_ID, "echo hi");
 
         assertThat(calls).anyMatch(c -> c.contains("--workspace-folder '/srv/custom-workspace'"));
+    }
+
+    @Test
+    void exec_identifiesTheFruitByTheSameLabelsAsUp() throws Exception {
+        var calls = new ArrayList<String>();
+        var fruitId = UUID.randomUUID();
+        var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
+
+        cli.exec(target(stubRunnerCapturing(calls), "/workspace"), fruitId, "echo hi");
+
+        assertThat(calls).singleElement().satisfies(c -> assertThat(c)
+            .contains("--workspace-folder '/workspace'")
+            .contains("--id-label 'orchard.fruit.id=" + fruitId + "'")
+            .contains("--id-label '" + ContainerLabels.label(PLOT_ID) + "'"));
+    }
+
+    @Test
+    void exec_returnsTheCommandStdout() throws Exception {
+        CommandRunner runner = new CommandRunner() {
+            @Override
+            public String execute(String c) { throw new UnsupportedOperationException(); }
+
+            @Override
+            public String execute(String c, long timeoutSeconds) { return "from-the-fruit\n"; }
+
+            @Override
+            public java.util.Optional<String> readFile(String p) { return java.util.Optional.empty(); }
+
+            @Override
+            public void executeStreaming(String c, Consumer<String> consumer, long timeoutSeconds) {
+                throw new UnsupportedOperationException();
+            }
+        };
+        var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
+
+        assertThat(cli.exec(target(runner, "/workspace"), PLOT_ID, "echo hi")).isEqualTo("from-the-fruit\n");
     }
 
     @Test
@@ -266,7 +303,7 @@ class DevcontainerCliTest {
         var calls = new ArrayList<String>();
         var cli = new DevcontainerCli(new DevcontainerCliConfig("0.87.0", 60, 60));
 
-        cli.exec(target(stubRunnerCapturing(calls), "/workspace"), "echo hi; touch /tmp/x");
+        cli.exec(target(stubRunnerCapturing(calls), "/workspace"), PLOT_ID, "echo hi; touch /tmp/x");
 
         assertThat(calls).singleElement().satisfies(c ->
             assertThat(c).endsWith("-- /bin/sh -c 'echo hi; touch /tmp/x'"));
