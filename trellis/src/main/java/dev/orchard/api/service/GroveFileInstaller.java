@@ -26,10 +26,14 @@ public final class GroveFileInstaller {
     public static final String VM_SECRETS_PATH = VM_SECRETS_DIR + "/secrets.env";
 
     private static final long TIMEOUT_SECONDS = 60;
-    private static final String BASHRC_GUARD =
-        "grep -q orchard-secrets /etc/bash.bashrc 2>/dev/null || printf "
-            + "'\\n[ -r /etc/profile.d/orchard-secrets.sh ] && . /etc/profile.d/orchard-secrets.sh\\n' "
-            + ">> /etc/bash.bashrc";
+    private static final String SOURCE_HOOK_LINE =
+        "'\\n[ -r /etc/profile.d/orchard-secrets.sh ] && . /etc/profile.d/orchard-secrets.sh\\n'";
+    static final String BASHRC_GUARD =
+        "grep -q orchard-secrets /etc/bash.bashrc 2>/dev/null || printf " + SOURCE_HOOK_LINE
+            + " >> /etc/bash.bashrc";
+    static final String ZPROFILE_GUARD =
+        "if [ -d /etc/zsh ]; then f=/etc/zsh/zprofile; else f=/etc/zprofile; fi; "
+            + "grep -q orchard-secrets \"$f\" 2>/dev/null || printf " + SOURCE_HOOK_LINE + " >> \"$f\"";
     private static final String HOOK_RESOURCE = "/knothole/orchard-secrets.sh";
     private static final String HOOK = loadHook();
 
@@ -45,6 +49,7 @@ public final class GroveFileInstaller {
         install(provider, plot, containerId, target,
             new FileSpec(HOOK_PATH, "root", "root", "0644", HOOK.getBytes(StandardCharsets.UTF_8)));
         provider.host(plot).execute(command(provider, plot, containerId, target, BASHRC_GUARD), TIMEOUT_SECONDS);
+        provider.host(plot).execute(command(provider, plot, containerId, target, ZPROFILE_GUARD), TIMEOUT_SECONDS);
     }
 
     public static String hookScript() {

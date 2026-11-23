@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -131,20 +132,57 @@ class GroveFileInstallerTest {
     }
 
     @Test
-    void installHook_fruit_writesHookThenGuardsBashrc() throws Exception {
+    void installHook_fruit_writesHookThenGuardsBashrcAndZprofile() throws Exception {
         wire();
 
         installer.installHook(provider, null, "abc123", Target.FRUIT);
 
         ArgumentCaptor<String> cmd = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<byte[]> stdin = ArgumentCaptor.forClass(byte[].class);
-        ArgumentCaptor<String> second = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> guards = ArgumentCaptor.forClass(String.class);
         InOrder order = inOrder(runner);
         order.verify(runner).execute(cmd.capture(), stdin.capture(), anyLong());
-        order.verify(runner).execute(second.capture(), anyLong());
+        order.verify(runner, times(2)).execute(guards.capture(), anyLong());
+        order.verifyNoMoreInteractions();
+        String second = guards.getAllValues().get(0);
+        String third = guards.getAllValues().get(1);
         assertThat(stdin.getValue()).isEqualTo(GroveFileInstaller.hookScript().getBytes(StandardCharsets.UTF_8));
         assertThat(cmd.getValue()).contains("chmod '\\''0644'\\''");
-        assertThat(second.getValue()).contains(">> /etc/bash.bashrc", "grep -q orchard-secrets");
+        assertThat(second).isEqualTo(ShellQuote.join(ContainerExec.of("docker", "abc123")
+            .interactive(true, false).user("root").shell(GroveFileInstaller.BASHRC_GUARD).argv()));
+        assertThat(second).contains(">> /etc/bash.bashrc", "grep -q orchard-secrets");
+        assertThat(third).isEqualTo(ShellQuote.join(ContainerExec.of("docker", "abc123")
+            .interactive(true, false).user("root").shell(GroveFileInstaller.ZPROFILE_GUARD).argv()));
+        assertThat(third).contains("/etc/zsh/zprofile", "/etc/zprofile", "grep -q orchard-secrets",
+            "[ -r /etc/profile.d/orchard-secrets.sh ] && . /etc/profile.d/orchard-secrets.sh");
+    }
+
+    @Test
+    void installHook_vm_guardsZprofileThroughSudo() throws Exception {
+        wire();
+
+        installer.installHook(provider, null, "abc123", Target.VM);
+
+        verify(runner).execute("sudo sh -c " + ShellQuote.quote(GroveFileInstaller.ZPROFILE_GUARD), 60L);
+        verify(runner).execute("sudo sh -c " + ShellQuote.quote(GroveFileInstaller.BASHRC_GUARD), 60L);
+    }
+
+    @Test
+    void zprofileGuard_appendsOnceToDebianOrPlainPath(@TempDir Path dir) throws Exception {
+        LocalCommandRunner local = new LocalCommandRunner(Map.of());
+        Path debian = dir.resolve("debian");
+        Files.createDirectories(debian.resolve("zsh"));
+        Path plain = dir.resolve("plain");
+        Files.createDirectories(plain);
+        for (Path etc : new Path[] {debian, plain}) {
+            String script = GroveFileInstaller.ZPROFILE_GUARD.replace("/etc/z", etc + "/z");
+            local.execute("sh -c " + ShellQuote.quote(script));
+            local.execute("sh -c " + ShellQuote.quote(script));
+        }
+        String line = "[ -r /etc/profile.d/orchard-secrets.sh ] && . /etc/profile.d/orchard-secrets.sh";
+        assertThat(Files.readString(debian.resolve("zsh/zprofile"))).isEqualTo("\n" + line + "\n");
+        assertThat(Files.readString(plain.resolve("zprofile"))).isEqualTo("\n" + line + "\n");
+        assertThat(plain.resolve("zsh")).doesNotExist();
     }
 
     @Test
