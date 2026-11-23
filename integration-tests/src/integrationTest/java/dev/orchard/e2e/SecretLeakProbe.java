@@ -1,28 +1,40 @@
 package dev.orchard.e2e;
 
+import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.IntSupplier;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Watches for a secret value escaping into process argv lists or database rows. */
+/**
+ * Watches for a secret value escaping into process argv lists, API responses, or database rows.
+ *
+ * <p>The {@code ps} samplers are coarse: one sample every ~250 ms on the trellis host and roughly
+ * every second on the seedling, so an exec shorter than that, such as the injection exec itself, can
+ * fall between samples; with podman on macOS only the host-side CLI argv is visible. The argv safety
+ * of the injection exec is proven by {@code SecretInjectorTest.inject_valueNeverInCommandString}.
+ */
 final class SecretLeakProbe implements AutoCloseable {
 
     private static final List<String> TABLES = List.of("groves", "fruits", "secrets");
     private static final long SAMPLE_INTERVAL_MILLIS = 200;
+    private static final Duration JOIN_TIMEOUT = Duration.ofSeconds(30);
 
     private final String value;
     private final ConcurrentLinkedQueue<String> leaks = new ConcurrentLinkedQueue<>();
     private final Thread hostSampler;
     private final Thread seedlingSampler;
     private volatile boolean running = true;
-    private volatile int samples;
+    private volatile int hostSamples;
+    private volatile int seedlingSamples;
 
     private SecretLeakProbe(String value, IntSupplier seedlingSshPort) {
         this.value = value;
@@ -44,11 +56,12 @@ final class SecretLeakProbe implements AutoCloseable {
     @Override
     public void close() throws InterruptedException {
         running = false;
-        hostSampler.join();
+        assertThat(hostSampler.join(JOIN_TIMEOUT)).as("ps sampler: host thread stopped").isTrue();
+        assertThat(hostSamples).as("ps sampler: host samples taken").isPositive();
         if (seedlingSampler != null) {
-            seedlingSampler.join();
+            assertThat(seedlingSampler.join(JOIN_TIMEOUT)).as("ps sampler: seedling thread stopped").isTrue();
+            assertThat(seedlingSamples).as("ps sampler: seedling samples taken").isPositive();
         }
-        assertThat(samples).as("ps sampler: took samples").isPositive();
         assertThat(leaks).as("ps sampler: argv lines containing the secret value").isEmpty();
     }
 
@@ -60,18 +73,28 @@ final class SecretLeakProbe implements AutoCloseable {
         }
     }
 
+    static void assertApiFree(TestRestTemplate rest, UUID groveId, String value, String step) {
+        for (String path : List.of("/api/groves/" + groveId, "/api/groves", "/api/secrets")) {
+            String body = rest.getForObject(path, String.class);
+            assertThat(body).as("%s: GET %s body", step, path).isNotBlank().doesNotContain(value);
+        }
+    }
+
     private void sampleHost() {
         while (running) {
             try {
                 Process ps = new ProcessBuilder("ps", "-eo", "args").redirectErrorStream(true).start();
-                record(new String(ps.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
-                ps.waitFor();
-                samples++;
-                Thread.sleep(SAMPLE_INTERVAL_MILLIS);
-            } catch (Exception e) {
-                if (e instanceof InterruptedException) {
-                    return;
+                String output = new String(ps.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                if (ps.waitFor() == 0) {
+                    record(output);
+                    hostSamples++;
                 }
+            } catch (InterruptedException e) {
+                return;
+            } catch (Exception e) {
+                // Counted as a missed sample
+            } finally {
+                pause();
             }
         }
     }
@@ -82,13 +105,22 @@ final class SecretLeakProbe implements AutoCloseable {
                 int port = sshPort.getAsInt();
                 if (port > 0) {
                     record(GroveClient.runOnSeedling(port, "ps -eo args"));
+                    seedlingSamples++;
                 }
-                Thread.sleep(SAMPLE_INTERVAL_MILLIS);
-            } catch (InterruptedException e) {
-                return;
             } catch (Throwable e) {
-                // The seedling is not reachable over SSH yet
+                // The seedling is not reachable over SSH yet; counted as a missed sample
+            } finally {
+                pause();
             }
+        }
+    }
+
+    private void pause() {
+        try {
+            Thread.sleep(SAMPLE_INTERVAL_MILLIS);
+        } catch (InterruptedException e) {
+            running = false;
+            Thread.currentThread().interrupt();
         }
     }
 

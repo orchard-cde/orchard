@@ -93,61 +93,72 @@ class ContainerGroveE2ETest {
     @Timeout(value = 30, unit = TimeUnit.MINUTES)
     void containerGroveFlourishesRunsBeeStopsStartsAndClears(CapturedOutput output) throws Exception {
         String secret = "e2e-" + UUID.randomUUID();
-        groves.putSecret(E2E_SECRET_NAME, secret);
-        UUID groveId = groves.plant();
         try {
-            GroveResponse flourishing;
-            try (var probe = SecretLeakProbe.onHost(secret)) {
-                flourishing = groves.awaitRooted(groveId, "flourishing");
-                FruitShell.of(groveService, providers, groveId)
-                    .assertSecretDelivered(E2E_SECRET_NAME, secret, "flourishing");
+            groves.putSecret(E2E_SECRET_NAME, secret);
+            UUID groveId = groves.plant();
+            try {
+                exerciseContainerGrove(groveId, secret, output);
+            } finally {
+                groves.clearQuietly(groveId);
             }
-            SecretLeakProbe.assertRowsFree(jdbc, secret, "flourishing");
-            assertThat(flourishing.plot().providerId()).as("flourishing: provider").isEqualTo("container");
-            assertThat(flourishing.fruits()).as("flourishing: fruits").isNotEmpty();
-            ContainerPlot plot = containerPlot(flourishing, PlotState.ROOTED);
-            GroveProvider provider = providers.require(plot.providerId());
-
-            assertThat(provider.vine(plot).commands().execute("cat /etc/os-release"))
-                .as("vine: os-release").contains("NAME=");
-            assertThat(provider.vine(plot).commands().execute("cd /workspaces/* && git rev-parse HEAD").trim())
-                .as("vine: git works in the workspace as the remote user").matches("[0-9a-f]{40}");
-
-            smokeBee(groveId, provider, plot, secret);
-
-            groves.stopAndAwaitDormant(groveId);
-            ContainerPlot dormant = containerPlot(groves.get(groveId), PlotState.DORMANT);
-            assertThat(provider.inspect(dormant).get().state()).as("stop: inspect").isEqualTo(PlotState.DORMANT);
-
-            GroveResponse resumed;
-            try (var probe = SecretLeakProbe.onHost(secret)) {
-                groves.start(groveId);
-                resumed = groves.awaitRooted(groveId, "start");
-                FruitShell.of(groveService, providers, groveId).assertSecretDelivered(E2E_SECRET_NAME, secret, "start");
-            }
-            ContainerPlot resumedPlot = containerPlot(resumed, PlotState.ROOTED);
-            assertThat(provider.vine(resumedPlot).commands().execute("cat /etc/os-release"))
-                .as("start: vine os-release").contains("NAME=");
-            SecretLeakProbe.assertRowsFree(jdbc, secret, "start");
-
-            assertThat(groves.get(groveId).missingSecrets()).as("warning: none while stored").isEmpty();
-            groves.deleteSecret(E2E_SECRET_NAME);
-            assertThat(groves.get(groveId).missingSecrets().getFirst().name()).as("warning: missing after delete")
-                .isEqualTo(E2E_SECRET_NAME);
-            groves.stopAndAwaitDormant(groveId);
-            groves.start(groveId);
-            groves.awaitRooted(groveId, "unset");
-            assertThat(FruitShell.of(groveService, providers, groveId).loginEnv(E2E_SECRET_NAME))
-                .as("unset: fruit login shell sees no value").isEmpty();
-
-            groves.clearAndAwaitCleared(groveId);
-            assertThat(plot.workspacePath().getParent()).as("clear: plot directory removed").doesNotExist();
-            assertThat(containersLabelled(plot)).as("clear: no containers left for plot %s", plot.id()).isEmpty();
-            assertThat(output.getAll()).as("trellis log free of the secret value").doesNotContain(secret);
         } finally {
-            groves.clearQuietly(groveId);
             groves.deleteSecretQuietly(E2E_SECRET_NAME);
         }
+    }
+
+    private void exerciseContainerGrove(UUID groveId, String secret, CapturedOutput output) throws Exception {
+        GroveResponse flourishing;
+        try (var probe = SecretLeakProbe.onHost(secret)) {
+            flourishing = groves.awaitRooted(groveId, "flourishing");
+            FruitShell.of(groveService, providers, groveId)
+                .assertSecretDelivered(E2E_SECRET_NAME, secret, "flourishing");
+        }
+        SecretLeakProbe.assertRowsFree(jdbc, secret, "flourishing");
+        SecretLeakProbe.assertApiFree(restTemplate, groveId, secret, "flourishing");
+        assertThat(flourishing.plot().providerId()).as("flourishing: provider").isEqualTo("container");
+        assertThat(flourishing.fruits()).as("flourishing: fruits").isNotEmpty();
+        ContainerPlot plot = containerPlot(flourishing, PlotState.ROOTED);
+        GroveProvider provider = providers.require(plot.providerId());
+
+        assertThat(provider.vine(plot).commands().execute("cat /etc/os-release"))
+            .as("vine: os-release").contains("NAME=");
+        assertThat(provider.vine(plot).commands().execute("cd /workspaces/* && git rev-parse HEAD").trim())
+            .as("vine: git works in the workspace as the remote user").matches("[0-9a-f]{40}");
+
+        smokeBee(groveId, provider, plot, secret);
+
+        groves.stopAndAwaitDormant(groveId);
+        ContainerPlot dormant = containerPlot(groves.get(groveId), PlotState.DORMANT);
+        assertThat(provider.inspect(dormant).get().state()).as("stop: inspect").isEqualTo(PlotState.DORMANT);
+
+        GroveResponse resumed;
+        try (var probe = SecretLeakProbe.onHost(secret)) {
+            groves.start(groveId);
+            resumed = groves.awaitRooted(groveId, "start");
+            FruitShell.of(groveService, providers, groveId).assertSecretDelivered(E2E_SECRET_NAME, secret, "start");
+        }
+        ContainerPlot resumedPlot = containerPlot(resumed, PlotState.ROOTED);
+        assertThat(provider.vine(resumedPlot).commands().execute("cat /etc/os-release"))
+            .as("start: vine os-release").contains("NAME=");
+        SecretLeakProbe.assertRowsFree(jdbc, secret, "start");
+        SecretLeakProbe.assertApiFree(restTemplate, groveId, secret, "start");
+
+        assertThat(groves.get(groveId).missingSecrets()).as("warning: none while stored").isEmpty();
+        groves.deleteSecret(E2E_SECRET_NAME);
+        assertThat(groves.get(groveId).missingSecrets().getFirst().name()).as("warning: missing after delete")
+            .isEqualTo(E2E_SECRET_NAME);
+        groves.stopAndAwaitDormant(groveId);
+        groves.start(groveId);
+        groves.awaitRooted(groveId, "unset");
+        assertThat(FruitShell.of(groveService, providers, groveId).loginEnv(E2E_SECRET_NAME))
+            .as("unset: fruit login shell sees no value").isEmpty();
+
+        groves.clearAndAwaitCleared(groveId);
+        assertThat(plot.workspacePath().getParent()).as("clear: plot directory removed").doesNotExist();
+        assertThat(containersLabelled(plot)).as("clear: no containers left for plot %s", plot.id()).isEmpty();
+        assertThat(output.getAll()).as("trellis log: injection logged, value absent")
+            .contains("Injected secrets [" + E2E_SECRET_NAME + "]")
+            .doesNotContain(secret);
     }
 
     private void smokeBee(UUID groveId, GroveProvider provider, ContainerPlot plot, String secret) throws Exception {

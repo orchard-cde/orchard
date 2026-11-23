@@ -80,55 +80,66 @@ class GroveLifecycleE2ETest {
     @Timeout(value = 40, unit = TimeUnit.MINUTES)
     void plantedGroveFlourishesServesSshAndClears(CapturedOutput output) throws Exception {
         String secret = "e2e-" + UUID.randomUUID();
-        groves.putSecret(E2E_SECRET_NAME, secret);
-        UUID groveId = groves.plant();
         try {
-            GroveResponse flourishing;
-            int sshPort;
-            try (var probe = SecretLeakProbe.onHostAndSeedling(secret, () -> sshPortOf(groveId))) {
-                flourishing = awaitFlourishing(groveId);
-                sshPort = flourishing.plot().sshPort();
-                assertSecretDelivered(groveId, sshPort, secret, "flourishing");
+            groves.putSecret(E2E_SECRET_NAME, secret);
+            UUID groveId = groves.plant();
+            try {
+                exerciseSecretLifecycle(groveId, secret, output);
+            } finally {
+                groves.clearQuietly(groveId);
             }
-            assertSeedlingDiskFree(sshPort, secret);
-            SecretLeakProbe.assertRowsFree(jdbc, secret, "flourishing");
-
-            assertSshConfigAvailable(groveId, sshPort);
-            assertThat(runOnSeedling(sshPort, "echo orchard-e2e-ok")).as("ssh: output").contains("orchard-e2e-ok");
-            assertGroveListed(groveId);
-
-            runOnSeedling(sshPort, "echo kept > /workspace/.orchard-e2e-marker");
-            groves.stopAndAwaitDormant(groveId);
-            GroveResponse resumed;
-            try (var probe = SecretLeakProbe.onHostAndSeedling(secret, () -> sshPortOf(groveId))) {
-                groves.start(groveId);
-                resumed = awaitFlourishing(groveId);
-                assertSecretDelivered(groveId, resumed.plot().sshPort(), secret, "start");
-            }
-            assertThat(resumed.fruits().getFirst().containerId()).as("start: same container")
-                .isEqualTo(flourishing.fruits().getFirst().containerId());
-            assertThat(runOnSeedling(resumed.plot().sshPort(), "cat /workspace/.orchard-e2e-marker"))
-                .as("start: workspace file survived stop/start").contains("kept");
-            SecretLeakProbe.assertRowsFree(jdbc, secret, "start");
-
-            assertThat(groves.get(groveId).missingSecrets()).as("warning: none while stored").isEmpty();
-            groves.deleteSecret(E2E_SECRET_NAME);
-            assertThat(groves.get(groveId).missingSecrets().getFirst().name()).as("warning: missing after delete")
-                .isEqualTo(E2E_SECRET_NAME);
-            groves.stopAndAwaitDormant(groveId);
-            groves.start(groveId);
-            GroveResponse unset = awaitFlourishing(groveId);
-            assertThat(FruitShell.of(groveService, providers, groveId).loginEnv(E2E_SECRET_NAME))
-                .as("unset: fruit login shell sees no value").isEmpty();
-            assertThat(runOnSeedling(unset.plot().sshPort(), "bash -lc 'printf %s \"$ORCHARD_E2E_SECRET\"'"))
-                .as("unset: seedling login shell sees no value").isEmpty();
-
-            groves.clearAndAwaitCleared(groveId);
-            assertThat(output.getAll()).as("trellis log free of the secret value").doesNotContain(secret);
         } finally {
-            groves.clearQuietly(groveId);
             groves.deleteSecretQuietly(E2E_SECRET_NAME);
         }
+    }
+
+    private void exerciseSecretLifecycle(UUID groveId, String secret, CapturedOutput output) throws Exception {
+        GroveResponse flourishing;
+        int sshPort;
+        try (var probe = SecretLeakProbe.onHostAndSeedling(secret, () -> sshPortOf(groveId))) {
+            flourishing = awaitFlourishing(groveId);
+            sshPort = flourishing.plot().sshPort();
+            assertSecretDelivered(groveId, sshPort, secret, "flourishing");
+        }
+        assertSeedlingDiskFree(sshPort, secret);
+        SecretLeakProbe.assertRowsFree(jdbc, secret, "flourishing");
+        SecretLeakProbe.assertApiFree(restTemplate, groveId, secret, "flourishing");
+
+        assertSshConfigAvailable(groveId, sshPort);
+        assertThat(runOnSeedling(sshPort, "echo orchard-e2e-ok")).as("ssh: output").contains("orchard-e2e-ok");
+        assertGroveListed(groveId);
+
+        runOnSeedling(sshPort, "echo kept > /workspace/.orchard-e2e-marker");
+        groves.stopAndAwaitDormant(groveId);
+        GroveResponse resumed;
+        try (var probe = SecretLeakProbe.onHostAndSeedling(secret, () -> sshPortOf(groveId))) {
+            groves.start(groveId);
+            resumed = awaitFlourishing(groveId);
+            assertSecretDelivered(groveId, resumed.plot().sshPort(), secret, "start");
+        }
+        assertThat(resumed.fruits().getFirst().containerId()).as("start: same container")
+            .isEqualTo(flourishing.fruits().getFirst().containerId());
+        assertThat(runOnSeedling(resumed.plot().sshPort(), "cat /workspace/.orchard-e2e-marker"))
+            .as("start: workspace file survived stop/start").contains("kept");
+        SecretLeakProbe.assertRowsFree(jdbc, secret, "start");
+        SecretLeakProbe.assertApiFree(restTemplate, groveId, secret, "start");
+
+        assertThat(groves.get(groveId).missingSecrets()).as("warning: none while stored").isEmpty();
+        groves.deleteSecret(E2E_SECRET_NAME);
+        assertThat(groves.get(groveId).missingSecrets().getFirst().name()).as("warning: missing after delete")
+            .isEqualTo(E2E_SECRET_NAME);
+        groves.stopAndAwaitDormant(groveId);
+        groves.start(groveId);
+        GroveResponse unset = awaitFlourishing(groveId);
+        assertThat(FruitShell.of(groveService, providers, groveId).loginEnv(E2E_SECRET_NAME))
+            .as("unset: fruit login shell sees no value").isEmpty();
+        assertThat(runOnSeedling(unset.plot().sshPort(), "bash -lc 'printf %s \"$ORCHARD_E2E_SECRET\"'"))
+            .as("unset: seedling login shell sees no value").isEmpty();
+
+        groves.clearAndAwaitCleared(groveId);
+        assertThat(output.getAll()).as("trellis log: injection logged, value absent")
+            .contains("Injected secrets [" + E2E_SECRET_NAME + "]")
+            .doesNotContain(secret);
     }
 
     @AfterAll
@@ -163,10 +174,11 @@ class GroveLifecycleE2ETest {
 
     private static void assertSeedlingDiskFree(int sshPort, String secret) throws Exception {
         assertThat(runOnSeedling(sshPort,
-            "cat > /dev/shm/.e2e-pattern && sudo find / -xdev -type f -exec grep -lF -f /dev/shm/.e2e-pattern {} + ;"
+            "cat > /dev/shm/.e2e-pattern && echo PATTERN_OK"
+                + " && sudo find / -xdev -type f -exec grep -lF -f /dev/shm/.e2e-pattern {} + ;"
                 + " rm -f /dev/shm/.e2e-pattern; true",
             secret.getBytes(StandardCharsets.UTF_8)))
-            .as("seedling disk: files containing the secret value").isEmpty();
+            .as("seedling disk: pattern staged and no file contains the secret value").isEqualTo("PATTERN_OK");
     }
 
     private void assertSshConfigAvailable(UUID groveId, int sshPort) {
