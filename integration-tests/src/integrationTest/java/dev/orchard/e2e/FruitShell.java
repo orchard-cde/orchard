@@ -1,5 +1,6 @@
 package dev.orchard.e2e;
 
+import dev.orchard.api.service.GroveFileInstaller;
 import dev.orchard.api.service.GroveService;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Grove;
@@ -14,8 +15,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Commands inside a grove's primary fruit, as its remote user, reached the way trellis reaches it. */
 record FruitShell(GroveProvider provider, Plot plot, String containerId, String remoteUser) {
-
-    static final String FRUIT_SECRETS_PATH = "/dev/shm/orchard/secrets.env";
 
     static FruitShell of(GroveService groveService, ProviderRegistry providers, UUID groveId) {
         Grove grove = groveService.getGrove(groveId).orElseThrow();
@@ -36,8 +35,8 @@ record FruitShell(GroveProvider provider, Plot plot, String containerId, String 
     void assertSecretDelivered(String name, String value, String step) throws Exception {
         assertThat(loginEnv(name)).as("%s: fruit login shell sees %s", step, name).isEqualTo(value);
         String group = run("id -gn");
-        assertThat(run("stat -c '%U %G %a' " + FRUIT_SECRETS_PATH)).as("%s: fruit secrets file ownership", step)
-            .isEqualTo("root " + group + " 440");
+        assertThat(run("stat -c '%U %G %a' " + GroveFileInstaller.FRUIT_SECRETS_PATH))
+            .as("%s: fruit secrets file ownership", step).isEqualTo("root " + group + " 440");
         String diff = provider.host(plot).execute(
             provider.runtime(plot).cli() + " diff " + ShellQuote.quote(containerId));
         assertThat(diff).as("%s: container layer free of the secrets file", step).doesNotContain("secrets.env");
