@@ -1,5 +1,6 @@
 package dev.orchard.api.service;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -33,10 +34,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -50,8 +51,8 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-
 import static org.mockito.Mockito.when;
+
 @ExtendWith(MockitoExtension.class)
 class SecretServiceTest {
 
@@ -291,7 +292,6 @@ class SecretServiceTest {
     }
 
     @Test
-    @Test
     void sweep_putCommitsBetweenDbReadAndInFlightCheck_keepsCommittedEntry() throws Exception {
         CountDownLatch vaultWritten = new CountDownLatch(1);
         CountDownLatch dbRead = new CountDownLatch(1);
@@ -334,6 +334,7 @@ class SecretServiceTest {
         }
     }
 
+    @Test
     void onReady_sweepsOrphans() {
         vault.put("orphan-key", bytes("x"));
 
@@ -432,6 +433,29 @@ class SecretServiceTest {
         assertThat(warnings).containsExactly(
             new SecretWarning("MISSING_ONE", "first", "https://docs.example/one"),
             new SecretWarning("MISSING_TWO", null, null));
+    }
+
+    @Test
+    void missingFor_invalidDeclaredName_isExcluded() {
+        Logger logger = (Logger) LoggerFactory.getLogger(SecretService.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            Map<String, SecretDeclaration> declared = new LinkedHashMap<>();
+            declared.put("bad-name", new SecretDeclaration(null, null));
+            declared.put("GOOD", new SecretDeclaration(null, null));
+            DevcontainerSeed seed = DevcontainerSeed.builder().name("n").image("img").secrets(declared).build();
+
+            List<SecretWarning> warnings = service.missingFor(cultivatorId, seed);
+
+            assertThat(warnings).containsExactly(new SecretWarning("GOOD", null, null));
+            assertThat(appender.list).filteredOn(e -> e.getLevel() == Level.WARN)
+                .singleElement()
+                .satisfies(e -> assertThat(e.getFormattedMessage()).contains("bad-name"));
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     @Test

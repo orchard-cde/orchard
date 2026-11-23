@@ -169,13 +169,19 @@ public class SecretService {
             .map(e -> e.toModel().name())
             .collect(Collectors.toSet());
         List<SecretWarning> warnings = new ArrayList<>();
+        List<String> unstorable = new ArrayList<>();
         devcontainer.secrets().forEach((name, declaration) -> {
-            if (!present.contains(name)) {
+            if (!Secret.isStorableName(name)) {
+                unstorable.add(name);
+            } else if (!present.contains(name)) {
                 warnings.add(new SecretWarning(name,
                     declaration == null ? null : declaration.description(),
                     declaration == null ? null : declaration.documentationUrl()));
             }
         });
+        if (!unstorable.isEmpty()) {
+            log.warn("Unstorable secret declarations {}", unstorable);
+        }
         return warnings;
     }
 

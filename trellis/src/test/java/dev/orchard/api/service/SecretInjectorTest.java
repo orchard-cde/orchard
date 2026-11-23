@@ -30,6 +30,7 @@ import dev.orchard.core.model.PlotState;
 import dev.orchard.core.model.Seed;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.core.model.VmSpec;
+import dev.orchard.knothole.VaultException;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.vine.CommandRunner;
 import java.io.IOException;
@@ -293,6 +294,43 @@ class SecretInjectorTest {
             .isInstanceOf(SecretDeliveryException.class)
             .hasCauseInstanceOf(IllegalStateException.class);
         verifyNoInteractions(installer);
+    }
+
+    @Test
+    void inject_vaultExceptionDuringResolve_throwsDelivery() {
+        Grove grove = grove(containerPlot());
+        when(secrets.resolve(eq(grove.cultivatorId()), anyCollection()))
+            .thenThrow(new VaultException("cannot decrypt 'k'"));
+
+        assertThatThrownBy(() -> injector.inject(provider, grove, fruit(grove, seedDeclaring("A"), "vscode")))
+            .isInstanceOf(SecretDeliveryException.class)
+            .hasCauseInstanceOf(VaultException.class);
+        verifyNoInteractions(installer);
+    }
+
+    @Test
+    void inject_invalidDeclaredName_isSkippedNotMissing() throws Exception {
+        Grove grove = grove(containerPlot());
+        when(secrets.resolve(eq(grove.cultivatorId()), anyCollection())).thenReturn(values("A", "a"));
+
+        SecretInjector.Outcome outcome = injector.inject(provider, grove,
+            fruit(grove, seedDeclaring("A", "bad-name", "B"), "vscode"));
+
+        assertThat(outcome.injected()).containsExactly("A");
+        assertThat(outcome.missing()).containsExactly("B");
+        assertThat(outcome.skipped()).containsExactly("bad-name");
+        verify(secrets).resolve(grove.cultivatorId(), Set.of("A", "B"));
+    }
+
+    @Test
+    void inject_onlyInvalidDeclaredNames_neverResolves() {
+        Grove grove = grove(containerPlot());
+
+        SecretInjector.Outcome outcome = injector.inject(provider, grove,
+            fruit(grove, seedDeclaring("bad-name"), "vscode"));
+
+        assertThat(outcome).isEqualTo(new SecretInjector.Outcome(List.of(), List.of(), List.of("bad-name")));
+        verifyNoInteractions(secrets, installer, host);
     }
 
     @Test

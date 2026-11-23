@@ -7,6 +7,7 @@ import dev.orchard.core.model.DevcontainerSeed;
 import dev.orchard.core.model.Fruit;
 import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.Plot;
+import dev.orchard.core.model.Secret;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.GroveProvider;
 import dev.orchard.vine.ShellQuote;
@@ -14,6 +15,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -41,12 +44,22 @@ public final class SecretInjector {
         if (declared.isEmpty()) {
             return new Outcome(List.of(), List.of(), List.of());
         }
+        List<String> unstorable = declared.stream()
+            .filter(n -> !Secret.isStorableName(n)).sorted().toList();
+        if (!unstorable.isEmpty()) {
+            log.warn("Unstorable secret declarations {} for grove {}", unstorable, grove.id());
+        }
+        Set<String> storable = declared.stream()
+            .filter(Secret::isStorableName).collect(Collectors.toSet());
+        if (storable.isEmpty()) {
+            return new Outcome(List.of(), List.of(), unstorable);
+        }
         Plot plot = grove.plot();
         try {
-            Map<String, byte[]> values = secrets.resolve(grove.cultivatorId(), declared);
-            List<String> missing = declared.stream().filter(n -> !values.containsKey(n)).sorted().toList();
+            Map<String, byte[]> values = secrets.resolve(grove.cultivatorId(), storable);
+            List<String> missing = storable.stream().filter(n -> !values.containsKey(n)).sorted().toList();
             if (values.isEmpty()) {
-                return new Outcome(List.of(), missing, List.of());
+                return new Outcome(List.of(), missing, unstorable);
             }
             String remoteUser = fruit.remoteUser();
             if (remoteUser == null) {
@@ -70,13 +83,16 @@ public final class SecretInjector {
             }
             List<String> injected = values.keySet().stream()
                 .filter(n -> !rendered.skippedNames().contains(n)).sorted().toList();
-            List<String> skipped = rendered.skippedNames().stream().sorted().toList();
             log.info("Injected secrets {} into grove {}", injected, grove.id());
-            if (!skipped.isEmpty()) {
-                log.warn("Skipped secrets with invalid names {} for grove {}", skipped, grove.id());
+            if (!rendered.skippedNames().isEmpty()) {
+                log.warn("Skipped secrets with invalid names {} for grove {}", rendered.skippedNames(), grove.id());
             }
+            List<String> skipped = Stream.concat(unstorable.stream(), rendered.skippedNames().stream())
+                .distinct().sorted().toList();
             return new Outcome(injected, missing, skipped);
-        } catch (IOException | IllegalStateException e) {
+        } catch (SecretDeliveryException e) {
+            throw e;
+        } catch (IOException | RuntimeException e) {
             throw new SecretDeliveryException("delivering secrets to grove " + grove.id() + " failed", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
