@@ -105,6 +105,28 @@ class SecretCommandTest {
     }
 
     @Test
+    void set_readsValueFromStdin_stripsTrailingCrlfAsOneNewline() {
+        System.setIn(new ByteArrayInputStream("hunter2\r\n\r\n".getBytes(StandardCharsets.UTF_8)));
+
+        int exit = run("set", "GITHUB_TOKEN");
+
+        assertThat(exit).isZero();
+        assertThat(body.get()).isEqualTo("{\"value\":\"hunter2\\r\\n\"}");
+    }
+
+    @Test
+    void set_reservedName_rejectedBeforeRequest(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("v");
+        Files.writeString(file, "hunter2");
+
+        int exit = run("set", "LD_PRELOAD", "--value-file", file.toString());
+
+        assertThat(exit).isNotZero();
+        assertThat(err.toString()).contains("reserved name: LD_PRELOAD");
+        assertThat(method.get()).isNull();
+    }
+
+    @Test
     void set_valueOnCommandLine_isRejectedWithoutEchoingIt() {
         int exit = run("set", "GITHUB_TOKEN", "hunter2");
 

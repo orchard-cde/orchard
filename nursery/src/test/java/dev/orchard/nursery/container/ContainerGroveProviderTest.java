@@ -138,9 +138,11 @@ class ContainerGroveProviderTest {
 
     @Test
     void runtime_containerPlot_returnsPlotRuntime() {
-        ContainerPlot plot = draft();
+        ContainerPlot d = draft();
+        ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
+            PlotState.ROOTED, Instant.now(), Instant.now(), d.workspacePath(), ContainerRuntime.PODMAN, d.spec(), null);
 
-        assertThat(provider.runtime(plot)).isEqualTo(plot.runtime());
+        assertThat(provider.runtime(plot)).isEqualTo(ContainerRuntime.PODMAN);
     }
 
     @Test

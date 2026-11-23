@@ -73,7 +73,7 @@ class GroveFileInstallerTest {
         assertThat(cmd.getValue()).isEqualTo("sudo sh -c " + ShellQuote.quote(script));
         assertThat(cmd.getValue()).doesNotContain("hunter2");
         assertThat(stdin.getValue()).isEqualTo(CONTENT);
-        assertThat(script).contains("mount -t tmpfs", "remount,rw", "remount,ro", "mode=0755,size=1m",
+        assertThat(script).contains("mount -t tmpfs", "remount,rw", "remount,ro", "mode=0755,size=64m",
             "chmod '0440'", "g=$(id -gn 'cultivator')", "chown 'root':\"$g\"");
         assertThat(script.indexOf("g=$(id -gn")).isLessThan(script.indexOf("chown"));
         assertThat(script).contains("trap 'rm -f \"$t\"; mount -o remount,ro \"$d\"");

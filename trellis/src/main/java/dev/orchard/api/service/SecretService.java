@@ -52,9 +52,7 @@ public class SecretService {
     private record Written(Secret secret, boolean created, String oldKey) {}
 
     public Stored put(UUID cultivatorId, String name, byte[] value) {
-        if (name == null || !Secret.NAME.matcher(name).matches()) {
-            throw new IllegalArgumentException("name must match " + Secret.NAME.pattern());
-        }
+        Secret.requireStorableName(name);
         if (value == null) {
             throw new IllegalArgumentException("value must not be null");
         }
@@ -109,7 +107,7 @@ public class SecretService {
         try {
             vault.delete(key);
         } catch (RuntimeException e) {
-            log.warn("Could not remove vault entry {} after failed write", key);
+            log.warn("Could not remove vault entry {} after failed write: {}", key, e.toString());
             sweepQuietly();
         }
     }
@@ -118,7 +116,7 @@ public class SecretService {
         try {
             vault.delete(key);
         } catch (RuntimeException e) {
-            log.warn("Could not delete vault entry {}; sweeping", key);
+            log.warn("Could not delete vault entry {}; sweeping: {}", key, e.toString());
             sweepQuietly();
         }
     }

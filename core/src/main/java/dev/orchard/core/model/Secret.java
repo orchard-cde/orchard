@@ -1,6 +1,7 @@
 package dev.orchard.core.model;
 
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -16,14 +17,28 @@ public record Secret(
     Instant rotatedAt
 ) {
     public static final Pattern NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,254}");
+    public static final Set<String> RESERVED =
+        Set.of("PATH", "IFS", "ENV", "BASH_ENV", "LD_PRELOAD", "LD_LIBRARY_PATH", "HOME", "SHELL");
+
+    public static boolean isStorableName(String name) {
+        return name != null && NAME.matcher(name).matches() && !RESERVED.contains(name);
+    }
+
+    /** Throws {@link IllegalArgumentException} unless {@code name} matches {@link #NAME} and is not {@link #RESERVED}. */
+    public static void requireStorableName(String name) {
+        if (name == null || !NAME.matcher(name).matches()) {
+            throw new IllegalArgumentException("name must match " + NAME.pattern());
+        }
+        if (RESERVED.contains(name)) {
+            throw new IllegalArgumentException("reserved name: " + name);
+        }
+    }
 
     public static Secret store(UUID cultivatorId, String name, String vaultKey) {
         if (cultivatorId == null) {
             throw new IllegalArgumentException("cultivatorId must not be null");
         }
-        if (name == null || !NAME.matcher(name).matches()) {
-            throw new IllegalArgumentException("name must match " + NAME.pattern());
-        }
+        requireStorableName(name);
         if (vaultKey == null || vaultKey.isBlank()) {
             throw new IllegalArgumentException("vaultKey must not be blank");
         }

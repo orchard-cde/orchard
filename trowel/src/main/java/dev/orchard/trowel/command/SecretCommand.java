@@ -1,5 +1,6 @@
 package dev.orchard.trowel.command;
 
+import dev.orchard.core.model.Secret;
 import dev.orchard.trowel.Trowel;
 import dev.orchard.trowel.client.OrchardClient;
 import dev.orchard.trowel.client.OrchardClient.SecretResponse;
@@ -22,10 +23,8 @@ public class SecretCommand implements Callable<Integer> {
     @CommandLine.ParentCommand
     Trowel parent;
 
-    private static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,254}");
-
     static boolean isValidName(String name) {
-        return name != null && NAME.matcher(name).matches();
+        return name != null && Secret.NAME.matcher(name).matches();
     }
 
     @Override
@@ -63,6 +62,10 @@ public class SecretCommand implements Callable<Integer> {
                 System.err.println("Invalid secret name: " + name);
                 return 2;
             }
+            if (Secret.RESERVED.contains(name)) {
+                System.err.println("reserved name: " + name);
+                return 2;
+            }
             try {
                 String value = readValue();
                 OrchardClient client = new OrchardClient(parent.parent.getServerUrl(), parent.parent.getAuthProvider());
@@ -82,6 +85,9 @@ public class SecretCommand implements Callable<Integer> {
             Console console = System.console();
             if (console == null || !console.isTerminal()) {
                 String raw = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);
+                if (raw.endsWith("\r\n")) {
+                    return raw.substring(0, raw.length() - 2);
+                }
                 return raw.endsWith("\n") ? raw.substring(0, raw.length() - 1) : raw;
             }
             char[] chars = console.readPassword("Value for %s: ", name);

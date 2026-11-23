@@ -413,7 +413,7 @@ public class GroveCommand implements Callable<Integer> {
 
         if (grove.missingSecrets() != null && !grove.missingSecrets().isEmpty()) {
             System.out.println();
-            System.out.println("  Missing secrets (supplied on the grove's next start):");
+            System.out.println("  Missing secrets (stored values reach the grove on its next start):");
             for (var warning : grove.missingSecrets()) {
                 var line = new StringBuilder("    ").append(warning.name());
                 if (warning.description() != null) {

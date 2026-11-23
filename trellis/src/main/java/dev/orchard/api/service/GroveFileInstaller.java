@@ -82,7 +82,7 @@ public final class GroveFileInstaller {
         }
         return "set -e; " + vars(spec) + "; d=" + ShellQuote.quote(VM_SECRETS_DIR)
             + "; trap 'rm -f \"$t\"; mount -o remount,ro \"$d\" 2>/dev/null || true' EXIT; "
-            + "mkdir -p \"$d\"; mountpoint -q \"$d\" || mount -t tmpfs -o mode=0755,size=1m tmpfs \"$d\"; "
+            + "mkdir -p \"$d\"; mountpoint -q \"$d\" || mount -t tmpfs -o mode=0755,size=64m tmpfs \"$d\"; "
             + "mount -o remount,rw \"$d\"; umask 077; "
             + writeSteps(spec)
             + "; mount -o remount,ro \"$d\"";

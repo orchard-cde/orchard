@@ -45,7 +45,7 @@ public class SecretController {
         if (cultivatorId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        requireValidName(name);
+        Secret.requireStorableName(name);
         SecretService.Stored stored = service.put(
             cultivatorId, name, putRequest.value().getBytes(StandardCharsets.UTF_8));
         HttpStatus status = stored.created() ? HttpStatus.CREATED : HttpStatus.OK;

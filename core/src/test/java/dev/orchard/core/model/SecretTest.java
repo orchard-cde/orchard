@@ -36,6 +36,20 @@ class SecretTest {
     }
 
     @Test
+    void store_reservedName_throws() {
+        UUID cultivatorId = UUID.randomUUID();
+
+        for (String name : new String[] {"PATH", "IFS", "ENV", "BASH_ENV", "LD_PRELOAD", "LD_LIBRARY_PATH", "HOME", "SHELL"}) {
+            assertThatThrownBy(() -> Secret.store(cultivatorId, name, "vk"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("reserved name: " + name);
+            assertThat(Secret.isStorableName(name)).isFalse();
+        }
+        assertThat(Secret.store(cultivatorId, "PATH_EXTRA", "vk").name()).isEqualTo("PATH_EXTRA");
+        assertThat(Secret.isStorableName("path")).isTrue();
+    }
+
+    @Test
     void withValueWritten_bumpsRotatedAndUpdated_keepsCreated() {
         Secret original = Secret.store(UUID.randomUUID(), "TOKEN", "vk-1");
         Instant later = original.createdAt().plusSeconds(60);

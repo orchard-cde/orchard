@@ -94,6 +94,18 @@ class SecretControllerTest {
     }
 
     @Test
+    void put_reservedName_returns400() throws Exception {
+        mockMvc.perform(put("/api/secrets/LD_PRELOAD")
+                .requestAttr("cultivatorId", cultivatorId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"value\":\"s3cret\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(content().string(containsString("reserved name: LD_PRELOAD")));
+
+        verify(service, never()).put(any(), any(), any());
+    }
+
+    @Test
     void put_missingValue_returns400() throws Exception {
         mockMvc.perform(put("/api/secrets/API_TOKEN")
                 .requestAttr("cultivatorId", cultivatorId)
@@ -161,11 +173,11 @@ class SecretControllerTest {
         mockMvc.perform(put("/api/secrets/API_TOKEN")
                 .requestAttr("cultivatorId", cultivatorId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"value\": hunter2-DISTINCT}"))
+                .content("{\"value\": hunter2DISTINCTMARKER}"))
             .andExpect(status().isBadRequest())
-            .andExpect(content().string(not(containsString("hunter2-DISTINCT"))));
+            .andExpect(content().string(not(containsString("hunter2DISTINCTMARKER"))));
 
-        assertThat(output.getAll()).doesNotContain("hunter2-DISTINCT");
+        assertThat(output.getAll()).doesNotContain("hunter2DISTINCTMARKER");
         verify(service, never()).put(any(), any(), any());
     }
 }

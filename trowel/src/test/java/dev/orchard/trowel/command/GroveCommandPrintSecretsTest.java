@@ -32,7 +32,7 @@ class GroveCommandPrintSecretsTest {
         String output = print(List.of(new SecretWarning("GITHUB_TOKEN", "a token", "https://docs.example/t")));
 
         assertThat(output).contains(
-            "  Missing secrets (supplied on the grove's next start):\n"
+            "  Missing secrets (stored values reach the grove on its next start):\n"
                 + "    GITHUB_TOKEN  -  a token  https://docs.example/t\n");
     }
 
