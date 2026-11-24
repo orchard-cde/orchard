@@ -29,6 +29,7 @@ class ConnectArgsTest {
             "ssh",
             "-i", keysDir.resolve("dev-server").toString(),
             "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
             "-p", "2222",
             "0b9f@localhost");
         assertThat(argv.stream().filter("-i"::equals)).hasSize(1);
@@ -41,10 +42,21 @@ class ConnectArgsTest {
 
         List<String> argv = GroveCommand.connectArgv(CONNECTION + " uptime", keysDir, "dev-server");
 
-        assertThat(argv.subList(0, 5)).containsExactly(
-            "ssh", "-i", keysDir.resolve("dev-server").toString(), "-o", "IdentitiesOnly=yes");
-        assertThat(argv.indexOf("0b9f@localhost")).isGreaterThan(argv.indexOf("IdentitiesOnly=yes"));
+        assertThat(argv.subList(0, 7)).containsExactly(
+            "ssh", "-i", keysDir.resolve("dev-server").toString(),
+            "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=accept-new");
+        assertThat(argv.indexOf("0b9f@localhost")).isGreaterThan(argv.indexOf("StrictHostKeyChecking=accept-new"));
         assertThat(argv.get(argv.size() - 1)).isEqualTo("uptime");
+    }
+
+    @Test
+    void connectArgv_acceptsNewHostKeysWithoutPrompting() throws Exception {
+        Files.writeString(keysDir.resolve("dev-server"), "k");
+
+        List<String> argv = GroveCommand.connectArgv(CONNECTION, keysDir, "dev-server");
+
+        assertThat(argv).containsSubsequence("-o", "StrictHostKeyChecking=accept-new");
+        assertThat(String.join(" ", argv)).doesNotContain("StrictHostKeyChecking=no");
     }
 
     @Test
