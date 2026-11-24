@@ -340,7 +340,10 @@ public class GroveCommand implements Callable<Integer> {
             throw new IllegalStateException("no SSH key provisioned for this target; run: trowel ssh-key add");
         }
         List<String> parts = new ArrayList<>(List.of(connectionString.split(" ")));
-        parts.addAll(1, List.of("-i", key.toString(), "-o", "IdentitiesOnly=yes"));
+        // accept-new trusts a grove's host key on first contact but still fails if a known key changes,
+        // so the connect never blocks on an interactive host-key prompt.
+        parts.addAll(1, List.of("-i", key.toString(), "-o", "IdentitiesOnly=yes",
+            "-o", "StrictHostKeyChecking=accept-new"));
         return parts;
     }
 

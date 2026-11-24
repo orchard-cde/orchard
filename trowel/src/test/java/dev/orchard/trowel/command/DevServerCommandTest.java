@@ -361,6 +361,10 @@ class DevServerCommandTest {
         assertThat(exitCode).isZero();
         assertThat(Files.exists(runDir.resolve("orchard-server.pid"))).isFalse();
         assertThat(Files.exists(runDir.resolve("orchard-ui.pid"))).isFalse();
+        // stop waits on ProcessHandle.onExit(), which can complete a moment before Process.isAlive()
+        // reports false; waitFor blocks until the Process itself records the exit.
+        assertThat(core.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        assertThat(ui.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
         assertThat(core.isAlive()).isFalse();
         assertThat(ui.isAlive()).isFalse();
     }
