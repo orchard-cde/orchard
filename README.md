@@ -13,6 +13,8 @@
 
 Orchard is a cloud development environment (CDE) platform that provisions ready-to-code workspaces from any Git repository. Think Gitpod, but with an orchard theme.
 
+![Planting a grove with trowel and connecting to its workspace](docs/orchard-demo.gif)
+
 ## Features
 
 - **devcontainer Support**: Full compatibility with the `.devcontainer` specification
