@@ -11,3 +11,4 @@
 - [Usage Overview](usage/TOC.md)
 - [Using Orchard](usage/using-orchard.md) — End-user workflows against a deployed Orchard instance
 - [Using the Dev Server](usage/using-dev-server.md) — Running Orchard locally for development environments
+- [Using Bees](usage/using-bees.md) — Installing and managing AI coding assistant bees in a grove
