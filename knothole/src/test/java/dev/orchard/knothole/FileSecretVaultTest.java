@@ -10,6 +10,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.Arrays;
@@ -200,7 +201,24 @@ class FileSecretVaultTest {
 
         assertThatThrownBy(() -> vault.put("big", new byte[65537]))
                 .isInstanceOf(VaultException.class)
-                .hasMessageContaining("64 KiB");
+                .hasMessageContaining("65536 bytes");
+    }
+
+    @Test
+    void settings_boundTheValueSizeAndTheStaleTempAge() throws IOException {
+        Path other = tmp.resolve("small");
+        FileSecretVault small = new FileSecretVault(other, masterKey, new VaultSettings(8, Duration.ofHours(1)));
+        Path recent = other.resolve(".tmp-recent");
+        Files.createFile(recent);
+        Files.setLastModifiedTime(recent, FileTime.from(Instant.now().minusSeconds(120)));
+
+        assertThat(small.maxValueBytes()).isEqualTo(8);
+        assertThatCode(() -> small.put("ok", new byte[8])).doesNotThrowAnyException();
+        assertThatThrownBy(() -> small.put("big", new byte[9]))
+                .isInstanceOf(VaultException.class)
+                .hasMessageContaining("8 bytes");
+        assertThat(small.purge()).isZero();
+        assertThat(recent).exists();
     }
 
     @Test

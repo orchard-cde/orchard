@@ -5,7 +5,8 @@ import java.util.Set;
 
 public interface SecretVault {
 
-    int MAX_VALUE_BYTES = 65536;
+    /** Largest value {@link #put} accepts, in bytes. */
+    int maxValueBytes();
 
     void put(String key, byte[] value);
 

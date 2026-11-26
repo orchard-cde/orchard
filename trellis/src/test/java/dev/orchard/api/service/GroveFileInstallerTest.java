@@ -9,7 +9,10 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import dev.orchard.api.service.GroveFileInstaller.FileSpec;
 import dev.orchard.api.service.GroveFileInstaller.Target;
 import dev.orchard.core.model.ContainerRuntime;
+import dev.orchard.trellis.config.KnotholeConfig.KnotholeProperties;
 import dev.orchard.vine.CommandRunner;
+import java.time.Duration;
+import org.springframework.util.unit.DataSize;
 import dev.orchard.vine.ContainerExec;
 import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.LocalCommandRunner;
@@ -27,7 +30,8 @@ class GroveFileInstallerTest {
 
     private static final byte[] CONTENT = "TOKEN='hunter2'\n".getBytes(StandardCharsets.UTF_8);
 
-    private final GroveFileInstaller installer = new GroveFileInstaller();
+    private final GroveFileInstaller installer = new GroveFileInstaller(new KnotholeProperties(
+        null, null, DataSize.ofKilobytes(64), Duration.ofSeconds(60), Duration.ofSeconds(30), Duration.ofSeconds(60)));
     private final CommandRunner runner = mock(CommandRunner.class);
     private final ExecTarget exec = new ExecTarget(runner, "/ws", UUID.randomUUID(), ContainerRuntime.DOCKER);
     private static final FileSpec HOOK_SPEC = new FileSpec(GroveFileInstaller.HOOK_PATH, "root", "root", "0644",

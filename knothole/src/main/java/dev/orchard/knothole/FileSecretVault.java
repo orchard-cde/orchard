@@ -12,7 +12,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -29,30 +28,44 @@ public final class FileSecretVault implements SecretVault {
     private static final int TAG_BITS = 128;
     private static final String TEMP_PREFIX = ".tmp-";
     private static final Set<PosixFilePermission> ENTRY_PERMISSIONS = SecurePaths.PRIVATE_FILE;
-    private static final Duration STALE_TEMP_AGE = Duration.ofSeconds(60);
 
     private final Path directory;
     private final MasterKey masterKey;
+    private final VaultSettings settings;
     private final SecurePaths securePaths;
     private final SecureRandom random = new SecureRandom();
 
     public FileSecretVault(Path directory, MasterKey masterKey) {
-        this(directory, masterKey, SecurePaths.forProcessUser());
+        this(directory, masterKey, VaultSettings.DEFAULTS);
+    }
+
+    public FileSecretVault(Path directory, MasterKey masterKey, VaultSettings settings) {
+        this(directory, masterKey, settings, SecurePaths.forProcessUser());
     }
 
     FileSecretVault(Path directory, MasterKey masterKey, SecurePaths securePaths) {
+        this(directory, masterKey, VaultSettings.DEFAULTS, securePaths);
+    }
+
+    private FileSecretVault(Path directory, MasterKey masterKey, VaultSettings settings, SecurePaths securePaths) {
         this.directory = directory;
         this.masterKey = masterKey;
+        this.settings = settings;
         this.securePaths = securePaths;
         securePaths.ensurePrivateDirectory(directory);
         purge();
     }
 
     @Override
+    public int maxValueBytes() {
+        return settings.maxValueBytes();
+    }
+
+    @Override
     public void put(String key, byte[] value) {
         requireValidKey(key);
-        if (value.length > MAX_VALUE_BYTES) {
-            throw new VaultException("value for '" + key + "' exceeds the 64 KiB limit");
+        if (value.length > settings.maxValueBytes()) {
+            throw new VaultException("value for '" + key + "' exceeds the limit of " + settings.maxValueBytes() + " bytes");
         }
         byte[] nonce = new byte[NONCE_BYTES];
         random.nextBytes(nonce);
@@ -122,7 +135,7 @@ public final class FileSecretVault implements SecretVault {
 
     @Override
     public int purge() {
-        Instant cutoff = Instant.now().minus(STALE_TEMP_AGE);
+        Instant cutoff = Instant.now().minus(settings.staleTempAge());
         int removed = 0;
         try (DirectoryStream<Path> temps = Files.newDirectoryStream(directory, TEMP_PREFIX + "*")) {
             for (Path temp : temps) {

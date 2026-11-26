@@ -1,5 +1,6 @@
 package dev.orchard.api.service;
 
+import dev.orchard.trellis.config.KnotholeConfig.KnotholeProperties;
 import dev.orchard.vine.ContainerExec;
 import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.ShellQuote;
@@ -23,7 +24,6 @@ public final class GroveFileInstaller {
     public static final String VM_SECRETS_DIR = "/run/orchard/secrets";
     public static final String VM_SECRETS_PATH = VM_SECRETS_DIR + "/secrets.env";
 
-    private static final long TIMEOUT_SECONDS = 60;
     private static final String SOURCE_HOOK_LINE = "'\\n[ -r " + HOOK_PATH + " ] && . " + HOOK_PATH + "\\n'";
     static final String BASHRC_GUARD =
         "grep -q orchard-secrets /etc/bash.bashrc 2>/dev/null || printf " + SOURCE_HOOK_LINE
@@ -34,17 +34,23 @@ public final class GroveFileInstaller {
     private static final String HOOK_RESOURCE = "/knothole/orchard-secrets.sh";
     private static final String HOOK = loadHook();
 
+    private final long timeoutSeconds;
+
+    public GroveFileInstaller(KnotholeProperties properties) {
+        this.timeoutSeconds = properties.deliveryTimeout().toSeconds();
+    }
+
     public void install(ExecTarget exec, String containerId, Target target, FileSpec spec)
         throws IOException, InterruptedException {
         exec.runner().execute(command(exec, containerId, target, script(target, spec)), spec.content(),
-            TIMEOUT_SECONDS);
+            timeoutSeconds);
     }
 
     public void installHook(ExecTarget exec, String containerId, Target target)
         throws IOException, InterruptedException {
         FileSpec spec = new FileSpec(HOOK_PATH, "root", "root", "0644", HOOK.getBytes(StandardCharsets.UTF_8));
         exec.runner().execute(command(exec, containerId, target, hookInstallScript(target, spec)), spec.content(),
-            TIMEOUT_SECONDS);
+            timeoutSeconds);
     }
 
     static String hookInstallScript(Target target, FileSpec spec) {

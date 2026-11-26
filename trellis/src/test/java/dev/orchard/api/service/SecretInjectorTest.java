@@ -3,6 +3,10 @@ package dev.orchard.api.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
+
+import dev.orchard.trellis.config.KnotholeConfig.KnotholeProperties;
+import java.time.Duration;
+import org.springframework.util.unit.DataSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -61,7 +65,9 @@ class SecretInjectorTest {
     private final GroveProvider provider = mock(GroveProvider.class);
     private final CommandRunner host = mock(CommandRunner.class);
     private final ExecTarget exec = new ExecTarget(host, "/ws", UUID.randomUUID(), ContainerRuntime.DOCKER);
-    private final SecretInjector injector = new SecretInjector(secrets, installer);
+    private final KnotholeProperties properties = new KnotholeProperties(
+        null, null, DataSize.ofKilobytes(64), Duration.ofSeconds(60), Duration.ofSeconds(30), Duration.ofSeconds(60));
+    private final SecretInjector injector = new SecretInjector(secrets, installer, properties);
 
     @BeforeEach
     void wire() throws Exception {
@@ -356,7 +362,7 @@ class SecretInjectorTest {
         GroveProvider realProvider = mock(GroveProvider.class);
         when(realProvider.execTarget(any()))
             .thenReturn(new ExecTarget(runner, "/ws", UUID.randomUUID(), ContainerRuntime.DOCKER));
-        SecretInjector real = new SecretInjector(secrets, new GroveFileInstaller());
+        SecretInjector real = new SecretInjector(secrets, new GroveFileInstaller(properties), properties);
         Grove grove = grove(vmPlot());
         when(secrets.resolve(eq(grove.cultivatorId()), anyCollection())).thenReturn(values("TOKEN", value));
 

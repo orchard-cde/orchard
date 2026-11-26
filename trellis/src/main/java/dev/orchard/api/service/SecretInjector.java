@@ -10,6 +10,7 @@ import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.Secret;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.nursery.GroveProvider;
+import dev.orchard.trellis.config.KnotholeConfig.KnotholeProperties;
 import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.ShellQuote;
 import java.io.IOException;
@@ -26,14 +27,15 @@ import org.springframework.stereotype.Component;
 public final class SecretInjector {
 
     private static final Logger log = LoggerFactory.getLogger(SecretInjector.class);
-    private static final long INSPECT_TIMEOUT_SECONDS = 30;
 
     private final SecretService secrets;
     private final GroveFileInstaller installer;
+    private final long inspectTimeoutSeconds;
 
-    public SecretInjector(SecretService secrets, GroveFileInstaller installer) {
+    public SecretInjector(SecretService secrets, GroveFileInstaller installer, KnotholeProperties properties) {
         this.secrets = secrets;
         this.installer = installer;
+        this.inspectTimeoutSeconds = properties.inspectTimeout().toSeconds();
     }
 
     public record Outcome(List<String> injected, List<String> missing, List<String> skipped) {}
@@ -96,9 +98,9 @@ public final class SecretInjector {
         }
     }
 
-    private static String ipcMode(ExecTarget exec, String containerId) throws IOException, InterruptedException {
+    private String ipcMode(ExecTarget exec, String containerId) throws IOException, InterruptedException {
         String command = exec.runtime().cli() + " inspect --format '{{.HostConfig.IpcMode}}' "
             + ShellQuote.quote(containerId);
-        return exec.runner().execute(command, INSPECT_TIMEOUT_SECONDS).trim();
+        return exec.runner().execute(command, inspectTimeoutSeconds).trim();
     }
 }

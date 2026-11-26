@@ -55,8 +55,8 @@ public class SecretService {
         if (value == null) {
             throw new IllegalArgumentException("value must not be null");
         }
-        if (value.length > SecretVault.MAX_VALUE_BYTES) {
-            throw new IllegalArgumentException("value must not exceed " + SecretVault.MAX_VALUE_BYTES + " bytes");
+        if (value.length > vault.maxValueBytes()) {
+            throw new IllegalArgumentException("value must not exceed " + vault.maxValueBytes() + " bytes");
         }
         for (byte b : value) {
             if (b == 0) {

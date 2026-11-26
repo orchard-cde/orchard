@@ -64,6 +64,11 @@ class SecretServiceTest {
         int purgeResult;
 
         @Override
+        public int maxValueBytes() {
+            return 65536;
+        }
+
+        @Override
         public void put(String key, byte[] value) {
             if (failNextPut) {
                 failNextPut = false;
