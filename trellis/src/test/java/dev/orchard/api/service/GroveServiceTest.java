@@ -54,6 +54,7 @@ class GroveServiceTest {
     @Mock private GroveProvider ownerProvider;
     @Mock private BeeService beeService;
     @Mock private PlatformTransactionManager transactionManager;
+    @Mock private SecretInjector secretInjector;
 
     private GroveService groveService;
 
@@ -63,7 +64,7 @@ class GroveServiceTest {
             groveRepository, fruitRepository, providerRegistry,
             new DevcontainerCliConfig("0.87.0", 0, 0),
             cultivatorService, eventPublisher, sshPublicKeyService,
-            beeService, new TransactionTemplate(transactionManager)
+            beeService, new TransactionTemplate(transactionManager), secretInjector
         );
         lenient().when(providerRegistry.getDefault()).thenReturn(defaultProvider);
         lenient().when(providerRegistry.require("test-default")).thenReturn(defaultProvider);
@@ -662,12 +663,18 @@ class GroveServiceTest {
 
     private record Transition(GroveState expected, GroveState next, Plot plot) {}
 
+    private final java.util.Map<UUID, GroveEntity> storedEntities = new java.util.concurrent.ConcurrentHashMap<>();
+
     private List<Transition> recordTransitions(int rows) {
         List<Transition> transitions = new java.util.concurrent.CopyOnWriteArrayList<>();
         lenient().when(groveRepository.transitionIfState(any(), any(), any(), any())).thenAnswer(inv -> {
             String plotJson = inv.getArgument(3);
             transitions.add(new Transition(inv.getArgument(1), inv.getArgument(2),
                 plotJson == null ? null : PLOTS.deserialize(plotJson)));
+            GroveEntity stored = storedEntities.get((UUID) inv.getArgument(0));
+            if (rows == 1 && stored != null && stored.getState() == (GroveState) inv.getArgument(1)) {
+                stored.setState((GroveState) inv.getArgument(2));
+            }
             return rows;
         });
         return transitions;
@@ -690,6 +697,7 @@ class GroveServiceTest {
     /** Stubs the rows {@code entityToModel} reads, so the grove round-trips through the service. */
     private GroveEntity stubStored(Grove grove) {
         GroveEntity entity = GroveEntity.fromModel(grove);
+        storedEntities.put(grove.id(), entity);
         when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
         lenient().when(fruitRepository.findByGroveId(grove.id()))
             .thenReturn(grove.fruits().stream().map(FruitEntity::fromModel).toList());
@@ -1032,6 +1040,7 @@ class GroveServiceTest {
         assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
             org.assertj.core.groups.Tuple.tuple(GroveState.DORMANT, GroveState.PLANTING),
             org.assertj.core.groups.Tuple.tuple(GroveState.PLANTING, GroveState.GROWING),
+            org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.GROWING),
             org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.FLOURISHING));
         assertThat(transitions.getLast().plot().state()).isEqualTo(PlotState.ROOTED);
         assertThat(lastSavedFruits()).singleElement()
@@ -1061,6 +1070,7 @@ class GroveServiceTest {
         assertThat(transitions).extracting(Transition::expected, Transition::next).containsExactly(
             org.assertj.core.groups.Tuple.tuple(GroveState.BLIGHTED, GroveState.PLANTING),
             org.assertj.core.groups.Tuple.tuple(GroveState.PLANTING, GroveState.GROWING),
+            org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.GROWING),
             org.assertj.core.groups.Tuple.tuple(GroveState.GROWING, GroveState.FLOURISHING));
         verify(ownerProvider, never()).plantSubstrate(any());
     }
@@ -1187,6 +1197,122 @@ class GroveServiceTest {
         verify(eventPublisher, never()).publishEvent(any());
         verify(ownerProvider).water(any());
         verifyNoMoreInteractions(ownerProvider);
+    }
+
+    @Test
+    void provision_ripeFruit_injectsBeforeFlourishing() throws Exception {
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withRemoteEnv("/workspaces/repo", "vscode").withState(FruitState.RIPE)));
+        provisionRecordingKeepingGrow(containerPlot(), mock(CommandRunner.class));
+
+        InOrder order = inOrder(secretInjector, groveRepository);
+        order.verify(secretInjector).inject(eq(ownerProvider),
+            org.mockito.ArgumentMatchers.argThat(g -> g.plot() instanceof ContainerPlot c
+                && "vscode".equals(c.remoteUser())),
+            org.mockito.ArgumentMatchers.argThat(f -> f.state() == FruitState.RIPE));
+        order.verify(groveRepository).save(
+            org.mockito.ArgumentMatchers.argThat(e -> e.getState() == GroveState.FLOURISHING));
+        verify(groveRepository, times(1)).save(
+            org.mockito.ArgumentMatchers.argThat(e -> e.getState() == GroveState.FLOURISHING));
+    }
+
+    @Test
+    void provision_injectorThrows_blights() throws Exception {
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withRemoteEnv("/workspaces/repo", "vscode").withState(FruitState.RIPE)));
+        doThrow(new SecretDeliveryException("declared secrets cannot be delivered", null))
+            .when(secretInjector).inject(any(), any(), any());
+        provisionRecordingKeepingGrow(containerPlot(), mock(CommandRunner.class));
+
+        ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
+        verify(groveRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues().getLast().getState()).isEqualTo(GroveState.BLIGHTED);
+        assertThat(saved.getAllValues()).noneMatch(e -> e.getState() == GroveState.FLOURISHING);
+    }
+
+    @Test
+    void provision_rottedFruit_doesNotInject() throws Exception {
+        when(ownerProvider.growFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.ROTTED)));
+        provisionRecordingKeepingGrow(containerPlot(), mock(CommandRunner.class));
+
+        verify(secretInjector, never()).inject(any(), any(), any());
+    }
+
+    private Grove startingGrove() {
+        Grove grove = ownerGrove(GroveState.PLANTING, PlotState.DORMANT, FruitState.PICKED);
+        GroveEntity entity = GroveEntity.fromModel(grove);
+        storedEntities.put(grove.id(), entity);
+        lenient().when(groveRepository.findById(grove.id())).thenReturn(Optional.of(entity));
+        when(ownerProvider.water(any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((VmPlot) inv.getArgument(0)).withState(PlotState.ROOTED)));
+        return grove;
+    }
+
+    private void ripenSucceeds() {
+        when(ownerProvider.ripenFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
+            ((Fruit) inv.getArgument(1)).withState(FruitState.RIPE)));
+    }
+
+    @Test
+    void completeStart_injectsAfterRipen() {
+        Grove grove = startingGrove();
+        List<Transition> transitions = recordTransitions(1);
+        ripenSucceeds();
+
+        groveService.completeStart(grove, ownerProvider);
+
+        InOrder order = inOrder(ownerProvider, secretInjector, groveRepository);
+        order.verify(ownerProvider).ripenFruit(any(), any());
+        order.verify(secretInjector).inject(eq(ownerProvider),
+            org.mockito.ArgumentMatchers.argThat(g -> g.id().equals(grove.id())),
+            org.mockito.ArgumentMatchers.argThat(f -> f.state() == FruitState.RIPE && "c1".equals(f.containerId())));
+        order.verify(groveRepository).transitionIfState(
+            eq(grove.id()), eq(GroveState.GROWING), eq(GroveState.FLOURISHING), any());
+        assertThat(transitions).extracting(Transition::next)
+            .containsExactly(GroveState.GROWING, GroveState.GROWING, GroveState.FLOURISHING);
+    }
+
+    @Test
+    void completeStart_injectorThrows_blights() {
+        Grove grove = startingGrove();
+        List<Transition> transitions = recordTransitions(1);
+        ripenSucceeds();
+        doThrow(new SecretDeliveryException("declared secrets cannot be delivered", null))
+            .when(secretInjector).inject(any(), any(), any());
+
+        groveService.completeStart(grove, ownerProvider);
+
+        assertThat(transitions).extracting(Transition::next)
+            .containsExactly(GroveState.GROWING, GroveState.GROWING, GroveState.BLIGHTED);
+        assertThat(transitions.getLast().expected()).isEqualTo(GroveState.GROWING);
+        assertThat(transitions.getLast().plot().state()).isEqualTo(PlotState.ROOTED);
+    }
+
+    @Test
+    void completeStart_lostRace_doesNotInject() {
+        Grove grove = startingGrove();
+        recordTransitions(0);
+
+        groveService.completeStart(grove, ownerProvider);
+
+        verify(secretInjector, never()).inject(any(), any(), any());
+        verify(ownerProvider, never()).ripenFruit(any(), any());
+    }
+
+    @Test
+    void completeStart_clearedAfterRipen_skipsInject() {
+        Grove grove = startingGrove();
+        List<Transition> transitions = recordTransitions(1);
+        ripenSucceeds();
+        doReturn(0).when(groveRepository)
+            .transitionIfState(any(), eq(GroveState.GROWING), eq(GroveState.GROWING), any());
+
+        groveService.completeStart(grove, ownerProvider);
+
+        verify(secretInjector, never()).inject(any(), any(), any());
+        assertThat(transitions).extracting(Transition::next).containsExactly(GroveState.GROWING);
+        verify(groveRepository, never()).transitionIfState(any(), any(), eq(GroveState.FLOURISHING), any());
     }
 
     @Test

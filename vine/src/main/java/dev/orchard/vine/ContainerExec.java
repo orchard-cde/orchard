@@ -96,5 +96,10 @@ public final class ContainerExec {
             argv.addAll(shell);
             return List.copyOf(argv);
         }
+
+        /** {@link #argv()} quoted into one shell command line. */
+        public String commandLine() {
+            return ShellQuote.join(argv());
+        }
     }
 }

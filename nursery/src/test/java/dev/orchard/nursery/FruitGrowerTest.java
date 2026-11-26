@@ -198,7 +198,7 @@ class FruitGrowerTest {
 
         // attach() runs the post-attach command via CLI exec and flips to RIPE.
         Fruit afterAttach = grower.attach(execTarget(runner), afterGrow).get();
-        verify(cli).exec(atWorkspace(WORKSPACE_PATH), eq("echo hi"));
+        verify(cli).exec(atWorkspace(WORKSPACE_PATH), any(UUID.class), eq("echo hi"));
         assertThat(afterAttach.state()).isEqualTo(FruitState.RIPE);
     }
 

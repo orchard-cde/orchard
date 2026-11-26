@@ -65,9 +65,8 @@ public class DevcontainerCli {
             + " --remove-existing-container"
             + dockerPathArgs(target)
             + composePathArg(target)
-            + " --id-label " + ShellQuote.quote("orchard.fruit.id=" + fruitId)
-            + " --id-label " + ShellQuote.quote("orchard.fruit.name=" + containerName)
-            + " --id-label " + ShellQuote.quote(ContainerLabels.label(target.targetId()));
+            + lookupLabelArgs(target, fruitId)
+            + " --id-label " + ShellQuote.quote("orchard.fruit.name=" + containerName);
 
         AtomicReference<String> outcomeLine = new AtomicReference<>();
         runner.executeStreaming(cmd, line -> {
@@ -126,11 +125,18 @@ public class DevcontainerCli {
         }
     }
 
-    /** Run a command inside the fruit's container. Used by FruitGrower.attach() for postAttachCommand. */
-    public void exec(ExecTarget target, String command) throws IOException, InterruptedException {
+    /**
+     * Run a command inside the fruit's container as its remote user and return its stdout.
+     *
+     * <p>The user env probe is off: the CLI would otherwise read the remote user's login
+     * environment and repeat every variable as {@code -e NAME=value} on the engine's exec command
+     * line, which would expose delivered secrets in the host's process list.
+     */
+    public String exec(ExecTarget target, UUID fruitId, String command) throws IOException, InterruptedException {
         String cmd = "devcontainer exec --workspace-folder " + ShellQuote.quote(target.workspacePath())
-            + dockerPathArgs(target) + " -- /bin/sh -c " + ShellQuote.quote(command);
-        target.runner().execute(cmd, config.execTimeoutSeconds());
+            + dockerPathArgs(target) + lookupLabelArgs(target, fruitId) + " --default-user-env-probe none"
+            + " -- /bin/sh -c " + ShellQuote.quote(command);
+        return target.runner().execute(cmd, config.execTimeoutSeconds());
     }
 
     /** Fetch the actual container name post-up so {@code Fruit.containerName()} reflects reality. */
@@ -148,6 +154,11 @@ public class DevcontainerCli {
      */
     private static boolean isOutcomeLine(String line) {
         return line.contains("\"outcome\":\"");
+    }
+
+    private static String lookupLabelArgs(ExecTarget target, UUID fruitId) {
+        return " --id-label " + ShellQuote.quote("orchard.fruit.id=" + fruitId)
+            + " --id-label " + ShellQuote.quote(ContainerLabels.label(target.targetId()));
     }
 
     private static String dockerPathArgs(ExecTarget target) {

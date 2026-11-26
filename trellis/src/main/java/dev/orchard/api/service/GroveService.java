@@ -60,6 +60,7 @@ public class GroveService {
     private final ApplicationEventPublisher eventPublisher;
     private final BeeService beeService;
     private final TransactionTemplate transactionTemplate;
+    private final SecretInjector secretInjector;
 
     public GroveService(
             GroveRepository groveRepository,
@@ -70,7 +71,8 @@ public class GroveService {
             ApplicationEventPublisher eventPublisher,
             SshPublicKeyService sshPublicKeyService,
             BeeService beeService,
-            TransactionTemplate transactionTemplate) {
+            TransactionTemplate transactionTemplate,
+            SecretInjector secretInjector) {
         this.groveRepository = groveRepository;
         this.fruitRepository = fruitRepository;
         this.providerRegistry = providerRegistry;
@@ -83,6 +85,7 @@ public class GroveService {
         this.eventPublisher = eventPublisher;
         this.beeService = beeService;
         this.transactionTemplate = transactionTemplate;
+        this.secretInjector = secretInjector;
     }
 
     @Transactional
@@ -213,7 +216,13 @@ public class GroveService {
         }
 
         if (grownFruit.state() == FruitState.RIPE) {
-            grove = grove.withState(GroveState.FLOURISHING);
+            try {
+                secretInjector.inject(provider, grove, grownFruit);
+                grove = grove.withState(GroveState.FLOURISHING);
+            } catch (RuntimeException e) {
+                log.error("Grove {} could not receive its secrets: {}", grove.id(), e.getMessage(), e);
+                grove = grove.withState(GroveState.BLIGHTED);
+            }
         } else {
             grove = grove.withState(GroveState.BLIGHTED);
         }
@@ -790,6 +799,10 @@ public class GroveService {
                     throw new IllegalStateException("fruit " + fruit.id() + " ended " + ripened.state());
                 }
                 current = current.withFruit(ripened);
+                if (!advance(grove.id(), expected, current)) {
+                    return;
+                }
+                secretInjector.inject(provider, current, ripened);
             }
             current = current.withState(GroveState.FLOURISHING);
             if (advance(grove.id(), expected, current)) {

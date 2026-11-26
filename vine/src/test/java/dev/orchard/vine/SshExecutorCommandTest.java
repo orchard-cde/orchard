@@ -29,4 +29,12 @@ class SshExecutorCommandTest {
         assertThat(argv).contains("cultivator@10.0.0.1");
         assertThat(argv).endsWith("echo hi");
     }
+
+    @Test
+    void execute_withStdin_argvUnchanged() {
+        SshExecutor executor = new SshExecutor("10.0.0.1", 2222, UUID.randomUUID());
+
+        assertThat(executor.buildSshCommand("echo hi")).startsWith("ssh").doesNotContain("-n")
+            .containsSubsequence("-p", "2222").endsWith("cultivator@10.0.0.1", "echo hi");
+    }
 }

@@ -2,8 +2,19 @@ package dev.orchard.e2e;
 
 import dev.orchard.api.dto.CreateGroveRequest;
 import dev.orchard.api.dto.GroveResponse;
+import dev.orchard.api.service.GroveFileInstaller;
+import dev.orchard.api.service.GroveService;
+import dev.orchard.core.model.Fruit;
+import dev.orchard.core.model.Grove;
 import dev.orchard.core.model.GroveState;
+import dev.orchard.core.model.Plot;
 import dev.orchard.core.model.PlotState;
+import dev.orchard.nursery.DevcontainerCli;
+import dev.orchard.nursery.GroveProvider;
+import dev.orchard.nursery.ProviderRegistry;
+import dev.orchard.vine.ShellQuote;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -15,9 +26,11 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -31,6 +44,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 final class GroveClient {
+
+    private static final Logger log = LoggerFactory.getLogger(GroveClient.class);
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final String baseUrl;
@@ -151,7 +166,77 @@ final class GroveClient {
         }
     }
 
+    void putSecret(String name, String value) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<Void> response = restTemplate.exchange(baseUrl + "/api/secrets/" + name, HttpMethod.PUT,
+            new HttpEntity<>(Map.of("value", value), headers), Void.class);
+        assertThat(response.getStatusCode()).as("put secret %s: status", name)
+            .isIn(HttpStatus.CREATED, HttpStatus.OK);
+    }
+
+    void deleteSecret(String name) {
+        ResponseEntity<Void> response = restTemplate.exchange(
+            baseUrl + "/api/secrets/" + name, HttpMethod.DELETE, null, Void.class);
+        assertThat(response.getStatusCode()).as("delete secret %s: status", name).isEqualTo(HttpStatus.NO_CONTENT);
+    }
+
+    void deleteSecretQuietly(String name) {
+        try {
+            restTemplate.delete(baseUrl + "/api/secrets/" + name);
+        } catch (Exception e) {
+            // Best effort
+        }
+    }
+
+    /** A grove's primary fruit as persisted, with the provider and plot that host it. */
+    record PrimaryFruit(GroveProvider provider, Plot plot, UUID fruitId, String containerId) {
+
+        static PrimaryFruit of(GroveService groveService, ProviderRegistry providers, UUID groveId) {
+            Grove grove = groveService.getGrove(groveId).orElseThrow();
+            Fruit fruit = grove.fruits().getFirst();
+            assertThat(fruit.remoteUser()).as("fruit remote user").isNotBlank();
+            return new PrimaryFruit(providers.require(grove.plot().providerId()), grove.plot(), fruit.id(),
+                fruit.containerId());
+        }
+    }
+
+    /** Runs {@code command} inside the fruit through {@code devcontainer exec}, as trellis does. */
+    static String runInFruit(DevcontainerCli cli, PrimaryFruit fruit, String command) throws Exception {
+        return cli.exec(fruit.provider().execTarget(fruit.plot()), fruit.fruitId(), command).trim();
+    }
+
+    static String fruitLoginEnv(DevcontainerCli cli, PrimaryFruit fruit, String name) throws Exception {
+        return runInFruit(cli, fruit, "sh -lc 'printf %s \"$" + name + "\"'");
+    }
+
+    static void assertSecretDelivered(DevcontainerCli cli, PrimaryFruit fruit, String name, String value, String step)
+        throws Exception {
+        assertThat(fruitLoginEnv(cli, fruit, name)).as("%s: fruit login shell sees %s", step, name)
+            .isEqualTo(value);
+        assertThat(runInFruit(cli, fruit, "printf %s \"${" + name + "-}\""))
+            .as("%s: a non-login exec gets no value from the CLI's command line", step).isEmpty();
+        if ("yes".equals(runInFruit(cli, fruit, "command -v zsh >/dev/null 2>&1 && echo yes || echo no"))) {
+            assertThat(runInFruit(cli, fruit, "zsh -lc 'printf %s \"$" + name + "\"'"))
+                .as("%s: fruit zsh login shell sees %s", step, name).isEqualTo(value);
+        } else {
+            log.warn("{}: zsh is absent from the fruit; skipping the zsh login-shell check", step);
+        }
+        String group = runInFruit(cli, fruit, "id -gn");
+        assertThat(runInFruit(cli, fruit, "stat -c '%U %G %a' " + GroveFileInstaller.FRUIT_SECRETS_PATH))
+            .as("%s: fruit secrets file ownership", step).isEqualTo("root " + group + " 440");
+        String diff = fruit.provider().host(fruit.plot()).execute(
+            fruit.provider().execTarget(fruit.plot()).runtime().cli() + " diff " + ShellQuote.quote(fruit.containerId()));
+        assertThat(diff).as("%s: container layer holds the hook but not the secrets file", step)
+            .contains("orchard-secrets.sh")
+            .doesNotContain("secrets.env");
+    }
+
     static String runOnSeedling(int sshPort, String command) throws Exception {
+        return runOnSeedling(sshPort, command, null);
+    }
+
+    static String runOnSeedling(int sshPort, String command, byte[] stdin) throws Exception {
         Path privateKey = Path.of(System.getProperty("orchard.ssh.key-path",
             System.getProperty("user.home") + "/.ssh/orchard_ed25519"));
 
@@ -159,6 +244,7 @@ final class GroveClient {
             "ssh",
             "-o", "StrictHostKeyChecking=no",
             "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "LogLevel=ERROR",
             "-o", "ConnectTimeout=10",
             "-i", privateKey.toString(),
             "-p", String.valueOf(sshPort),
@@ -168,6 +254,11 @@ final class GroveClient {
         pb.redirectErrorStream(true);
 
         Process process = pb.start();
+        try (OutputStream in = process.getOutputStream()) {
+            if (stdin != null) {
+                in.write(stdin);
+            }
+        }
         String output;
         try (var reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             output = reader.lines().reduce("", (a, b) -> a + "\n" + b).trim();

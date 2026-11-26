@@ -19,6 +19,7 @@ import dev.orchard.roots.repository.FruitRepository;
 import dev.orchard.roots.repository.GroveRepository;
 import dev.orchard.trellis.OrchardApplication;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.Vine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -170,6 +171,11 @@ class GroveStopClearInterleavingTest {
         @Override
         public CommandRunner host(Plot plot) {
             throw new UnsupportedOperationException("host");
+        }
+
+        @Override
+        public ExecTarget execTarget(Plot plot) {
+            throw new UnsupportedOperationException("execTarget");
         }
 
         @Override

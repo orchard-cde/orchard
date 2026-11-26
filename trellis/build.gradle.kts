@@ -37,6 +37,7 @@ dependencies {
     implementation(project(":harvest"))
     implementation(project(":nursery"))
     implementation(project(":vine"))
+    implementation(project(":knothole"))
     implementation(project(":greenhouse"))
     implementation(project(":apiary"))
     implementation("org.flywaydb:flyway-database-postgresql")
@@ -67,4 +68,10 @@ jmh {
     fork.set(1)
     resultFormat.set("JSON")
     resultsFile.set(layout.buildDirectory.file("results/jmh/results.json").get().asFile)
+}
+
+tasks.named<Test>("test") {
+    val knotholeDir = layout.buildDirectory.dir("test-knothole").get().asFile
+    systemProperty("orchard.knothole.vault-path", File(knotholeDir, "vault").absolutePath)
+    systemProperty("orchard.knothole.master-key-path", File(knotholeDir, "master.key").absolutePath)
 }

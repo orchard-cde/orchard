@@ -640,7 +640,7 @@ public class FruitGrower {
                 if (seed.postAttachCommand() != null) {
                     if (cliEnabled()) {
                         runLifecycleCommand(seed.postAttachCommand(),
-                            cmd -> devcontainerCli.exec(target, cmd));
+                            cmd -> devcontainerCli.exec(target, fruit.id(), cmd));
                     } else {
                         runLifecycleCommand(seed.postAttachCommand(),
                             cmd -> inContainer(target, fruit.containerId(), cmd));

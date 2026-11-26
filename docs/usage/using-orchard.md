@@ -82,6 +82,35 @@ trowel grove show <grove-id>
 
 This shows the grove's state, plot info, fruit (container) status, and SSH connection details. A VM plot shows its host and SSH port; a container plot shows its runtime and has no SSH details, so `ssh-config` returns 409 for it.
 
+## Secrets
+
+A devcontainer declares the secrets it needs by name; the values live in Orchard's secret store (Knothole), encrypted at rest and scoped to your cultivator, never in the repository:
+
+```json
+"secrets": {
+  "NPM_TOKEN": { "description": "Read token for the private registry", "documentationUrl": "https://example.com/tokens" }
+}
+```
+
+```bash
+trowel secret set NPM_TOKEN --value-file ~/npm-token   # or pipe it on stdin, or type it at the prompt
+trowel secret list                                     # names and timestamps, never values
+trowel secret rm -f NPM_TOKEN
+```
+
+Names match `[A-Za-z_][A-Za-z0-9_]{0,254}`; `PATH`, `IFS`, `ENV`, `BASH_ENV`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `HOME`, and `SHELL` are reserved. A value is never accepted as a command-line argument. `--value-file` stores the file's bytes verbatim, trailing newline included; stdin drops one trailing newline (`\n` or `\r\n`).
+
+Each Trellis database needs its own vault directory (`orchard.knothole.vault-path`); the dev-server keeps its own under `~/.orchard/data/knothole`, beside its H2 database. The store's limits are properties with defaults: `orchard.knothole.max-value-size` (`64KB`), `stale-temp-age` (`60s`, after which an abandoned temp file in the vault is purged), `inspect-timeout` (`30s`, inspecting a container before delivery), and `delivery-timeout` (`60s`, each command that writes a secrets file or hook into a grove).
+
+After the fruit is grown and after every start, Orchard writes each declared secret you have stored into the fruit at `/dev/shm/orchard/secrets.env` (memory-backed, owned by root, readable by the remote user's group) and, on a VM plot, onto the VM at `/run/orchard/secrets/secrets.env` (a tmpfs remounted read-only, readable by `cultivator`). `/etc/profile.d/orchard-secrets.sh`, also sourced from `/etc/bash.bashrc`, exports them into login and interactive shells in both places: `trowel grove connect`, SSH sessions, and bees. The hook relies on `/etc/profile` sourcing `/etc/profile.d/*.sh` (Debian, Ubuntu, Alpine, and Fedora images do) and, for zsh, on a guarded line Orchard appends to `/etc/zsh/zprofile` or `/etc/zprofile`. Values never reach the seedling's disk, the container's image layer, a command line, a log line, or the database.
+
+A set, rotation, or removal reaches a running grove on its next start (`trowel grove stop`, then `trowel grove start`); a new grove gets the values current when it is planted. A declared secret you have not stored does not fail the grove: it flourishes without it, and `trowel grove show` lists it under "Missing secrets" with its description and documentation URL.
+
+Limitations:
+
+- Lifecycle commands (`postCreateCommand`, `postStartCommand`, and the rest) run inside `devcontainer up`, before delivery, and do not see secrets. Neither does a non-login, non-interactive shell such as `sh -c`; use `sh -lc`.
+- A grove blights instead of flourishing without a stored secret it cannot deliver safely: a container plot whose fruit runs with `--ipc=host` (its `/dev/shm` is the host's), and the legacy provisioning path (`orchard.nursery.use-devcontainer-cli=false`), which cannot resolve the remote user.
+
 ## Connecting to a Grove
 
 Once a grove reaches FLOURISHING, connect via SSH:

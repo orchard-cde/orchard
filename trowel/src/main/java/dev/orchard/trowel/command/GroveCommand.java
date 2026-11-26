@@ -369,7 +369,7 @@ public class GroveCommand implements Callable<Integer> {
         }
     }
 
-    private static void printGrove(GroveResponse grove) {
+    static void printGrove(GroveResponse grove) {
         System.out.println();
         System.out.println("Grove: " + grove.name());
         System.out.println("-".repeat(50));
@@ -411,6 +411,21 @@ public class GroveCommand implements Callable<Integer> {
                         System.out.println("        ID:        " + fruit.containerId().substring(0, 12));
                     }
                 }
+            }
+        }
+
+        if (grove.missingSecrets() != null && !grove.missingSecrets().isEmpty()) {
+            System.out.println();
+            System.out.println("  Missing secrets (stored values reach the grove on its next start):");
+            for (var warning : grove.missingSecrets()) {
+                var line = new StringBuilder("    ").append(warning.name());
+                if (warning.description() != null) {
+                    line.append("  -  ").append(warning.description());
+                }
+                if (warning.documentationUrl() != null) {
+                    line.append("  ").append(warning.documentationUrl());
+                }
+                System.out.println(line);
             }
         }
 

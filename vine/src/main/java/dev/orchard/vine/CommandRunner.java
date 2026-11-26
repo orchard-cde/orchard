@@ -34,6 +34,16 @@ public interface CommandRunner {
     String execute(String command, long timeoutSeconds) throws IOException, InterruptedException;
 
     /**
+     * Like {@link #execute(String, long)} but writes {@code stdin} to the command's standard input
+     * and then closes it. The bytes never appear on a command line or in a log line.
+     *
+     * @throws UnsupportedOperationException if this runner cannot feed stdin
+     */
+    default String execute(String command, byte[] stdin, long timeoutSeconds) throws IOException, InterruptedException {
+        throw new UnsupportedOperationException(getClass().getName() + " cannot feed stdin");
+    }
+
+    /**
      * Executes a command and streams each stdout line to the given consumer as it arrives.
      * Blocks until the command exits or the timeout elapses. Stderr is drained concurrently
      * (to avoid the child blocking on a full pipe buffer) and surfaced on non-zero exit.

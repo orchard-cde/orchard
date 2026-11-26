@@ -16,6 +16,9 @@ spring:
     enabled: false
 
 orchard:
+  knothole:
+    vault-path: ${user.home}/.orchard/data/knothole/vault
+    master-key-path: ${user.home}/.orchard/data/knothole/master.key
   security:
     oauth2:
       enabled: true

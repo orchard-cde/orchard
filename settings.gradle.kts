@@ -10,6 +10,7 @@ pluginManagement {
 include(
     "core",
     "vine",
+    "knothole",
     "roots",
     "harvest",
     "nursery",

@@ -38,6 +38,11 @@ public class ContainerCommandRunner implements CommandRunner {
     }
 
     @Override
+    public String execute(String command, byte[] stdin, long timeoutSeconds) throws IOException, InterruptedException {
+        return delegate.execute(command, stdin, timeoutSeconds);
+    }
+
+    @Override
     public void executeStreaming(String command, Consumer<String> lineConsumer, long timeoutSeconds)
             throws IOException, InterruptedException {
         delegate.executeStreaming(command, lineConsumer, timeoutSeconds);

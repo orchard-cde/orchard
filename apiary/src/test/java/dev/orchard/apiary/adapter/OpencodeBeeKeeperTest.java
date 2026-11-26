@@ -31,6 +31,7 @@ class OpencodeBeeKeeperTest {
 
     private static final String ROOT = "/workspace";
     private static final String BINARY = "/home/dev/.opencode/bin/opencode";
+    private static final String EXEC_SERVE = "exec '\\''" + BINARY + "'\\'' serve";
 
     private OpencodeBeeKeeper keeper;
     private final UUID groveId = UUID.randomUUID();
@@ -125,7 +126,19 @@ class OpencodeBeeKeeperTest {
 
         keeper.release(bee, runner, "/workspaces/my repo").join();
 
-        verify(runner).execute(startsWith("cd '/workspaces/my repo' && nohup '" + BINARY + "' serve"));
+        verify(runner).execute(startsWith("cd '/workspaces/my repo' && nohup sh -lc "));
+        verify(runner).execute(argThat(cmd -> cmd.contains(EXEC_SERVE)));
+    }
+
+    @Test
+    void release_launchesUnderLoginShell() throws Exception {
+        Bee bee = Bee.hatching(groveId, BeeSpec.of(BeeType.OPENCODE));
+        stubLaunch("1\n");
+
+        keeper.release(bee, runner, ROOT).join();
+
+        verify(runner).execute(argThat(cmd -> cmd.contains(" nohup sh -lc ")
+            && !cmd.contains("nohup '" + BINARY + "'")));
     }
 
     @Test
@@ -146,7 +159,8 @@ class OpencodeBeeKeeperTest {
         Bee result = keeper.release(bee, runner, ROOT).join();
 
         assertThat(result.processId()).isEqualTo("12345");
-        verify(runner).execute(argThat(cmd -> cmd.contains("nohup '" + BINARY + "' serve")));
+        verify(runner).execute(argThat(cmd -> cmd.contains("nohup sh -lc ")
+            && cmd.contains(EXEC_SERVE)));
         verify(runner).execute(argThat(cmd -> cmd.contains("curl") && cmd.contains("kill -0 12345")), anyLong());
     }
 

@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -61,8 +62,18 @@ class SshExecutor implements CommandRunner {
 
     @Override
     public String execute(String command, long timeoutSeconds) throws IOException, InterruptedException {
+        return run(command, null, timeoutSeconds);
+    }
+
+    @Override
+    public String execute(String command, byte[] stdin, long timeoutSeconds) throws IOException, InterruptedException {
+        return run(command, Objects.requireNonNull(stdin, "stdin"), timeoutSeconds);
+    }
+
+    private String run(String command, byte[] stdin, long timeoutSeconds) throws IOException, InterruptedException {
         log.debug("Executing SSH command on target {}: {}", targetId, command);
         Process process = new ProcessBuilder(buildSshCommand(command)).start();
+        StdinFeeder.Feed feeder = stdin == null ? null : StdinFeeder.feed(process, stdin);
 
         // Drain stdout AND stderr on parallel virtual threads while the process runs. Reading only
         // after waitFor() returns deadlocks any command that emits more than the OS pipe buffer
@@ -85,8 +96,10 @@ class SshExecutor implements CommandRunner {
         // join() before reading the StringBuilders establishes happens-before on their contents.
         stdoutReader.join();
         stderrReader.join();
-
         int exitCode = process.exitValue();
+        if (feeder != null) {
+            feeder.finish(STDOUT_DRAIN_GRACE_MS, exitCode, command);
+        }
         if (exitCode != 0) {
             log.error("SSH command failed (exit {}): {} — stderr: {}", exitCode, command, stderr.toString().trim());
             throw new IOException("SSH command failed with exit code " + exitCode + ": " + command);

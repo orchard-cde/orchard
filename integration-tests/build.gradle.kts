@@ -28,6 +28,7 @@ dependencies {
     "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-test")
 
     "integrationTestImplementation"("org.springframework.boot:spring-boot-starter-webmvc-test")
+    "integrationTestImplementation"("org.springframework:spring-jdbc")
     "integrationTestImplementation"("org.springframework.security:spring-security-oauth2-core")
     "integrationTestImplementation"("org.springframework.security:spring-security-test")
     "integrationTestImplementation"("org.testcontainers:testcontainers:2.0.5")
@@ -62,6 +63,10 @@ tasks.register<Test>("integrationTest") {
     systemProperty("junit.jupiter.execution.timeout.default", "15m")
     systemProperty("orchard.e2e.require-qemu", providers.gradleProperty("orchard.e2e.require-qemu").getOrElse("false"))
     systemProperty("orchard.e2e.require-container", providers.gradleProperty("orchard.e2e.require-container").getOrElse("false"))
+    val knotholeDir = layout.buildDirectory.dir("integration-test-knothole").get().asFile
+    systemProperty("orchard.knothole.vault-path", File(knotholeDir, "vault").absolutePath)
+    systemProperty("orchard.knothole.master-key-path", File(knotholeDir, "master.key").absolutePath)
+    systemProperty("orchard.e2e.branch",providers.gradleProperty("orchard.e2e.branch").getOrElse("main"))
     testLogging {
         events("skipped", "failed", "standard_error")
         exceptionFormat = TestExceptionFormat.FULL

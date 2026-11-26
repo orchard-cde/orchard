@@ -44,6 +44,12 @@ public final class ContainerVine implements Vine {
         }
 
         @Override
+        public String execute(String command, byte[] stdin, long timeoutSeconds)
+                throws IOException, InterruptedException {
+            return engine.execute(execCommand(command, true), stdin, timeoutSeconds);
+        }
+
+        @Override
         public void executeStreaming(String command, Consumer<String> lineConsumer, long timeoutSeconds)
                 throws IOException, InterruptedException {
             engine.executeStreaming(execCommand(command), lineConsumer, timeoutSeconds);
@@ -63,7 +69,12 @@ public final class ContainerVine implements Vine {
         }
 
         private String execCommand(String command) throws IOException, InterruptedException {
-            return ShellQuote.join(ContainerExec.of(cli, resolveContainer()).user(remoteUser).shell(command).argv());
+            return execCommand(command, false);
+        }
+
+        private String execCommand(String command, boolean stdin) throws IOException, InterruptedException {
+            return ContainerExec.of(cli, resolveContainer()).user(remoteUser)
+                .interactive(stdin, false).shell(command).commandLine();
         }
 
         private String resolveContainer() throws IOException, InterruptedException {

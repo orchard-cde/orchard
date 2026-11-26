@@ -9,6 +9,7 @@ import dev.orchard.core.model.PlotSizes;
 import dev.orchard.core.model.ProviderType;
 import dev.orchard.core.model.VmPlot;
 import dev.orchard.vine.CommandRunner;
+import dev.orchard.vine.ExecTarget;
 import dev.orchard.vine.Vine;
 
 import java.util.UUID;
@@ -117,6 +118,9 @@ public interface GroveProvider {
      * itself, or the local machine for a container plot.
      */
     CommandRunner host(Plot plot);
+
+    /** The {@link #host} channel bundled with its workspace path, plot id and container runtime. */
+    ExecTarget execTarget(Plot plot);
 
     /** The workspace folder as seen by the {@link #host} channel. */
     String workspacePath(Plot plot);

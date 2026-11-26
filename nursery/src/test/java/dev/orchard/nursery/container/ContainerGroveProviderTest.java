@@ -137,6 +137,15 @@ class ContainerGroveProviderTest {
     }
 
     @Test
+    void runtime_containerPlot_returnsPlotRuntime() {
+        ContainerPlot d = draft();
+        ContainerPlot plot = new ContainerPlot(d.id(), d.groveId(), d.providerId(), d.id().toString(),
+            PlotState.ROOTED, Instant.now(), Instant.now(), d.workspacePath(), ContainerRuntime.PODMAN, d.spec(), null);
+
+        assertThat(provider.execTarget(plot).runtime()).isEqualTo(ContainerRuntime.PODMAN);
+    }
+
+    @Test
     void water_dormant_isRooted() throws Exception {
         assertThat(provider.water(planted(PlotState.DORMANT)).get().state()).isEqualTo(PlotState.ROOTED);
     }
