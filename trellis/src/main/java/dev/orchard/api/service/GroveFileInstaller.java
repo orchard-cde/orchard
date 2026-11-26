@@ -10,7 +10,10 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import org.springframework.stereotype.Component;
 
-/** Writes memory-backed files into a fruit or onto a VM, feeding the bytes over stdin. */
+/**
+ * Installs the secrets file and the shell hook that exports it into a fruit or onto a VM, as root
+ * with the requested owner and mode. File content travels over stdin, never on a command line.
+ */
 @Component
 public final class GroveFileInstaller {
 
