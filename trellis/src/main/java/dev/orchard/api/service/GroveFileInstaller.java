@@ -11,21 +11,17 @@ import java.nio.charset.StandardCharsets;
 import org.springframework.stereotype.Component;
 
 /**
- * Installs the secrets file and the shell hook that exports it into a fruit or onto a VM, as root
- * with the requested owner and mode. File content travels over stdin, never on a command line.
+ * Installs the secrets file and the shell hook that exports it into a fruit or onto a VM, as root.
+ * File content travels over stdin, never on a command line.
  */
 @Component
 public final class GroveFileInstaller {
 
     public enum Target { FRUIT, VM }
 
-    public record FileSpec(String path, String owner, String groupOfUser, String mode, byte[] content) {}
-
     public static final String HOOK_PATH = "/etc/profile.d/orchard-secrets.sh";
     public static final String FRUIT_SECRETS_PATH = "/dev/shm/orchard/secrets.env";
-    private static final String FRUIT_SECRETS_DIR = "/dev/shm/orchard";
-    public static final String VM_SECRETS_DIR = "/run/orchard/secrets";
-    public static final String VM_SECRETS_PATH = VM_SECRETS_DIR + "/secrets.env";
+    public static final String VM_SECRETS_PATH = "/run/orchard/secrets/secrets.env";
 
     private static final String SOURCE_HOOK_LINE = "'\\n[ -r " + HOOK_PATH + " ] && . " + HOOK_PATH + "\\n'";
     static final String BASHRC_GUARD =
@@ -34,6 +30,50 @@ public final class GroveFileInstaller {
     static final String ZPROFILE_GUARD =
         "if [ -d /etc/zsh ]; then f=/etc/zsh/zprofile; else f=/etc/zprofile; fi; "
             + "grep -q orchard-secrets \"$f\" 2>/dev/null || printf " + SOURCE_HOOK_LINE + " >> \"$f\"";
+
+    /** The parent is re-created unless it already is a real directory owned by root. */
+    private static final String FRUIT_SECRETS_SCRIPT = """
+        set -e
+        d=/dev/shm/orchard; p=$d/secrets.env; t=$p.tmp
+        trap 'rm -f "$t"' EXIT
+        if [ -e "$d" ] || [ -L "$d" ]; then o=$(stat -c %u "$d"); if [ -L "$d" ] || [ "$o" != 0 ]; then rm -rf "$d"; fi; fi
+        if [ ! -e "$d" ] && [ ! -L "$d" ]; then mkdir "$d"; fi
+        [ ! -L "$d" ]
+        chown root:root "$d"; chmod 755 "$d"
+        umask 077
+        rm -f "$t"; cat > "$t"
+        g=$(id -gn @reader@)
+        chown root:"$g" "$t"; chmod 0440 "$t"
+        mv -f "$t" "$p"
+        """;
+
+    /** The directory is a tmpfs that stays read-only except while the file is replaced. */
+    private static final String VM_SECRETS_SCRIPT = """
+        set -e
+        d=/run/orchard/secrets; p=$d/secrets.env; t=$p.tmp
+        trap 'rm -f "$t"; mount -o remount,ro "$d" 2>/dev/null || true' EXIT
+        mkdir -p "$d"
+        mountpoint -q "$d" || mount -t tmpfs -o mode=0755,size=64m tmpfs "$d"
+        mount -o remount,rw "$d"
+        umask 077
+        rm -f "$t"; cat > "$t"
+        g=$(id -gn @reader@)
+        chown root:"$g" "$t"; chmod 0440 "$t"
+        mv -f "$t" "$p"
+        mount -o remount,ro "$d"
+        """;
+
+    private static final String HOOK_INSTALL_SCRIPT = """
+        set -e
+        p=/etc/profile.d/orchard-secrets.sh; t=$p.tmp
+        trap 'rm -f "$t"' EXIT
+        mkdir -p /etc/profile.d; chmod 755 /etc/profile.d
+        umask 022
+        rm -f "$t"; cat > "$t"
+        chown root:root "$t"; chmod 0644 "$t"
+        mv -f "$t" "$p"
+        """ + BASHRC_GUARD + "\n" + ZPROFILE_GUARD + "\n";
+
     private static final String HOOK_RESOURCE = "/knothole/orchard-secrets.sh";
     private static final String HOOK = loadHook();
 
@@ -43,77 +83,33 @@ public final class GroveFileInstaller {
         this.timeoutSeconds = properties.deliveryTimeout().toSeconds();
     }
 
-    public void install(ExecTarget exec, String containerId, Target target, FileSpec spec)
+    /** Writes {@code env} as the secrets file, readable by root and by {@code reader}'s primary group. */
+    public void installSecrets(ExecTarget exec, String containerId, Target target, String reader, byte[] env)
         throws IOException, InterruptedException {
-        exec.runner().execute(command(exec, containerId, target, script(target, spec)), spec.content(),
-            timeoutSeconds);
+        exec.runner().execute(command(exec, containerId, target, secretsScript(target, reader)), env, timeoutSeconds);
     }
 
     public void installHook(ExecTarget exec, String containerId, Target target)
         throws IOException, InterruptedException {
-        FileSpec spec = new FileSpec(HOOK_PATH, "root", "root", "0644", HOOK.getBytes(StandardCharsets.UTF_8));
-        exec.runner().execute(command(exec, containerId, target, hookInstallScript(target, spec)), spec.content(),
-            timeoutSeconds);
-    }
-
-    static String hookInstallScript(Target target, FileSpec spec) {
-        return script(target, spec) + "; umask 022; " + BASHRC_GUARD + "; " + ZPROFILE_GUARD;
-    }
-
-    private static String script(Target target, FileSpec spec) {
-        return target == Target.FRUIT ? fruitScript(spec) : vmScript(spec);
+        exec.runner().execute(command(exec, containerId, target, hookInstallScript()),
+            HOOK.getBytes(StandardCharsets.UTF_8), timeoutSeconds);
     }
 
     public static String hookScript() {
         return HOOK;
     }
 
-    static String fruitScript(FileSpec spec) {
-        return preamble(spec) + "d=$(dirname \"$p\"); "
-            + parentSteps(spec) + "umask 077; " + writeSteps(spec);
+    static String secretsScript(Target target, String reader) {
+        String script = target == Target.VM ? VM_SECRETS_SCRIPT : FRUIT_SECRETS_SCRIPT;
+        return oneLine(script.replace("@reader@", ShellQuote.quote(reader)));
     }
 
-    private static String parentSteps(FileSpec spec) {
-        if (!FRUIT_SECRETS_DIR.equals(parentOf(spec.path()))) {
-            return "mkdir -p \"$d\"; chmod 755 \"$d\"; ";
-        }
-        return "if [ -e \"$d\" ] || [ -L \"$d\" ]; then o=$(stat -c %u \"$d\"); "
-            + "if [ -L \"$d\" ] || [ \"$o\" != 0 ]; then rm -rf \"$d\"; fi; fi; "
-            + "if [ ! -e \"$d\" ] && [ ! -L \"$d\" ]; then mkdir \"$d\"; fi; "
-            + "[ ! -L \"$d\" ]; chown root:root \"$d\"; chmod 755 \"$d\"; ";
+    static String hookInstallScript() {
+        return oneLine(HOOK_INSTALL_SCRIPT);
     }
 
-    private static String parentOf(String path) {
-        int slash = path.lastIndexOf('/');
-        return slash <= 0 ? "" : path.substring(0, slash);
-    }
-
-    static String vmScript(FileSpec spec) {
-        if (!spec.path().startsWith(VM_SECRETS_DIR + "/")) {
-            return preamble(spec) + "umask 077; " + writeSteps(spec);
-        }
-        return "set -e; " + vars(spec) + "; d=" + ShellQuote.quote(VM_SECRETS_DIR)
-            + "; trap 'rm -f \"$t\"; mount -o remount,ro \"$d\" 2>/dev/null || true' EXIT; "
-            + "mkdir -p \"$d\"; mountpoint -q \"$d\" || mount -t tmpfs -o mode=0755,size=64m tmpfs \"$d\"; "
-            + "mount -o remount,rw \"$d\"; umask 077; "
-            + writeSteps(spec)
-            + "; mount -o remount,ro \"$d\"";
-    }
-
-    private static String preamble(FileSpec spec) {
-        return "set -e; " + vars(spec) + "; trap 'rm -f \"$t\"' EXIT; ";
-    }
-
-    private static String vars(FileSpec spec) {
-        return "p=" + ShellQuote.quote(spec.path()) + "; t=" + ShellQuote.quote(spec.path() + ".tmp");
-    }
-
-    private static String writeSteps(FileSpec spec) {
-        return "rm -f \"$t\"; cat > \"$t\""
-            + "; g=$(id -gn " + ShellQuote.quote(spec.groupOfUser()) + ")"
-            + "; chown " + ShellQuote.quote(spec.owner()) + ":\"$g\" \"$t\""
-            + "; chmod " + ShellQuote.quote(spec.mode()) + " \"$t\""
-            + "; mv -f \"$t\" \"$p\"";
+    private static String oneLine(String script) {
+        return script.strip().replace("\n", "; ");
     }
 
     private static String command(ExecTarget exec, String containerId, Target target, String script) {

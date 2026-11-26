@@ -217,9 +217,9 @@ public class GroveService {
 
         if (grownFruit.state() == FruitState.RIPE) {
             try {
-                injectSecrets(provider, grove, grownFruit);
+                secretInjector.inject(provider, grove, grownFruit);
                 grove = grove.withState(GroveState.FLOURISHING);
-            } catch (SecretDeliveryException e) {
+            } catch (RuntimeException e) {
                 log.error("Grove {} could not receive its secrets: {}", grove.id(), e.getMessage(), e);
                 grove = grove.withState(GroveState.BLIGHTED);
             }
@@ -802,7 +802,7 @@ public class GroveService {
                 if (!advance(grove.id(), expected, current)) {
                     return;
                 }
-                injectSecrets(provider, current, ripened);
+                secretInjector.inject(provider, current, ripened);
             }
             current = current.withState(GroveState.FLOURISHING);
             if (advance(grove.id(), expected, current)) {
@@ -811,13 +811,6 @@ public class GroveService {
         } catch (Exception e) {
             log.error("Starting grove {} failed — marking BLIGHTED", grove.id(), e);
             blight(expected, current);
-        }
-    }
-
-    private void injectSecrets(GroveProvider provider, Grove grove, Fruit fruit) {
-        SecretInjector.Outcome outcome = secretInjector.inject(provider, grove, fruit);
-        if (!outcome.missing().isEmpty()) {
-            log.warn("Grove {} declares secrets that are not stored: {}", grove.id(), outcome.missing());
         }
     }
 

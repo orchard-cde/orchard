@@ -66,8 +66,6 @@ class GroveServiceTest {
             cultivatorService, eventPublisher, sshPublicKeyService,
             beeService, new TransactionTemplate(transactionManager), secretInjector
         );
-        lenient().when(secretInjector.inject(any(), any(), any()))
-            .thenReturn(new SecretInjector.Outcome(List.of(), List.of(), List.of()));
         lenient().when(providerRegistry.getDefault()).thenReturn(defaultProvider);
         lenient().when(providerRegistry.require("test-default")).thenReturn(defaultProvider);
         lenient().when(providerRegistry.require("owner")).thenReturn(ownerProvider);
@@ -1222,8 +1220,8 @@ class GroveServiceTest {
     void provision_injectorThrows_blights() throws Exception {
         when(ownerProvider.growFruit(any(), any())).thenAnswer(inv -> CompletableFuture.completedFuture(
             ((Fruit) inv.getArgument(1)).withRemoteEnv("/workspaces/repo", "vscode").withState(FruitState.RIPE)));
-        when(secretInjector.inject(any(), any(), any()))
-            .thenThrow(new SecretDeliveryException("declared secrets cannot be delivered", null));
+        doThrow(new SecretDeliveryException("declared secrets cannot be delivered", null))
+            .when(secretInjector).inject(any(), any(), any());
         provisionRecordingKeepingGrow(containerPlot(), mock(CommandRunner.class));
 
         ArgumentCaptor<GroveEntity> saved = ArgumentCaptor.forClass(GroveEntity.class);
@@ -1280,8 +1278,8 @@ class GroveServiceTest {
         Grove grove = startingGrove();
         List<Transition> transitions = recordTransitions(1);
         ripenSucceeds();
-        when(secretInjector.inject(any(), any(), any()))
-            .thenThrow(new SecretDeliveryException("declared secrets cannot be delivered", null));
+        doThrow(new SecretDeliveryException("declared secrets cannot be delivered", null))
+            .when(secretInjector).inject(any(), any(), any());
 
         groveService.completeStart(grove, ownerProvider);
 
