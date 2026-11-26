@@ -64,7 +64,8 @@ public final class SecretInjector {
             String remoteUser = fruit.remoteUser();
             if (remoteUser == null) {
                 throw new SecretDeliveryException(
-                    "declared secrets need the devcontainer CLI path (orchard.nursery.use-devcontainer-cli=false)",
+                    "declared secrets can only be delivered to a fruit grown through the devcontainer CLI; "
+                        + "this fruit has no remote user, which happens when orchard.nursery.use-devcontainer-cli is false",
                     null);
             }
             ExecTarget exec = provider.execTarget(plot);
