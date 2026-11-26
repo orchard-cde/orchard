@@ -2,6 +2,9 @@ package dev.orchard.knothole;
 
 import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.nio.file.StandardOpenOption.WRITE;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
+import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -21,8 +24,12 @@ import java.util.Set;
 
 final class SecurePaths {
 
-    static final String PRIVATE_FILE = "rw-------";
-    private static final String PRIVATE_DIRECTORY = "rwx------";
+    static final Set<PosixFilePermission> PRIVATE_FILE = Set.of(OWNER_READ, OWNER_WRITE);
+    private static final Set<PosixFilePermission> PRIVATE_DIRECTORY = Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE);
+    private static final FileAttribute<Set<PosixFilePermission>> PRIVATE_FILE_ATTRIBUTE =
+            PosixFilePermissions.asFileAttribute(PRIVATE_FILE);
+    private static final FileAttribute<Set<PosixFilePermission>> PRIVATE_DIRECTORY_ATTRIBUTE =
+            PosixFilePermissions.asFileAttribute(PRIVATE_DIRECTORY);
 
     private final UserPrincipal expectedOwner;
 
@@ -55,7 +62,7 @@ final class SecurePaths {
         }
     }
 
-    PosixFileAttributes requireRegularFile(Path file, String permissions) {
+    PosixFileAttributes requireRegularFile(Path file, Set<PosixFilePermission> permissions) {
         PosixFileAttributes attrs;
         try {
             attrs = Files.readAttributes(file, PosixFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
@@ -73,8 +80,7 @@ final class SecurePaths {
     }
 
     static void createPrivateFile(Path path, byte[] bytes, boolean fsync) throws IOException {
-        SeekableByteChannel channel = Files.newByteChannel(path, Set.of(CREATE_NEW, WRITE),
-                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(PRIVATE_FILE)));
+        SeekableByteChannel channel = Files.newByteChannel(path, Set.of(CREATE_NEW, WRITE), PRIVATE_FILE_ATTRIBUTE);
         try (channel) {
             ByteBuffer buffer = ByteBuffer.wrap(bytes);
             while (buffer.hasRemaining()) {
@@ -102,24 +108,20 @@ final class SecurePaths {
             createMissing(parent);
         }
         try {
-            Files.createDirectory(dir, privateAttribute());
+            Files.createDirectory(dir, PRIVATE_DIRECTORY_ATTRIBUTE);
         } catch (FileAlreadyExistsException ignored) {
             // lost a creation race; the caller validates what is there
         }
     }
 
-    private void requireModeAndOwner(Path path, PosixFileAttributes attrs, String permissions) {
-        String actual = PosixFilePermissions.toString(attrs.permissions());
-        if (!actual.equals(permissions)) {
-            throw new VaultException(path + " has mode " + actual + "; it must be exactly " + permissions);
+    private void requireModeAndOwner(Path path, PosixFileAttributes attrs, Set<PosixFilePermission> permissions) {
+        if (!attrs.permissions().equals(permissions)) {
+            throw new VaultException(path + " has mode " + PosixFilePermissions.toString(attrs.permissions())
+                    + "; it must be exactly " + PosixFilePermissions.toString(permissions));
         }
         if (!attrs.owner().equals(expectedOwner)) {
             throw new VaultException(path + " is owned by " + attrs.owner().getName()
                     + "; it must be owned by " + expectedOwner.getName());
         }
-    }
-
-    private static FileAttribute<Set<PosixFilePermission>> privateAttribute() {
-        return PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString(PRIVATE_DIRECTORY));
     }
 }

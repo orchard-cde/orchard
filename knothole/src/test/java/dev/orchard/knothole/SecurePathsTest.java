@@ -84,7 +84,7 @@ class SecurePathsTest {
         Path file = Files.createFile(tmp.resolve("ok"));
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
 
-        assertThat(paths.requireRegularFile(file, "rw-------").isRegularFile()).isTrue();
+        assertThat(paths.requireRegularFile(file, SecurePaths.PRIVATE_FILE).isRegularFile()).isTrue();
     }
 
     @Test
@@ -92,7 +92,7 @@ class SecurePathsTest {
         Path file = Files.createFile(tmp.resolve("open"));
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-rw----"));
 
-        assertThatThrownBy(() -> paths.requireRegularFile(file, "rw-------"))
+        assertThatThrownBy(() -> paths.requireRegularFile(file, SecurePaths.PRIVATE_FILE))
                 .isInstanceOf(VaultException.class)
                 .hasMessageContaining("rw-------");
     }
@@ -102,7 +102,7 @@ class SecurePathsTest {
         Path file = Files.createFile(tmp.resolve("mine"));
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
 
-        assertThatThrownBy(() -> asRoot().requireRegularFile(file, "rw-------"))
+        assertThatThrownBy(() -> asRoot().requireRegularFile(file, SecurePaths.PRIVATE_FILE))
                 .isInstanceOf(VaultException.class)
                 .hasMessageContaining("owned by");
     }

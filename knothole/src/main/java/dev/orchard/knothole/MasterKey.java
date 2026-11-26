@@ -4,14 +4,16 @@ import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.SecureRandom;
+import java.util.Set;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
 public final class MasterKey {
 
     private static final int KEY_BYTES = 32;
-    private static final String FILE_MODE = SecurePaths.PRIVATE_FILE;
+    private static final Set<PosixFilePermission> FILE_MODE = SecurePaths.PRIVATE_FILE;
 
     private final SecretKey key;
 

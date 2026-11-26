@@ -9,6 +9,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -27,7 +28,7 @@ public final class FileSecretVault implements SecretVault {
     private static final int NONCE_BYTES = 12;
     private static final int TAG_BITS = 128;
     private static final String TEMP_PREFIX = ".tmp-";
-    private static final String ENTRY_PERMISSIONS = SecurePaths.PRIVATE_FILE;
+    private static final Set<PosixFilePermission> ENTRY_PERMISSIONS = SecurePaths.PRIVATE_FILE;
     private static final Duration STALE_TEMP_AGE = Duration.ofSeconds(60);
 
     private final Path directory;
