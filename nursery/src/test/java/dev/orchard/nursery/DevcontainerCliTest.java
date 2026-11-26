@@ -157,6 +157,21 @@ class DevcontainerCliTest {
     }
 
     @Test
+    void exec_identifiesTheFruitLikeUpAndDisablesTheUserEnvProbe() throws Exception {
+        var calls = new ArrayList<String>();
+        UUID fruitId = UUID.randomUUID();
+        cliFor().exec(target(stubRunnerCapturing(calls), "/ws", ContainerRuntime.PODMAN), fruitId, "id -gn");
+
+        assertThat(calls).singleElement().satisfies(c -> {
+            assertThat(c).startsWith("devcontainer exec --workspace-folder '/ws' --docker-path podman");
+            assertThat(c).contains(" --id-label 'orchard.fruit.id=" + fruitId + "'");
+            assertThat(c).contains(" --id-label 'orchard.plot.id=" + PLOT_ID + "'");
+            assertThat(c).contains(" --default-user-env-probe none ");
+            assertThat(c).endsWith(" -- /bin/sh -c 'id -gn'");
+        });
+    }
+
+    @Test
     void up_workspaceWithSpace_isQuoted() throws Exception {
         var calls = new ArrayList<String>();
         cliFor().up(target(stubRunnerCapturing(calls), "/tmp/a b/ws"), UUID.randomUUID(), "my-fruit", line -> {});

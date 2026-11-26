@@ -125,10 +125,17 @@ public class DevcontainerCli {
         }
     }
 
-    /** Run a command inside the fruit's container as its remote user and return its stdout. */
+    /**
+     * Run a command inside the fruit's container as its remote user and return its stdout.
+     *
+     * <p>The user env probe is off: the CLI would otherwise read the remote user's login
+     * environment and repeat every variable as {@code -e NAME=value} on the engine's exec command
+     * line, which would expose delivered secrets in the host's process list.
+     */
     public String exec(ExecTarget target, UUID fruitId, String command) throws IOException, InterruptedException {
         String cmd = "devcontainer exec --workspace-folder " + ShellQuote.quote(target.workspacePath())
-            + dockerPathArgs(target) + lookupLabelArgs(target, fruitId) + " -- /bin/sh -c " + ShellQuote.quote(command);
+            + dockerPathArgs(target) + lookupLabelArgs(target, fruitId) + " --default-user-env-probe none"
+            + " -- /bin/sh -c " + ShellQuote.quote(command);
         return target.runner().execute(cmd, config.execTimeoutSeconds());
     }
 
