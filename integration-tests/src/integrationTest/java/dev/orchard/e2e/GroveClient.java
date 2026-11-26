@@ -214,6 +214,8 @@ final class GroveClient {
         throws Exception {
         assertThat(fruitLoginEnv(cli, fruit, name)).as("%s: fruit login shell sees %s", step, name)
             .isEqualTo(value);
+        assertThat(runInFruit(cli, fruit, "printf %s \"${" + name + "-}\""))
+            .as("%s: a non-login exec gets no value from the CLI's command line", step).isEmpty();
         if ("yes".equals(runInFruit(cli, fruit, "command -v zsh >/dev/null 2>&1 && echo yes || echo no"))) {
             assertThat(runInFruit(cli, fruit, "zsh -lc 'printf %s \"$" + name + "\"'"))
                 .as("%s: fruit zsh login shell sees %s", step, name).isEqualTo(value);
