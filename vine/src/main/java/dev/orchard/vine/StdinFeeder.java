@@ -7,6 +7,15 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Writes a child's stdin from its own thread and judges the write only once the child has exited.
+ *
+ * <p>Writing on the caller's thread would block in the pipe once the child stops reading, so the
+ * caller would never reach its {@code waitFor} timeout and never kill the child. Judging the write
+ * early would report "broken pipe" for a child that failed before reading, hiding its exit code and
+ * stderr. A child that exits 0 without consuming its input is still an error: it returned success
+ * without receiving what it was meant to write.
+ */
 final class StdinFeeder {
 
     private static final Logger log = LoggerFactory.getLogger(StdinFeeder.class);
